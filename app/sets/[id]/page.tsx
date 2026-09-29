@@ -385,17 +385,25 @@ export default function SetDetail() {
         </>
       )}
 
-      {/* ── Settings bottom sheet ─────────────────────────────────────────── */}
+      {/* ── Settings modal ────────────────────────────────────────────────── */}
       {showSettings && (
         <>
           <div
             className="fixed inset-0 bg-black/50 z-40"
             onClick={() => setShowSettings(false)}
           />
-          <div className="fixed bottom-0 left-0 right-0 z-50 max-w-lg mx-auto bg-white rounded-t-2xl shadow-xl">
-            <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mt-3" />
-            <div className="px-5 pt-4 pb-8">
-              <h2 className="text-lg font-bold text-gray-900 mb-5">Settings</h2>
+          <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+            <div className="w-full max-w-sm bg-white rounded-2xl shadow-xl">
+            <div className="px-5 pt-5 pb-6">
+              <div className="flex items-center justify-between mb-5">
+                <h2 className="text-lg font-bold text-gray-900">Settings</h2>
+                <button
+                  onClick={() => setShowSettings(false)}
+                  className="text-gray-400 hover:text-gray-600 transition-colors text-xl leading-none"
+                >
+                  ×
+                </button>
+              </div>
 
               {/* Rename */}
               <div className="mb-5">
@@ -450,6 +458,7 @@ export default function SetDetail() {
                   Delete set
                 </button>
               </div>
+            </div>
             </div>
           </div>
         </>
