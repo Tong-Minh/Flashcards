@@ -159,7 +159,9 @@ function renderMath(expr: string, display: boolean): string {
   }
 }
 
-function renderInline(text: string): ReactNode {
+type MathClickHandler = (expr: string, display: boolean, rect: DOMRect) => void
+
+function renderInline(text: string, onMathClick?: MathClickHandler): ReactNode {
   const tokens = tokenizeInline(text)
   if (tokens.length === 1 && tokens[0].t === 'text') return text
   return (
@@ -174,14 +176,16 @@ function renderInline(text: string): ReactNode {
             return <em key={i} className="italic">{tok.s}</em>
           case 'color':
             return <span key={i} className={COLOR_CLASSES[tok.color] ?? ''}>{tok.s}</span>
-          case 'math':
+          case 'math': {
+            const cls = tok.display ? 'block overflow-x-auto py-1 text-center' : 'inline-block align-middle'
             return (
-              <span
-                key={i}
-                className={tok.display ? 'block overflow-x-auto py-1 text-center' : 'inline-block align-middle'}
+              <span key={i}
+                className={onMathClick ? `${cls} cursor-pointer hover:opacity-70 transition-opacity` : cls}
+                onClick={onMathClick ? (e) => { e.stopPropagation(); onMathClick(tok.s, tok.display, e.currentTarget.getBoundingClientRect()) } : undefined}
                 dangerouslySetInnerHTML={{ __html: renderMath(tok.s, tok.display) }}
               />
             )
+          }
           default:
             return tok.s || null
         }
@@ -190,25 +194,27 @@ function renderInline(text: string): ReactNode {
   )
 }
 
-function renderTextBlock(text: string, blockKey: number): ReactNode {
+function renderTextBlock(text: string, blockKey: number, onMathClick?: MathClickHandler): ReactNode {
   const lines = text.split('\n')
   return (
     <div key={blockKey}>
       {lines.map((line, j) => {
         const trimmed = line.trimStart()
-        if (trimmed.startsWith('### ')) return <h3 key={j} className="text-base font-bold mt-3 mb-0.5">{renderInline(trimmed.slice(4))}</h3>
-        if (trimmed.startsWith('## '))  return <h2 key={j} className="text-lg  font-bold mt-3 mb-1">{renderInline(trimmed.slice(3))}</h2>
-        if (trimmed.startsWith('# '))   return <h1 key={j} className="text-xl  font-bold mt-3 mb-1">{renderInline(trimmed.slice(2))}</h1>
+        if (trimmed.startsWith('### ')) return <h3 key={j} className="text-base font-bold mt-3 mb-0.5">{renderInline(trimmed.slice(4), onMathClick)}</h3>
+        if (trimmed.startsWith('## '))  return <h2 key={j} className="text-lg  font-bold mt-3 mb-1">{renderInline(trimmed.slice(3), onMathClick)}</h2>
+        if (trimmed.startsWith('# '))   return <h1 key={j} className="text-xl  font-bold mt-3 mb-1">{renderInline(trimmed.slice(2), onMathClick)}</h1>
         if (line === '')                return <br key={j} />
-        // Full-line display math: line is exactly $$...$$
         if (trimmed.startsWith('$$') && trimmed.endsWith('$$') && trimmed.length > 4) {
+          const expr = trimmed.slice(2, -2)
           return (
-            <div key={j} className="overflow-x-auto py-2 flex justify-center"
-              dangerouslySetInnerHTML={{ __html: renderMath(trimmed.slice(2, -2), true) }}
+            <div key={j}
+              className={`overflow-x-auto py-2 flex justify-center${onMathClick ? ' cursor-pointer hover:opacity-70 transition-opacity' : ''}`}
+              onClick={onMathClick ? (e) => { e.stopPropagation(); onMathClick(expr, true, e.currentTarget.getBoundingClientRect()) } : undefined}
+              dangerouslySetInnerHTML={{ __html: renderMath(expr, true) }}
             />
           )
         }
-        return <p key={j} className="leading-relaxed">{renderInline(line)}</p>
+        return <p key={j} className="leading-relaxed">{renderInline(line, onMathClick)}</p>
       })}
     </div>
   )
@@ -334,16 +340,18 @@ interface Props {
   className?: string
   readOnly?: boolean
   onCodeLangChange?: (blockIndex: number, lang: string) => void
+  onInlineMathClick?: MathClickHandler
 }
 
-export function ContentRenderer({ text, className, readOnly, onCodeLangChange }: Props) {
+export function ContentRenderer({ text, className, readOnly, onCodeLangChange, onInlineMathClick }: Props) {
   const segments = parseSegments(text)
   const anyCode  = segments.some(s => s.type === 'code')
 
   if (!anyCode) {
     const hasBlocks = /^#{1,3} /m.test(text) || /^\$\$[\s\S]+?\$\$/m.test(text)
-    if (!hasBlocks) return <>{renderInline(text)}</>
-    return <div className={className}>{renderTextBlock(text, 0)}</div>
+    const content   = hasBlocks ? renderTextBlock(text, 0, onInlineMathClick) : renderInline(text, onInlineMathClick)
+    if (className) return <div className={className}>{content}</div>
+    return <>{content}</>
   }
 
   let codeIdx = 0
@@ -362,7 +370,7 @@ export function ContentRenderer({ text, className, readOnly, onCodeLangChange }:
             />
           )
         }
-        return seg.text.trim() ? renderTextBlock(seg.text, i) : null
+        return seg.text.trim() ? renderTextBlock(seg.text, i, onInlineMathClick) : null
       })}
     </div>
   )

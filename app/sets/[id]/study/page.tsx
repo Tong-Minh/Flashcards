@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { fsrs, createEmptyCard, Rating, State, type Card as FSRSCard, type RecordLog } from 'ts-fsrs'
 import { supabase } from '@/lib/supabase/client'
 import { haptic } from '@/lib/haptic'
-import { ContentRenderer, hasCodeBlock, hasFormattedContent } from '@/components/ContentRenderer'
+import { ContentRenderer, hasCodeBlock } from '@/components/ContentRenderer'
 import {
   cacheCards, getCachedCards, updateCachedProgress,
   queueProgressUpdate, getPendingUpdates, removePendingUpdate,
@@ -790,9 +790,7 @@ export default function Study() {
             </p>
             {card.type === 'fill_blank'
               ? <ClozeQuestion sentence={card.question} />
-              : hasFormattedContent(card.question)
-                ? <ContentRenderer text={card.question} className="text-xl font-medium text-gray-900 dark:text-gray-100 leading-relaxed flex-1" readOnly />
-                : <p className="text-xl font-medium text-gray-900 dark:text-gray-100 leading-relaxed flex-1">{card.question}</p>
+              : <ContentRenderer text={card.question} className="text-xl font-medium text-gray-900 dark:text-gray-100 leading-relaxed flex-1" readOnly />
             }
             {card.type === 'multiple_choice' && card.options && (
               <div className="mt-5 space-y-2">
@@ -802,7 +800,7 @@ export default function Study() {
                     className="w-full text-left px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 active:bg-gray-100 dark:active:bg-gray-600 transition-colors font-medium"
                   >
                     <span className="text-gray-400 dark:text-gray-500 mr-2">{String.fromCharCode(65 + i)}.</span>
-                    {hasFormattedContent(opt) ? <ContentRenderer text={opt} readOnly /> : opt}
+                    <ContentRenderer text={opt} readOnly />
                   </button>
                 ))}
               </div>
@@ -819,10 +817,7 @@ export default function Study() {
               <>
                 <div className="mb-4 pb-4 border-b border-gray-100 dark:border-gray-700">
                   <p className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1">Question</p>
-                  {hasFormattedContent(card.question)
-                    ? <ContentRenderer text={card.question} className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed" readOnly />
-                    : <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">{card.question}</p>
-                  }
+                  <ContentRenderer text={card.question} className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed" readOnly />
                 </div>
                 <div className="flex flex-col flex-1">
                   <p className="text-xs font-medium text-indigo-400 uppercase tracking-wide mb-2">Answer</p>
@@ -835,10 +830,7 @@ export default function Study() {
                       {isCorrectSelection ? '✓ Correct!' : `✗ Incorrect — you picked: ${selectedOption}`}
                     </div>
                   )}
-                  {hasFormattedContent(card.answer)
-                    ? <ContentRenderer text={card.answer} className="text-xl font-semibold text-gray-900 dark:text-gray-100 leading-relaxed flex-1" readOnly />
-                    : <p className="text-xl font-semibold text-gray-900 dark:text-gray-100 leading-relaxed flex-1">{card.answer}</p>
-                  }
+                  <ContentRenderer text={card.answer} className="text-xl font-semibold text-gray-900 dark:text-gray-100 leading-relaxed flex-1" readOnly />
                   {card.type === 'multiple_choice' && card.options && (
                     <div className="mt-4 space-y-1.5">
                       {card.options.map((opt, i) => {
@@ -851,7 +843,7 @@ export default function Study() {
                             : 'text-gray-400 dark:text-gray-500'
                           }`}>
                             <span>{String.fromCharCode(65 + i)}.</span>
-                            {hasFormattedContent(opt) ? <ContentRenderer text={opt} readOnly /> : <span>{opt}</span>}
+                            <ContentRenderer text={opt} readOnly />
                             {isCorrect && <span className="ml-auto">✓</span>}
                           </div>
                         )

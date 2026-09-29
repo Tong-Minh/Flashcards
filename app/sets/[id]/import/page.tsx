@@ -94,21 +94,23 @@ What does this function return?[TAB]\`\`\`python\\ndef double(x):\\n    return x
 
 For short inline code, use single backticks: What does \`n & (n-1)\` do?[TAB]Clears the lowest set bit of n
 
-Rich formatting (use where it adds clarity):
-- Bold: **text**   Italic: *text*
-- Headings (must start the field): # H1  ## H2  ### H3
-- Colored text: [red]text[/red]  [blue]text[/blue]  [green]text[/green]  [yellow]text[/yellow]  [orange]text[/orange]  [purple]text[/purple]
-- Inline math (LaTeX): $expression$   Display math (own line): $$expression$$
+Rich formatting — use naturally where it genuinely aids recall. Do not overuse; plain text is fine for simple facts.
+- Bold key terms: **mitochondria**  Italic for emphasis: *in vivo*
+- Colors to highlight: [red]danger[/red]  [green]correct[/green]  [blue]key concept[/blue]  [yellow]caution[/yellow]  [orange]warning[/orange]  [purple]definition[/purple]
+- Headings only when the answer is structured (start of field): # H1  ## H2  ### H3
+- Inline math: $E = mc^2$   Display math (standalone equation): $$\\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}$$
 
-Example output (replace [TAB] with a real tab character):
-What is the powerhouse of the cell?	Mitochondria
-The ___ model describes DNA as a double helix.	Watson-Crick
+Example output (these use real tab characters — replace [TAB] with an actual tab):
+What is the powerhouse of the cell?	**Mitochondria** — produces ATP via cellular respiration
+The ___ is the basic unit of heredity.	gene
 What type of bond holds the two DNA strands together?	Hydrogen bonds	Covalent bonds	Ionic bonds	Peptide bonds
-What does \`arr.sort()\` return in Python?	None — it sorts in-place
-What does this do?	\`\`\`python\\ndef fib(n):\\n    if n <= 1: return n\\n    return fib(n-1) + fib(n-2)\\n\`\`\`	Computes the nth Fibonacci number recursively
-What is Newton's second law?	$$F = ma$$, where $F$ is force, $m$ is mass, $a$ is acceleration
-What are the three states of matter?	[red]Solid[/red], [blue]Liquid[/blue], and [green]Gas[/green]
-What is Big O notation for binary search?	$O(\\log n)$ — the search space **halves** each step`
+What does \`arr.sort()\` return in Python?	[red]None[/red] — it sorts *in-place* and returns nothing
+What does this function do?	\`\`\`python\\ndef fib(n):\\n    if n <= 1: return n\\n    return fib(n-1) + fib(n-2)\\n\`\`\`	Computes the nth Fibonacci number recursively
+What is the quadratic formula?	$$x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$$
+What is Newton's second law?	$F = ma$ — [blue]force[/blue] equals **mass** times **acceleration**
+What is the time complexity of binary search?	$O(\\log n)$ — the search space **halves** each step
+___ is the process by which plants convert sunlight into glucose.	Photosynthesis
+Which sorting algorithm has worst-case $O(n^2)$ time complexity?	Bubble sort	Merge sort	Quick sort	Heap sort`
 
 export default function ImportCards() {
   const { id: setId } = useParams<{ id: string }>()
