@@ -11,22 +11,24 @@
   animation: cardEnter 0.22s ease-out;
 }
 
-/* Card face flip — out (front disappears) */
+/* Card face flip — out (front disappears, tilts right-to-left) */
 @keyframes cardFlipOut {
-  from { transform: perspective(800px) rotateY(0deg);  }
-  to   { transform: perspective(800px) rotateY(90deg); }
+  from { transform: perspective(800px) rotateY(0deg);   }
+  to   { transform: perspective(800px) rotateY(-90deg); }
 }
 .card-flip-out {
   animation: cardFlipOut 0.15s ease-in forwards;
 }
 
-/* Card face flip — in (back appears) */
+/* Card face flip — in (back appears, continues from -90deg)
+   'both' fill mode: holds the from-state (-90deg) the instant the class
+   is applied, so there's no 1-frame snap when card-flip-out is removed. */
 @keyframes cardFlipIn {
   from { transform: perspective(800px) rotateY(-90deg); }
   to   { transform: perspective(800px) rotateY(0deg);   }
 }
 .card-flip-in {
-  animation: cardFlipIn 0.15s ease-out forwards;
+  animation: cardFlipIn 0.15s ease-out both;
 }
 
 /* Rating buttons fade up */
