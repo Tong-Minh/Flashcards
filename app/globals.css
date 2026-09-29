@@ -35,3 +35,25 @@
 .fade-in {
   animation: fadeIn 0.2s ease-out;
 }
+
+/* ── Prism syntax highlighting (always dark-bg context) ─────────────────── */
+pre[class*="language-"], code[class*="language-"] {
+  color: #abb2bf;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+}
+.token.comment, .token.prolog, .token.doctype, .token.cdata {
+  color: #5c6f7a; font-style: italic;
+}
+.token.punctuation { color: #7a8898; }
+.token.keyword, .token.important { color: #7eb8d4; font-weight: 600; }
+.token.property, .token.tag, .token.boolean, .token.number,
+.token.constant, .token.symbol, .token.deleted { color: #d19a66; }
+.token.selector, .token.attr-name, .token.string, .token.char,
+.token.builtin, .token.inserted { color: #98c379; }
+.token.operator, .token.entity, .token.url, .language-css .token.string,
+.style .token.string { color: #abb2bf; }
+.token.atrule, .token.attr-value { color: #98c379; }
+.token.function, .token.class-name { color: #9db0d0; }
+.token.regex, .token.important, .token.variable { color: #c678dd; }
+.token.bold { font-weight: bold; }
+.token.italic { font-style: italic; }

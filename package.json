@@ -9,7 +9,9 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",
+    "@types/prismjs": "^1.26.6",
     "next": "^15.3.4",
+    "prismjs": "^1.30.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "ts-fsrs": "^5.4.2"

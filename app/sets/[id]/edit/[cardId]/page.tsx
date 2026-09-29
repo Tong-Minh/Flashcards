@@ -120,9 +120,12 @@ export default function EditCard() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">
-            {type === 'fill_blank' ? 'Sentence (use ___ for the blank)' : 'Question'}
-          </label>
+          <div className="flex items-baseline justify-between mb-1.5">
+            <label className="block text-sm font-medium text-gray-700">
+              {type === 'fill_blank' ? 'Sentence (use ___ for the blank)' : 'Question'}
+            </label>
+            <span className="text-xs text-gray-400 font-mono">```lang … ``` for code</span>
+          </div>
           <textarea
             value={question}
             onChange={(e) => setQuestion(e.target.value)}

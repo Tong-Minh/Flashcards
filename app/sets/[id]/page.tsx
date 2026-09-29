@@ -11,6 +11,7 @@ import {
   getSetSettings, saveSetSettings,
   resetTodayNewCount,
 } from '@/lib/storage'
+import { previewText } from '@/components/ContentRenderer'
 import type { FlashcardSet, FlashcardWithProgress, StudySession } from '@/lib/types'
 
 const STATUS_STYLES: Record<string, { label: string; className: string }> = {
@@ -282,12 +283,21 @@ export default function SetDetail() {
 
       {/* Study CTA */}
       <div className="flex gap-3 mb-5">
-        <Link
-          href={`/sets/${id}/study`}
-          className="flex-1 block text-center bg-indigo-600 text-white py-4 rounded-2xl font-semibold text-lg hover:bg-indigo-700 active:bg-indigo-800 transition-colors shadow-sm"
-        >
-          {dueToday > 0 ? `Study — ${dueToday} due` : 'Study'}
-        </Link>
+        {cards.length > 0 ? (
+          <Link
+            href={`/sets/${id}/study`}
+            className="flex-1 block text-center bg-indigo-600 text-white py-4 rounded-2xl font-semibold text-lg hover:bg-indigo-700 active:bg-indigo-800 transition-colors shadow-sm"
+          >
+            {dueToday > 0 ? `Study — ${dueToday} due` : 'Study'}
+          </Link>
+        ) : (
+          <button
+            disabled
+            className="flex-1 text-center bg-indigo-600 text-white py-4 rounded-2xl font-semibold text-lg opacity-40 cursor-not-allowed shadow-sm"
+          >
+            Study
+          </button>
+        )}
         {!isOwner && (
           <div className="relative">
             <button
@@ -378,7 +388,7 @@ export default function SetDetail() {
                     <div className="flex items-start gap-3">
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                          <span className="text-gray-400 dark:text-gray-500 mr-1">{idx + 1}.</span>{card.question}
+                          <span className="text-gray-400 dark:text-gray-500 mr-1">{idx + 1}.</span>{previewText(card.question)}
                         </p>
                         <div className="flex items-center gap-2 mt-1.5">
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${badge.className}`}>
@@ -433,7 +443,7 @@ export default function SetDetail() {
                           ))}
                         </ul>
                       ) : (
-                        <p className="text-xs text-gray-600 dark:text-gray-400">{card.answer}</p>
+                        <p className="text-xs text-gray-600 dark:text-gray-400">{previewText(card.answer)}</p>
                       )}
                     </div>
                   </div>

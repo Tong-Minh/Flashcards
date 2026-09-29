@@ -74,9 +74,10 @@ function parseCards(text: string): ParsedCard[] {
 const AI_PROMPT = `You are creating flashcards for a study set on: [REPLACE WITH YOUR TOPIC]
 
 Instructions:
-- Generate 25–40 cards covering the most important concepts, definitions, facts, and relationships
+- Generate as many cards as needed to build a comprehensive understanding of the topic — do not limit yourself to a fixed count
 - Base all content on accurate, real-world information from credible sources (textbooks, peer-reviewed research, official documentation, encyclopedias, authoritative references)
 - Include a mix of card types: open-ended recall, fill-in-the-blank (use ___ in the question), and multiple choice
+- For programming or technical topics, you may include code examples using triple-backtick blocks (e.g. \`\`\`python ... \`\`\`)
 
 Output ONLY the raw card data — one card per line, tab-separated. No headers, numbering, labels, or extra text of any kind.
 
