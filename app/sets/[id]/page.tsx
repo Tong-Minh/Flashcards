@@ -312,10 +312,10 @@ export default function SetDetail() {
                           </span>
                         </div>
                       </div>
-                      <div className="flex items-center gap-3 flex-shrink-0">
+                      <div className="flex items-stretch gap-3 flex-shrink-0">
                         <Link
                           href={`/sets/${id}/edit/${card.id}`}
-                          className="px-2.5 py-1.5 text-xs text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 hover:text-indigo-600 transition-colors"
+                          className="flex items-center px-2.5 text-xs text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 hover:text-indigo-600 transition-colors"
                         >
                           Edit
                         </Link>
@@ -323,14 +323,14 @@ export default function SetDetail() {
                           <button
                             onClick={() => reorderCard(idx, 'up')}
                             disabled={idx === 0}
-                            className="flex items-center justify-center h-5 text-gray-400 hover:bg-gray-50 hover:text-gray-600 disabled:opacity-20 transition-colors border-b border-gray-200"
+                            className="flex-1 flex items-center justify-center text-gray-400 hover:bg-gray-50 hover:text-gray-600 disabled:opacity-20 transition-colors border-b border-gray-200"
                           >
                             <svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor"><path d="M4 1L7 6H1L4 1Z"/></svg>
                           </button>
                           <button
                             onClick={() => reorderCard(idx, 'down')}
                             disabled={idx === cards.length - 1}
-                            className="flex items-center justify-center h-5 text-gray-400 hover:bg-gray-50 hover:text-gray-600 disabled:opacity-20 transition-colors"
+                            className="flex-1 flex items-center justify-center text-gray-400 hover:bg-gray-50 hover:text-gray-600 disabled:opacity-20 transition-colors"
                           >
                             <svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor"><path d="M4 7L1 2H7L4 7Z"/></svg>
                           </button>
