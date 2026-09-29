@@ -11,8 +11,9 @@ interface Props {
   className?: string
 }
 
-const CODE_TEMPLATE = '```\n\n```'
-const CURSOR_OFFSET  = 4   // place cursor inside the block: after "```\n"
+const CODE_TEMPLATE     = '```language\n\n```'
+const LANG_SELECT_START = 3   // index of 'l' in "language" relative to insertion point
+const LANG_SELECT_END   = 11  // index after 'e' in "language"
 
 export function RichTextarea({ value, onChange, rows = 3, placeholder, className }: Props) {
   const ref       = useRef<HTMLTextAreaElement>(null)
@@ -44,6 +45,15 @@ export function RichTextarea({ value, onChange, rows = 3, placeholder, className
     if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); insert() }
   }
 
+  function handleLangChange(blockIndex: number, newLang: string) {
+    let count = 0
+    const next = value.replace(/```(\w*)\n/g, (match) => {
+      if (count++ === blockIndex) return `\`\`\`${newLang}\n`
+      return match
+    })
+    onChange(next)
+  }
+
   function insert() {
     if (slashAt < 0) return
     const before = value.slice(0, slashAt)
@@ -51,12 +61,13 @@ export function RichTextarea({ value, onChange, rows = 3, placeholder, className
     const next   = before + CODE_TEMPLATE + after
     onChange(next)
     setShow(false)
-    const cursor = before.length + CURSOR_OFFSET
+    const start = before.length + LANG_SELECT_START
+    const end   = before.length + LANG_SELECT_END
     setTimeout(() => {
       const el = ref.current
       if (!el) return
       el.focus()
-      el.setSelectionRange(cursor, cursor)
+      el.setSelectionRange(start, end)
     }, 0)
   }
 
@@ -112,6 +123,7 @@ export function RichTextarea({ value, onChange, rows = 3, placeholder, className
             <ContentRenderer
               text={value}
               className="text-sm text-gray-900 dark:text-gray-100 leading-relaxed"
+              onCodeLangChange={handleLangChange}
             />
           </div>
         </div>

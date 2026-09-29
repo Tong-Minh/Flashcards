@@ -101,18 +101,18 @@ export default function EditCard() {
         <Link href={`/sets/${setId}`} className="text-gray-400 hover:text-gray-600 text-xl transition-colors">
           ←
         </Link>
-        <h1 className="text-2xl font-bold text-gray-900">Edit Card</h1>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Edit Card</h1>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">
-        <div className="flex rounded-xl overflow-hidden border border-gray-200 bg-white">
+        <div className="flex rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
           {(['open_ended', 'multiple_choice', 'fill_blank'] as CardType[]).map((t) => (
             <button
               key={t}
               type="button"
               onClick={() => setType(t)}
               className={`flex-1 py-3 text-xs font-semibold transition-colors ${
-                type === t ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-50'
+                type === t ? 'bg-indigo-600 text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'
               }`}
             >
               {TYPE_LABELS[t]}
@@ -121,7 +121,7 @@ export default function EditCard() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
             {type === 'fill_blank' ? 'Sentence (use ___ for the blank)' : 'Question'}
           </label>
           <RichTextarea
@@ -129,27 +129,27 @@ export default function EditCard() {
             onChange={setQuestion}
             rows={3}
             placeholder={type === 'fill_blank' ? 'The capital of France is ___' : ''}
-            className="w-full border border-gray-300 rounded-xl px-4 py-3 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
+            className="w-full border border-gray-300 dark:border-gray-600 rounded-xl px-4 py-3 text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
           />
         </div>
 
         {(type === 'open_ended' || type === 'fill_blank') && (
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
               {type === 'fill_blank' ? 'Answer (fills the blank)' : 'Answer'}
             </label>
             <RichTextarea
               value={answer}
               onChange={setAnswer}
               rows={type === 'fill_blank' ? 1 : 3}
-              className="w-full border border-gray-300 rounded-xl px-4 py-3 text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
+              className="w-full border border-gray-300 dark:border-gray-600 rounded-xl px-4 py-3 text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
             />
           </div>
         )}
 
         {type === 'multiple_choice' && (
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               Options — tap circle to mark correct
             </label>
             <div className="space-y-2.5">
@@ -175,7 +175,7 @@ export default function EditCard() {
                     value={opt}
                     onChange={(e) => updateOption(i, e.target.value)}
                     placeholder={`Option ${String.fromCharCode(65 + i)}`}
-                    className="flex-1 border border-gray-300 rounded-xl px-4 py-3 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    className="flex-1 border border-gray-300 dark:border-gray-600 rounded-xl px-4 py-3 text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                   />
                 </div>
               ))}

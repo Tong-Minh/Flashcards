@@ -89,7 +89,7 @@ Formats (use a real tab character between each column):
 - Multiple choice: Question [TAB] Correct answer [TAB] Wrong option [TAB] Wrong option [TAB] Wrong option
 
 Code blocks: since each card must be one line, use \\n for line breaks inside code fields.
-Wrap code with triple backticks and the language name. Example of a code card:
+Always specify a language name after the opening backticks — it enables syntax highlighting. Supported names: python, javascript, typescript, jsx, tsx, java, c, cpp, csharp, go, rust, kotlin, swift, ruby, php, bash, sql, json, yaml, html. Example:
 What does this function return?[TAB]\`\`\`python\\ndef double(x):\\n    return x * 2\\n\`\`\`[TAB]The number multiplied by 2
 
 For short inline code, use single backticks: What does \`n & (n-1)\` do?[TAB]Clears the lowest set bit of n
