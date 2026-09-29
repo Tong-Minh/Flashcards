@@ -94,12 +94,21 @@ What does this function return?[TAB]\`\`\`python\\ndef double(x):\\n    return x
 
 For short inline code, use single backticks: What does \`n & (n-1)\` do?[TAB]Clears the lowest set bit of n
 
+Rich formatting (use where it adds clarity):
+- Bold: **text**   Italic: *text*
+- Headings (must start the field): # H1  ## H2  ### H3
+- Colored text: [red]text[/red]  [blue]text[/blue]  [green]text[/green]  [yellow]text[/yellow]  [orange]text[/orange]  [purple]text[/purple]
+- Inline math (LaTeX): $expression$   Display math (own line): $$expression$$
+
 Example output (replace [TAB] with a real tab character):
 What is the powerhouse of the cell?	Mitochondria
 The ___ model describes DNA as a double helix.	Watson-Crick
 What type of bond holds the two DNA strands together?	Hydrogen bonds	Covalent bonds	Ionic bonds	Peptide bonds
 What does \`arr.sort()\` return in Python?	None — it sorts in-place
-What does this do?	\`\`\`python\\ndef fib(n):\\n    if n <= 1: return n\\n    return fib(n-1) + fib(n-2)\\n\`\`\`	Computes the nth Fibonacci number recursively`
+What does this do?	\`\`\`python\\ndef fib(n):\\n    if n <= 1: return n\\n    return fib(n-1) + fib(n-2)\\n\`\`\`	Computes the nth Fibonacci number recursively
+What is Newton's second law?	$$F = ma$$, where $F$ is force, $m$ is mass, $a$ is acceleration
+What are the three states of matter?	[red]Solid[/red], [blue]Liquid[/blue], and [green]Gas[/green]
+What is Big O notation for binary search?	$O(\\log n)$ — the search space **halves** each step`
 
 export default function ImportCards() {
   const { id: setId } = useParams<{ id: string }>()

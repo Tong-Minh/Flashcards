@@ -67,6 +67,57 @@ Mitochondria`}</pre>
           <p className="text-xs text-gray-400 mt-2">Tab format works too: <span className="font-mono">The capital of France is ___{"\\t"}Paris</span></p>
         </section>
 
+        {/* Rich formatting */}
+        <section className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+          <h2 className="font-semibold text-gray-900 text-base mb-1">Rich formatting</h2>
+          <p className="text-gray-500 mb-4">You can use these in any question or answer field — both when importing and when creating cards manually.</p>
+          <div className="space-y-4 text-xs">
+
+            <div>
+              <p className="font-semibold text-gray-700 mb-1">Bold &amp; italic</p>
+              <pre className="bg-gray-50 rounded-xl p-3 leading-relaxed overflow-x-auto border border-gray-100">{`**bold text**
+*italic text*`}</pre>
+            </div>
+
+            <div>
+              <p className="font-semibold text-gray-700 mb-1">Headings</p>
+              <pre className="bg-gray-50 rounded-xl p-3 leading-relaxed overflow-x-auto border border-gray-100">{`# Heading 1
+## Heading 2
+### Heading 3`}</pre>
+            </div>
+
+            <div>
+              <p className="font-semibold text-gray-700 mb-1">Colored text</p>
+              <pre className="bg-gray-50 rounded-xl p-3 leading-relaxed overflow-x-auto border border-gray-100">{`[red]important term[/red]
+[blue]key concept[/blue]
+[green]correct answer[/green]
+[yellow]caution[/yellow]
+[orange]warning[/orange]
+[purple]definition[/purple]`}</pre>
+            </div>
+
+            <div>
+              <p className="font-semibold text-gray-700 mb-1">Math (LaTeX / KaTeX)</p>
+              <pre className="bg-gray-50 rounded-xl p-3 leading-relaxed overflow-x-auto border border-gray-100">{`Inline: $E = mc^2$
+Display (own line): $$\\frac{a}{b} = c$$
+Fraction: $$\\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}$$`}</pre>
+            </div>
+
+            <div>
+              <p className="font-semibold text-gray-700 mb-1">Inline &amp; block code</p>
+              <pre className="bg-gray-50 rounded-xl p-3 leading-relaxed overflow-x-auto border border-gray-100">{`Inline: \`arr.sort()\`
+
+Block:
+\`\`\`python
+def hello():
+    return "world"
+\`\`\``}</pre>
+            </div>
+
+            <p className="text-gray-400 pt-1">When importing, use <span className="font-mono">\\n</span> for line breaks inside code blocks (since each card must be one line).</p>
+          </div>
+        </section>
+
         {/* Tips */}
         <section className="bg-indigo-50 rounded-2xl border border-indigo-100 p-5">
           <h2 className="font-semibold text-indigo-900 text-base mb-2">Tips</h2>
@@ -75,6 +126,7 @@ Mitochondria`}</pre>
             <li>• Blank-line format works great for pasting from notes apps</li>
             <li>• Tab format works great for pasting from Google Sheets or Excel</li>
             <li>• The app shows a live preview before you import — check it looks right first</li>
+            <li>• Type <span className="font-mono text-xs">/</span> on a new line when editing a card to get a menu of all formatting options</li>
           </ul>
         </section>
 

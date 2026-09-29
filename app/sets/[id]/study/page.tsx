@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { fsrs, createEmptyCard, Rating, State, type Card as FSRSCard, type RecordLog } from 'ts-fsrs'
 import { supabase } from '@/lib/supabase/client'
 import { haptic } from '@/lib/haptic'
-import { ContentRenderer, hasCodeBlock } from '@/components/ContentRenderer'
+import { ContentRenderer, hasCodeBlock, hasFormattedContent } from '@/components/ContentRenderer'
 import {
   cacheCards, getCachedCards, updateCachedProgress,
   queueProgressUpdate, getPendingUpdates, removePendingUpdate,
@@ -98,7 +98,7 @@ function ClozeQuestion({ sentence, answer }: { sentence: string; answer?: string
       <div className="text-xl font-medium text-gray-900 dark:text-gray-100 leading-relaxed flex-1">
         {parts.map((part, i) => (
           <Fragment key={i}>
-            {part && <ContentRenderer text={part} />}
+            {part && <ContentRenderer text={part} readOnly />}
             {i < parts.length - 1 && (
               answer
                 ? <span className="inline-block bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-300 font-semibold px-2 py-0.5 rounded mx-0.5">{answer}</span>
@@ -790,8 +790,8 @@ export default function Study() {
             </p>
             {card.type === 'fill_blank'
               ? <ClozeQuestion sentence={card.question} />
-              : hasCodeBlock(card.question)
-                ? <ContentRenderer text={card.question} className="text-xl font-medium text-gray-900 dark:text-gray-100 leading-relaxed flex-1" />
+              : hasFormattedContent(card.question)
+                ? <ContentRenderer text={card.question} className="text-xl font-medium text-gray-900 dark:text-gray-100 leading-relaxed flex-1" readOnly />
                 : <p className="text-xl font-medium text-gray-900 dark:text-gray-100 leading-relaxed flex-1">{card.question}</p>
             }
             {card.type === 'multiple_choice' && card.options && (
@@ -818,8 +818,8 @@ export default function Study() {
               <>
                 <div className="mb-4 pb-4 border-b border-gray-100 dark:border-gray-700">
                   <p className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1">Question</p>
-                  {hasCodeBlock(card.question)
-                    ? <ContentRenderer text={card.question} className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed" />
+                  {hasFormattedContent(card.question)
+                    ? <ContentRenderer text={card.question} className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed" readOnly />
                     : <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">{card.question}</p>
                   }
                 </div>
@@ -834,8 +834,8 @@ export default function Study() {
                       {isCorrectSelection ? '✓ Correct!' : `✗ Incorrect — you picked: ${selectedOption}`}
                     </div>
                   )}
-                  {hasCodeBlock(card.answer)
-                    ? <ContentRenderer text={card.answer} className="text-xl font-semibold text-gray-900 dark:text-gray-100 leading-relaxed flex-1" />
+                  {hasFormattedContent(card.answer)
+                    ? <ContentRenderer text={card.answer} className="text-xl font-semibold text-gray-900 dark:text-gray-100 leading-relaxed flex-1" readOnly />
                     : <p className="text-xl font-semibold text-gray-900 dark:text-gray-100 leading-relaxed flex-1">{card.answer}</p>
                   }
                   {card.type === 'multiple_choice' && card.options && (

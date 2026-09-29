@@ -10,6 +10,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",
     "@types/prismjs": "^1.26.6",
+    "katex": "^0.18.9",
     "next": "^15.3.4",
     "prismjs": "^1.30.0",
     "react": "^19.0.0",
