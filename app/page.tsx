@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase/client'
+import { cacheSets, getCachedSets } from '@/lib/storage'
 import type { FlashcardSet } from '@/lib/types'
 
 interface SetWithStats extends FlashcardSet {
@@ -28,10 +29,17 @@ export default function Home() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    // Show cached sets immediately while fetching
+    const cached = getCachedSets()
+    if (cached.length > 0) {
+      setSets(cached.map((s) => ({ ...s, totalCards: 0, toStudy: 0, lastStudied: null, totalSessions: 0 })))
+      setLoading(false)
+    }
     loadSets()
   }, [])
 
   async function loadSets() {
+    if (!navigator.onLine) { setLoading(false); return }
     const [setsRes, cardsRes, progressRes, sessionsRes] = await Promise.all([
       supabase.from('sets').select('*').order('created_at', { ascending: false }),
       supabase.from('flashcards').select('id, set_id'),
@@ -66,15 +74,15 @@ export default function Home() {
       {} as Record<string, { total: number; mastered: number }>
     )
 
-    setSets(
-      (setsRes.data ?? []).map((s) => ({
-        ...s,
-        totalCards: statsMap[s.id]?.total ?? 0,
-        toStudy: (statsMap[s.id]?.total ?? 0) - (statsMap[s.id]?.mastered ?? 0),
-        lastStudied: lastStudiedBySet[s.id] ?? null,
-        totalSessions: sessionCountBySet[s.id] ?? 0,
-      }))
-    )
+    const processed = (setsRes.data ?? []).map((s) => ({
+      ...s,
+      totalCards: statsMap[s.id]?.total ?? 0,
+      toStudy: (statsMap[s.id]?.total ?? 0) - (statsMap[s.id]?.mastered ?? 0),
+      lastStudied: lastStudiedBySet[s.id] ?? null,
+      totalSessions: sessionCountBySet[s.id] ?? 0,
+    }))
+    setSets(processed)
+    cacheSets(setsRes.data ?? [])
     setLoading(false)
   }
 

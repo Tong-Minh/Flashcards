@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase/client'
+import { cacheCards, getCachedCards } from '@/lib/storage'
 import type { FlashcardSet, FlashcardWithProgress, StudySession } from '@/lib/types'
 
 const STATUS_STYLES: Record<string, { label: string; className: string }> = {
@@ -40,6 +41,15 @@ export default function SetDetail() {
   }, [id])
 
   async function loadAll() {
+    // Show cached cards immediately (works offline)
+    const cached = getCachedCards(id)
+    if (cached.length > 0) {
+      setCards(cached)
+      setLoading(false)
+    }
+
+    if (!navigator.onLine) { setLoading(false); return }
+
     const [setRes, cardsRes, sessionsRes] = await Promise.all([
       supabase.from('sets').select('*').eq('id', id).single(),
       supabase
@@ -56,15 +66,16 @@ export default function SetDetail() {
 
     if (!setRes.data) { router.push('/'); return }
 
+    const freshCards = (cardsRes.data ?? []).map((c) => ({
+      ...c,
+      progress: Array.isArray(c.progress) ? (c.progress[0] ?? null) : c.progress,
+    }))
+
     setSet(setRes.data)
     setNameInput(setRes.data.name)
-    setCards(
-      (cardsRes.data ?? []).map((c) => ({
-        ...c,
-        progress: Array.isArray(c.progress) ? (c.progress[0] ?? null) : c.progress,
-      }))
-    )
+    setCards(freshCards)
     setSessions(sessionsRes.data ?? [])
+    cacheCards(id, freshCards)
     setLoading(false)
   }
 

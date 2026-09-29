@@ -4,9 +4,19 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase/client'
+import {
+  cacheCards,
+  getCachedCards,
+  updateCachedProgress,
+  queueProgressUpdate,
+  getPendingUpdates,
+  removePendingUpdate,
+} from '@/lib/storage'
 import type { FlashcardWithProgress, CardStatus } from '@/lib/types'
 
 type Rating = 'correct' | 'needs_review' | 'missed'
+type Phase = 'loading' | 'pre-session' | 'session' | 'done'
+type Order = 'ordered' | 'random'
 
 interface SessionCard extends FlashcardWithProgress {
   _key: number
@@ -16,67 +26,110 @@ export default function Study() {
   const { id: setId } = useParams<{ id: string }>()
   const router = useRouter()
 
+  const [phase, setPhase] = useState<Phase>('loading')
+  const [order, setOrder] = useState<Order>('ordered')
+  const [allCards, setAllCards] = useState<FlashcardWithProgress[]>([])
   const [queue, setQueue] = useState<SessionCard[]>([])
-  const [loading, setLoading] = useState(true)
-  const [sessionDone, setSessionDone] = useState(false)
   const [flipped, setFlipped] = useState(false)
   const [selectedOption, setSelectedOption] = useState<string | null>(null)
   const [flipKey, setFlipKey] = useState(0)
   const [totalCards, setTotalCards] = useState(0)
+  const [isOffline, setIsOffline] = useState(false)
 
-  // Session stats tracked by ref so they're always current on save
   const statsRef = useRef({ cardsStudied: 0, correctCount: 0, masteredCount: 0 })
   const [displayStats, setDisplayStats] = useState({ cardsStudied: 0, correctCount: 0, masteredCount: 0 })
 
   useEffect(() => {
-    loadSession()
+    syncPendingUpdates().then(() => loadCards())
   }, [setId])
 
-  async function loadSession() {
-    const { data } = await supabase
-      .from('flashcards')
-      .select('*, progress:card_progress(*)')
-      .eq('set_id', setId)
-
-    if (!data || data.length === 0) {
-      setSessionDone(true)
-      setLoading(false)
-      return
+  async function syncPendingUpdates() {
+    if (!navigator.onLine) return
+    const pending = getPendingUpdates().filter((p) => p.setId === setId)
+    for (const update of pending) {
+      try {
+        if (update.existingProgressId) {
+          const { error } = await supabase
+            .from('card_progress')
+            .update({ correct_count: update.correctCount, status: update.status, last_reviewed: update.lastReviewed })
+            .eq('card_id', update.cardId)
+          if (!error) removePendingUpdate(update.cardId)
+        } else {
+          const { error } = await supabase.from('card_progress').insert({
+            card_id: update.cardId,
+            correct_count: update.correctCount,
+            status: update.status,
+            last_reviewed: update.lastReviewed,
+          })
+          if (!error) removePendingUpdate(update.cardId)
+        }
+      } catch {}
     }
+  }
 
-    const cards: FlashcardWithProgress[] = data.map((c) => ({
-      ...c,
-      progress: Array.isArray(c.progress) ? (c.progress[0] ?? null) : c.progress,
-    }))
+  async function loadCards() {
+    // Load from cache immediately so offline works
+    const cached = getCachedCards(setId)
+    let cards: FlashcardWithProgress[] = cached
+
+    if (navigator.onLine) {
+      try {
+        const { data } = await supabase
+          .from('flashcards')
+          .select('*, progress:card_progress(*)')
+          .eq('set_id', setId)
+          .order('created_at', { ascending: true })
+
+        if (data) {
+          cards = data.map((c) => ({
+            ...c,
+            progress: Array.isArray(c.progress) ? (c.progress[0] ?? null) : c.progress,
+          }))
+          cacheCards(setId, cards)
+        }
+      } catch {
+        setIsOffline(true)
+      }
+    } else {
+      setIsOffline(true)
+    }
 
     const toStudy = cards.filter((c) => c.progress?.status !== 'mastered')
-    if (toStudy.length === 0) {
-      setSessionDone(true)
-      setLoading(false)
-      return
-    }
+    setAllCards(toStudy)
 
-    const shuffled = [...toStudy].sort(() => Math.random() - 0.5)
-    setTotalCards(shuffled.length)
-    setQueue(shuffled.map((c) => ({ ...c, _key: 0 })))
-    setLoading(false)
+    if (toStudy.length === 0) {
+      setPhase('done')
+    } else {
+      setPhase('pre-session')
+    }
+  }
+
+  function startSession() {
+    const ordered = order === 'random'
+      ? [...allCards].sort(() => Math.random() - 0.5)
+      : [...allCards]
+    setTotalCards(ordered.length)
+    setQueue(ordered.map((c) => ({ ...c, _key: 0 })))
+    statsRef.current = { cardsStudied: 0, correctCount: 0, masteredCount: 0 }
+    setDisplayStats({ cardsStudied: 0, correctCount: 0, masteredCount: 0 })
+    setPhase('session')
   }
 
   async function saveSession() {
     const s = statsRef.current
     if (s.cardsStudied === 0) return
-    await supabase.from('study_sessions').insert({
-      set_id: setId,
-      cards_studied: s.cardsStudied,
-      correct_count: s.correctCount,
-      mastered_count: s.masteredCount,
-    })
+    if (navigator.onLine) {
+      await supabase.from('study_sessions').insert({
+        set_id: setId,
+        cards_studied: s.cardsStudied,
+        correct_count: s.correctCount,
+        mastered_count: s.masteredCount,
+      })
+    }
   }
 
   async function handleExit() {
-    if (statsRef.current.cardsStudied > 0) {
-      await saveSession()
-    }
+    await saveSession()
     router.push(`/sets/${setId}`)
   }
 
@@ -98,18 +151,50 @@ export default function Study() {
       newStatus = 'needs_review'
     }
 
-    // Update progress in DB
-    if (currentProgress?.id) {
-      await supabase
-        .from('card_progress')
-        .update({ correct_count: newCorrectCount, status: newStatus, last_reviewed: new Date().toISOString() })
-        .eq('card_id', card.id)
-    } else {
-      await supabase.from('card_progress').insert({
-        card_id: card.id,
-        correct_count: newCorrectCount,
+    const isoNow = new Date().toISOString()
+    const newProgress: CardStatus = newStatus
+
+    const updatedProgressObj = {
+      id: currentProgress?.id ?? '',
+      card_id: card.id,
+      correct_count: newCorrectCount,
+      status: newProgress,
+      last_reviewed: isoNow,
+    }
+
+    // Update cache immediately (works offline)
+    updateCachedProgress(setId, card.id, updatedProgressObj)
+
+    // Sync to Supabase or queue for later
+    let synced = false
+    if (navigator.onLine) {
+      try {
+        if (currentProgress?.id) {
+          const { error } = await supabase
+            .from('card_progress')
+            .update({ correct_count: newCorrectCount, status: newStatus, last_reviewed: isoNow })
+            .eq('card_id', card.id)
+          synced = !error
+        } else {
+          const { error } = await supabase.from('card_progress').insert({
+            card_id: card.id,
+            correct_count: newCorrectCount,
+            status: newStatus,
+            last_reviewed: isoNow,
+          })
+          synced = !error
+        }
+      } catch {}
+    }
+
+    if (!synced) {
+      queueProgressUpdate({
+        cardId: card.id,
+        setId,
+        correctCount: newCorrectCount,
         status: newStatus,
-        last_reviewed: new Date().toISOString(),
+        lastReviewed: isoNow,
+        existingProgressId: currentProgress?.id ?? null,
       })
     }
 
@@ -124,24 +209,13 @@ export default function Study() {
 
     const updatedCard: SessionCard = {
       ...card,
-      progress: {
-        id: currentProgress?.id ?? '',
-        card_id: card.id,
-        correct_count: newCorrectCount,
-        status: newStatus,
-        last_reviewed: new Date().toISOString(),
-      },
+      progress: updatedProgressObj,
       _key: card._key + 1,
     }
 
     const rest = queue.slice(1)
-    let newQueue: SessionCard[]
-
-    if (rating === 'needs_review' || rating === 'missed') {
-      newQueue = [...rest, updatedCard]
-    } else {
-      newQueue = rest
-    }
+    const newQueue =
+      rating === 'needs_review' || rating === 'missed' ? [...rest, updatedCard] : rest
 
     setFlipped(false)
     setSelectedOption(null)
@@ -149,21 +223,23 @@ export default function Study() {
 
     if (newQueue.length === 0) {
       await saveSession()
-      setSessionDone(true)
+      setPhase('done')
     } else {
       setQueue(newQueue)
     }
   }
 
-  if (loading) {
+  // ── Loading ──────────────────────────────────────────────────────────────
+  if (phase === 'loading') {
     return (
       <div className="max-w-lg mx-auto px-4 py-6 text-center text-gray-400 py-16">
-        Loading session...
+        Loading...
       </div>
     )
   }
 
-  if (sessionDone) {
+  // ── Done ─────────────────────────────────────────────────────────────────
+  if (phase === 'done') {
     const s = displayStats
     const pct = s.cardsStudied > 0 ? Math.round((s.correctCount / s.cardsStudied) * 100) : 0
     return (
@@ -172,7 +248,6 @@ export default function Study() {
           <div className="text-6xl mb-4">🎉</div>
           <h2 className="text-2xl font-bold text-gray-900 mb-1">Session Complete!</h2>
           <p className="text-gray-500 mb-6">Nice work!</p>
-
           <div className="grid grid-cols-3 gap-3 mb-8">
             <div className="bg-white rounded-xl p-3 text-center shadow-sm border border-gray-100">
               <div className="text-xl font-bold text-gray-900">{s.cardsStudied}</div>
@@ -187,10 +262,9 @@ export default function Study() {
               <div className="text-xs text-gray-400">Mastered</div>
             </div>
           </div>
-
           <Link
             href={`/sets/${setId}`}
-            className="inline-block w-full bg-indigo-600 text-white px-8 py-4 rounded-2xl font-semibold text-lg hover:bg-indigo-700 active:bg-indigo-800 transition-colors"
+            className="block w-full bg-indigo-600 text-white px-8 py-4 rounded-2xl font-semibold text-lg hover:bg-indigo-700 active:bg-indigo-800 transition-colors"
           >
             Back to Set
           </Link>
@@ -199,6 +273,56 @@ export default function Study() {
     )
   }
 
+  // ── Pre-session ───────────────────────────────────────────────────────────
+  if (phase === 'pre-session') {
+    return (
+      <div className="max-w-lg mx-auto px-4 py-6">
+        <div className="flex items-center gap-3 mb-8">
+          <Link href={`/sets/${setId}`} className="text-gray-400 hover:text-gray-600 text-xl transition-colors">
+            ←
+          </Link>
+          <h1 className="text-2xl font-bold text-gray-900">Study</h1>
+        </div>
+
+        {isOffline && (
+          <div className="bg-yellow-50 border border-yellow-200 text-yellow-700 rounded-xl px-4 py-3 mb-6 text-sm">
+            You're offline — studying from cached cards. Progress will sync when you reconnect.
+          </div>
+        )}
+
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6 text-center">
+          <div className="text-4xl font-bold text-gray-900 mb-1">{allCards.length}</div>
+          <div className="text-gray-500">cards to study</div>
+        </div>
+
+        <div className="mb-8">
+          <p className="text-sm font-medium text-gray-700 mb-3">Study order</p>
+          <div className="flex rounded-xl overflow-hidden border border-gray-200 bg-white">
+            {(['ordered', 'random'] as Order[]).map((o) => (
+              <button
+                key={o}
+                onClick={() => setOrder(o)}
+                className={`flex-1 py-3.5 text-sm font-semibold transition-colors ${
+                  order === o ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                {o === 'ordered' ? 'In Order' : 'Random'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <button
+          onClick={startSession}
+          className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-semibold text-lg hover:bg-indigo-700 active:bg-indigo-800 transition-colors shadow-sm"
+        >
+          Start Session
+        </button>
+      </div>
+    )
+  }
+
+  // ── Session ───────────────────────────────────────────────────────────────
   const card = queue[0]
   const done = totalCards - queue.length
   const progressPct = totalCards > 0 ? (done / totalCards) * 100 : 0
@@ -247,6 +371,7 @@ export default function Study() {
         style={{ cursor: card.type === 'open_ended' && !flipped ? 'pointer' : 'default' }}
       >
         {!flipped ? (
+          /* ── Front ── */
           <div className="flex flex-col flex-1">
             <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">
               {card.type === 'multiple_choice' ? 'Multiple Choice' : 'Tap to reveal answer'}
@@ -274,47 +399,58 @@ export default function Study() {
             )}
           </div>
         ) : (
+          /* ── Back — shows question + answer ── */
           <div className="flex flex-col flex-1">
-            <p className="text-xs font-medium text-indigo-400 uppercase tracking-wide mb-3">Answer</p>
+            {/* Question recap */}
+            <div className="mb-4">
+              <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">Question</p>
+              <p className="text-sm text-gray-600 leading-relaxed">{card.question}</p>
+            </div>
 
-            {card.type === 'multiple_choice' && selectedOption && (
-              <div
-                className={`flex items-center gap-2 mb-4 px-4 py-3 rounded-xl text-sm font-medium ${
-                  isCorrectSelection ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'
-                }`}
-              >
-                {isCorrectSelection ? '✓ Correct!' : `✗ Incorrect — you picked: ${selectedOption}`}
-              </div>
-            )}
+            <div className="border-t border-gray-100 pt-4 flex flex-col flex-1">
+              <p className="text-xs font-medium text-indigo-400 uppercase tracking-wide mb-2">Answer</p>
 
-            <p className="text-xl font-semibold text-gray-900 leading-relaxed flex-1">
-              {card.answer}
-            </p>
+              {/* MC correctness feedback */}
+              {card.type === 'multiple_choice' && selectedOption && (
+                <div
+                  className={`flex items-center gap-2 mb-3 px-4 py-2.5 rounded-xl text-sm font-medium ${
+                    isCorrectSelection ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'
+                  }`}
+                >
+                  {isCorrectSelection ? '✓ Correct!' : `✗ Incorrect — you picked: ${selectedOption}`}
+                </div>
+              )}
 
-            {card.type === 'multiple_choice' && card.options && (
-              <div className="mt-4 space-y-1.5">
-                {card.options.map((opt, i) => {
-                  const isCorrect = opt === card.answer
-                  const isSelected = opt === selectedOption
-                  return (
-                    <div
-                      key={i}
-                      className={`px-4 py-2.5 rounded-xl text-sm flex items-center gap-2 ${
-                        isCorrect
-                          ? 'bg-green-50 text-green-700 font-medium border border-green-200'
-                          : isSelected && !isCorrect
-                          ? 'bg-red-50 text-red-400 line-through border border-red-100'
-                          : 'text-gray-400'
-                      }`}
-                    >
-                      <span>{String.fromCharCode(65 + i)}.</span>
-                      <span>{opt}</span>
-                      {isCorrect && <span className="ml-auto">✓</span>}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
+              <p className="text-xl font-semibold text-gray-900 leading-relaxed flex-1">
+                {card.answer}
+              </p>
+
+              {/* MC options highlighted */}
+              {card.type === 'multiple_choice' && card.options && (
+                <div className="mt-4 space-y-1.5">
+                  {card.options.map((opt, i) => {
+                    const isCorrect = opt === card.answer
+                    const isSelected = opt === selectedOption
+                    return (
+                      <div
+                        key={i}
+                        className={`px-4 py-2.5 rounded-xl text-sm flex items-center gap-2 ${
+                          isCorrect
+                            ? 'bg-green-50 text-green-700 font-medium border border-green-200'
+                            : isSelected && !isCorrect
+                            ? 'bg-red-50 text-red-400 line-through border border-red-100'
+                            : 'text-gray-400'
+                        }`}
+                      >
+                        <span>{String.fromCharCode(65 + i)}.</span>
+                        <span>{opt}</span>
+                        {isCorrect && <span className="ml-auto">✓</span>}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
