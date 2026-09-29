@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { fsrs, createEmptyCard, Rating, State, type Card as FSRSCard, type RecordLog } from 'ts-fsrs'
 import { supabase } from '@/lib/supabase/client'
+import { haptic } from '@/lib/haptic'
 import {
   cacheCards, getCachedCards, updateCachedProgress,
   queueProgressUpdate, getPendingUpdates, removePendingUpdate,
@@ -265,7 +266,7 @@ export default function Study() {
 
   function triggerFlip() {
     if (flipState !== 'front') return
-    try { navigator.vibrate?.(20) } catch {}
+    haptic(20)
     setFlipState('flipping')
     setTimeout(() => {
       setShowBack(true)
@@ -282,7 +283,7 @@ export default function Study() {
     const card = queue[0]
     if (!card) return
 
-    try { navigator.vibrate?.(30) } catch {}
+    haptic(30)
 
     const now = new Date()
     const current = progressMap.current.get(card.id) ?? card.progress
@@ -583,7 +584,7 @@ export default function Study() {
               <div className="mt-5 space-y-2">
                 {card.options.map((opt, i) => (
                   <button key={i}
-                    onClick={e => { e.stopPropagation(); try { navigator.vibrate?.(20) } catch {}; setSelectedOption(opt); triggerFlip() }}
+                    onClick={e => { e.stopPropagation(); haptic(20); setSelectedOption(opt); triggerFlip() }}
                     className="w-full text-left px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 active:bg-gray-100 dark:active:bg-gray-600 transition-colors font-medium"
                   >
                     <span className="text-gray-400 dark:text-gray-500 mr-2">{String.fromCharCode(65 + i)}.</span>{opt}
