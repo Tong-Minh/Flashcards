@@ -15,10 +15,11 @@ import {
 import type { FlashcardWithProgress, CardStatus, CardProgress } from '@/lib/types'
 const f = fsrs()
 
-type SRSRating = 1 | 2 | 3 | 4 // Again | Hard | Good | Easy
-type Phase     = 'loading' | 'pre-session' | 'session' | 'done'
-type Order     = 'ordered' | 'random'
-type FlipState = 'front' | 'flipping' | 'back'
+type SRSRating  = 1 | 2 | 3 | 4
+type Phase      = 'loading' | 'pre-session' | 'session' | 'done'
+type Order      = 'ordered' | 'random'
+type FlipState  = 'front' | 'flipping' | 'back'
+type CustomMode = 'ahead' | 'more_new' | 'forgotten' | 'by_state'
 
 interface SessionCard extends FlashcardWithProgress { _key: number }
 
@@ -78,10 +79,8 @@ function buildQueue(
   remainingNew: number,
 ): { queue: FlashcardWithProgress[]; dueCount: number; newCount: number } {
   const resolve = (c: FlashcardWithProgress) => progressOverrides.get(c.id) ?? c.progress
-
   const dueCards = cards.filter(c => isDue(resolve(c)))
   const newCards  = cards.filter(c => isNew(resolve(c))).slice(0, Math.max(0, remainingNew))
-
   const combined = [...dueCards, ...newCards]
   const sorted = order === 'random' ? combined.sort(() => Math.random() - 0.5) : combined
   return { queue: sorted, dueCount: dueCards.length, newCount: newCards.length }
@@ -113,32 +112,38 @@ export default function Study() {
   const { id: setId } = useParams<{ id: string }>()
   const router = useRouter()
 
-  const [phase,        setPhase]       = useState<Phase>('loading')
-  const [allCards,     setAllCards]    = useState<FlashcardWithProgress[]>([])
-  const [isOffline,    setIsOffline]   = useState(false)
+  const [phase,        setPhase]        = useState<Phase>('loading')
+  const [allCards,     setAllCards]     = useState<FlashcardWithProgress[]>([])
+  const [isOffline,    setIsOffline]    = useState(false)
   const [savedSession, setSavedSession] = useState<ReturnType<typeof getSavedSession>>(null)
-
-  const [order, setOrder] = useState<Order>('ordered')
+  const [order,        setOrder]        = useState<Order>('ordered')
 
   const [queue,          setQueue]         = useState<SessionCard[]>([])
   const [totalInSession, setTotalInSession] = useState(0)
-  const statsRef      = useRef({ cardsStudied: 0, correctCount: 0, masteredCount: 0 })
-  const sessionStart  = useRef<number>(0)
-  const [displayStats, setDisplayStats]   = useState({ cardsStudied: 0, correctCount: 0, masteredCount: 0 })
+  const statsRef     = useRef({ cardsStudied: 0, correctCount: 0, masteredCount: 0 })
+  const sessionStart = useRef<number>(0)
+  const [displayStats, setDisplayStats] = useState({ cardsStudied: 0, correctCount: 0, masteredCount: 0 })
   const progressMap = useRef(new Map<string, CardProgress>())
 
-  const [scheduling, setScheduling] = useState<RecordLog | null>(null)
-
+  const [scheduling,     setScheduling]     = useState<RecordLog | null>(null)
   const [flipState,      setFlipState]      = useState<FlipState>('front')
   const [showBack,       setShowBack]       = useState(false)
   const [selectedOption, setSelectedOption] = useState<string | null>(null)
   const [cardKey,        setCardKey]        = useState(0)
 
+  // Regular session stats
   const [dueCount,      setDueCount]      = useState(0)
   const [newCount,      setNewCount]      = useState(0)
   const [todayNewCount, setTodayNewCount] = useState(0)
   const [dailyLimit,    setDailyLimit]    = useState(20)
   const countedNewIds = useRef(new Set<string>())
+
+  // Custom study stats
+  const [showCustom,    setShowCustom]    = useState(false)
+  const [aheadCounts,   setAheadCounts]   = useState<{ days: number; count: number }[]>([])
+  const [forgottenCount, setForgottenCount] = useState(0)
+  const [stateCounts,   setStateCounts]   = useState({ new: 0, learning: 0, needs_review: 0, mastered: 0 })
+  const [extraNewCount, setExtraNewCount] = useState(0)
 
   useEffect(() => { syncPending().then(loadCards) }, [setId])
 
@@ -189,16 +194,93 @@ export default function Study() {
 
     const todayCount = getTodayNewCount(setId)
     const { dailyNewLimit } = getSetSettings(setId)
-    const remaining  = Math.max(0, dailyNewLimit - todayCount)
+    const remaining = Math.max(0, dailyNewLimit - todayCount)
     const { dueCount: d, newCount: n } = buildQueue(cards, 'ordered', new Map(), remaining)
+
     setAllCards(cards)
     setDueCount(d)
     setNewCount(n)
     setTodayNewCount(todayCount)
     setDailyLimit(dailyNewLimit)
     setSavedSession(getSavedSession(setId))
+
+    // ── Custom study stats ────────────────────────────────────────────────────
+    const now = new Date()
+    setAheadCounts([1, 3, 7].map(days => ({
+      days,
+      count: cards.filter(c => {
+        const p = c.progress
+        if (!p || (p.fsrs_state ?? 0) === 0) return false
+        const due = new Date(p.due)
+        return due > now && due <= new Date(now.getTime() + days * 86400000)
+      }).length,
+    })))
+    setForgottenCount(cards.filter(c => (c.progress?.lapses ?? 0) > 0).length)
+    setStateCounts({
+      new:          cards.filter(c => isNew(c.progress)).length,
+      learning:     cards.filter(c => c.progress?.status === 'learning').length,
+      needs_review: cards.filter(c => c.progress?.status === 'needs_review').length,
+      mastered:     cards.filter(c => c.progress?.status === 'mastered').length,
+    })
+    setExtraNewCount(Math.max(0, cards.filter(c => isNew(c.progress)).length - n))
+
     setPhase(cards.length === 0 ? 'done' : 'pre-session')
   }
+
+  // ── Custom queue builders ─────────────────────────────────────────────────
+
+  function getCustomQueue(mode: CustomMode, param?: number | string): FlashcardWithProgress[] {
+    const now = new Date()
+    switch (mode) {
+      case 'ahead': {
+        const days = param as number
+        const cutoff = new Date(now.getTime() + days * 86400000)
+        return [...allCards]
+          .filter(c => {
+            const p = c.progress
+            if (!p || (p.fsrs_state ?? 0) === 0) return false
+            const due = new Date(p.due)
+            return due > now && due <= cutoff
+          })
+          .sort((a, b) => new Date(a.progress!.due).getTime() - new Date(b.progress!.due).getTime())
+      }
+      case 'more_new': {
+        const n = param as number
+        return allCards.filter(c => isNew(c.progress)).slice(newCount, newCount + n)
+      }
+      case 'forgotten': {
+        return [...allCards]
+          .filter(c => (c.progress?.lapses ?? 0) > 0)
+          .sort((a, b) => (b.progress?.lapses ?? 0) - (a.progress?.lapses ?? 0))
+      }
+      case 'by_state': {
+        const s = param as string
+        if (s === 'new') return allCards.filter(c => isNew(c.progress))
+        return allCards.filter(c => (c.progress?.status ?? 'new') === s)
+      }
+    }
+  }
+
+  function startCustom(mode: CustomMode, param?: number | string) {
+    const q = getCustomQueue(mode, param)
+    if (q.length === 0) return
+    clearSavedSession(setId)
+    countedNewIds.current = new Set()
+    progressMap.current   = new Map()
+    setTotalInSession(q.length)
+    setQueue(q.map(c => ({ ...c, _key: 0 })))
+    statsRef.current = { cardsStudied: 0, correctCount: 0, masteredCount: 0 }
+    setDisplayStats({ cardsStudied: 0, correctCount: 0, masteredCount: 0 })
+    setFlipState('front')
+    setShowBack(false)
+    setSelectedOption(null)
+    setCardKey(0)
+    setScheduling(null)
+    sessionStart.current = Date.now()
+    setPhase('session')
+  }
+
+  // ── Regular session start ─────────────────────────────────────────────────
 
   function startSession(type: 'new' | 'continue') {
     progressMap.current = new Map()
@@ -282,7 +364,6 @@ export default function Study() {
   async function rate(rating: SRSRating) {
     const card = queue[0]
     if (!card) return
-
     haptic(30)
 
     const now = new Date()
@@ -296,10 +377,8 @@ export default function Study() {
 
     const result  = f.repeat(progressToFSRS(current), now)
     const next    = result[rating].card
-
     const newStatus = deriveStatus(next)
-    const becameMastered = newStatus === 'mastered' &&
-      (current?.status !== 'mastered')
+    const becameMastered = newStatus === 'mastered' && (current?.status !== 'mastered')
 
     const newProgress: CardProgress = {
       id:             current?.id ?? '',
@@ -410,7 +489,7 @@ export default function Study() {
           <div className="grid grid-cols-3 gap-3 mb-8">
             {[
               { val: s.cardsStudied, label: 'Reviewed' },
-              { val: `${pct}%`, label: 'Correct' },
+              { val: `${pct}%`,      label: 'Correct'  },
               { val: s.masteredCount, label: 'Matured' },
             ].map(({ val, label }) => (
               <div key={label} className="bg-white dark:bg-gray-800 rounded-xl p-3 text-center shadow-sm border border-gray-100 dark:border-gray-700">
@@ -433,6 +512,13 @@ export default function Study() {
     const nothing        = totalToStudy === 0
     const limitReached   = todayNewCount >= dailyLimit
     const remainingToday = Math.max(0, dailyLimit - todayNewCount)
+
+    // Batches for "more new cards": [10, 20, 50, all] deduplicated and capped
+    const newBatches = Array.from(
+      new Set([10, 20, 50, extraNewCount].filter(n => n > 0 && n <= extraNewCount))
+    ).sort((a, b) => a - b).slice(0, 4)
+
+    const customVisible = nothing || showCustom
 
     return (
       <div className="max-w-lg mx-auto px-4 py-6">
@@ -489,43 +575,150 @@ export default function Study() {
           )}
         </div>
 
-        {/* Order toggle */}
+        {/* Order toggle + start buttons (regular session) */}
         {!nothing && (
-          <div className="mb-6">
-            <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Study order</p>
-            <div className="flex rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-              {(['ordered', 'random'] as Order[]).map(o => (
-                <button key={o} onClick={() => setOrder(o)}
-                  className={`flex-1 py-3 text-sm font-semibold transition-colors ${order === o ? 'bg-indigo-600 text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'}`}
-                >
-                  {o === 'ordered' ? 'In Order' : 'Random'}
-                </button>
-              ))}
+          <>
+            <div className="mb-6">
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Study order</p>
+              <div className="flex rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+                {(['ordered', 'random'] as Order[]).map(o => (
+                  <button key={o} onClick={() => setOrder(o)}
+                    className={`flex-1 py-3 text-sm font-semibold transition-colors ${order === o ? 'bg-indigo-600 text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'}`}
+                  >
+                    {o === 'ordered' ? 'In Order' : 'Random'}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+
+            <div className="space-y-3 mb-5">
+              {savedSession && (
+                <button onClick={() => startSession('continue')}
+                  className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-semibold text-base hover:bg-indigo-700 active:bg-indigo-800 transition-colors shadow-sm"
+                >
+                  Continue ({savedSession.queueIds.length} remaining)
+                </button>
+              )}
+              <button onClick={() => startSession('new')}
+                className={`w-full py-4 rounded-2xl font-semibold text-base transition-colors ${
+                  savedSession
+                    ? 'bg-white dark:bg-gray-800 text-indigo-600 dark:text-indigo-400 border-2 border-indigo-200 dark:border-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-900/20'
+                    : 'bg-indigo-600 text-white hover:bg-indigo-700 active:bg-indigo-800 shadow-sm'
+                }`}
+              >
+                {savedSession ? 'Start New Session' : `Study Now — ${totalToStudy} card${totalToStudy !== 1 ? 's' : ''}`}
+              </button>
+            </div>
+          </>
         )}
 
-        {/* Buttons */}
-        <div className="space-y-3">
-          {savedSession && (
-            <button onClick={() => startSession('continue')}
-              className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-semibold text-base hover:bg-indigo-700 active:bg-indigo-800 transition-colors shadow-sm"
+        {/* ── Custom Study ──────────────────────────────────────────────── */}
+        {!nothing && (
+          <button
+            onClick={() => setShowCustom(v => !v)}
+            className="w-full flex items-center justify-between text-sm text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400 transition-colors py-1 mb-3"
+          >
+            <span className="font-semibold uppercase tracking-wider text-xs">Custom Study</span>
+            <svg
+              width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"
+              className={`transition-transform ${showCustom ? 'rotate-180' : ''}`}
             >
-              Continue ({savedSession.queueIds.length} remaining)
-            </button>
-          )}
-          {!nothing && (
-            <button onClick={() => startSession('new')}
-              className={`w-full py-4 rounded-2xl font-semibold text-base transition-colors ${
-                savedSession
-                  ? 'bg-white dark:bg-gray-800 text-indigo-600 dark:text-indigo-400 border-2 border-indigo-200 dark:border-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-900/20'
-                  : 'bg-indigo-600 text-white hover:bg-indigo-700 active:bg-indigo-800 shadow-sm'
-              }`}
-            >
-              {savedSession ? 'Start New Session' : `Study Now — ${totalToStudy} card${totalToStudy !== 1 ? 's' : ''}`}
-            </button>
-          )}
-        </div>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+        )}
+
+        {customVisible && (
+          <div className="space-y-3 pb-6">
+
+            {/* Study Ahead */}
+            <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-50 dark:border-gray-700/50">
+                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Study Ahead</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Review cards before they&apos;re due, sorted by soonest first</p>
+              </div>
+              <div className="flex divide-x divide-gray-100 dark:divide-gray-700">
+                {aheadCounts.map(({ days, count }) => (
+                  <button
+                    key={days}
+                    onClick={() => startCustom('ahead', days)}
+                    disabled={count === 0}
+                    className="flex-1 py-3.5 text-center transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/50 disabled:opacity-30 disabled:cursor-not-allowed"
+                  >
+                    <div className={`text-lg font-bold ${count > 0 ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-400 dark:text-gray-500'}`}>{count}</div>
+                    <div className="text-xs text-gray-400 dark:text-gray-500">{days === 1 ? '1 day' : `${days} days`}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* More New Cards */}
+            {extraNewCount > 0 && (
+              <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 overflow-hidden">
+                <div className="px-4 py-3 border-b border-gray-50 dark:border-gray-700/50">
+                  <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">More New Cards</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{extraNewCount} unintroduced card{extraNewCount !== 1 ? 's' : ''} available</p>
+                </div>
+                <div className="flex divide-x divide-gray-100 dark:divide-gray-700">
+                  {newBatches.map(n => (
+                    <button
+                      key={n}
+                      onClick={() => startCustom('more_new', n)}
+                      className="flex-1 py-3.5 text-center hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                    >
+                      <div className="text-lg font-bold text-blue-600 dark:text-blue-400">+{n}</div>
+                      <div className="text-xs text-gray-400 dark:text-gray-500">cards</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Forgotten Cards */}
+            {forgottenCount > 0 && (
+              <button
+                onClick={() => startCustom('forgotten')}
+                className="w-full bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 px-4 py-3.5 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+              >
+                <div className="text-left">
+                  <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Forgotten Cards</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Cards you&apos;ve missed — sorted by most lapses</p>
+                </div>
+                <div className="text-right flex-shrink-0 ml-4">
+                  <span className="text-lg font-bold text-orange-500 dark:text-orange-400">{forgottenCount}</span>
+                  <p className="text-xs text-gray-400 dark:text-gray-500">cards</p>
+                </div>
+              </button>
+            )}
+
+            {/* Review by State */}
+            <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-50 dark:border-gray-700/50">
+                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Review by State</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Study all cards in a specific FSRS state</p>
+              </div>
+              <div className="grid grid-cols-2 divide-x divide-y divide-gray-100 dark:divide-gray-700">
+                {([
+                  { key: 'new',          label: 'New',      count: stateCounts.new,          color: 'text-blue-600 dark:text-blue-400'   },
+                  { key: 'learning',     label: 'Learning', count: stateCounts.learning,     color: 'text-yellow-600 dark:text-yellow-400' },
+                  { key: 'needs_review', label: 'Review',   count: stateCounts.needs_review, color: 'text-orange-600 dark:text-orange-400' },
+                  { key: 'mastered',     label: 'Mature',   count: stateCounts.mastered,     color: 'text-green-600 dark:text-green-400'  },
+                ] as const).map(({ key, label, count, color }) => (
+                  <button
+                    key={key}
+                    onClick={() => startCustom('by_state', key)}
+                    disabled={count === 0}
+                    className="py-3.5 text-center hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                  >
+                    <div className={`text-lg font-bold ${color}`}>{count}</div>
+                    <div className="text-xs text-gray-400 dark:text-gray-500">{label}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+          </div>
+        )}
       </div>
     )
   }
@@ -536,7 +729,6 @@ export default function Study() {
   const cardNumber = done + 1
   const progressPct = totalInSession > 0 ? (done / totalInSession) * 100 : 0
   const isCorrectSelection = selectedOption !== null && selectedOption === card.answer
-
   const cardAnimClass = flipState === 'flipping' ? 'card-flip' : ''
 
   const intervals = scheduling ? {
@@ -597,7 +789,7 @@ export default function Study() {
           <div className="flex flex-col flex-1">
             {card.type === 'fill_blank' ? (
               <div className="flex flex-col flex-1">
-                <p className="text-xs font-medium text-indigo-400 dark:text-indigo-400 uppercase tracking-wide mb-3">Answer</p>
+                <p className="text-xs font-medium text-indigo-400 uppercase tracking-wide mb-3">Answer</p>
                 <ClozeQuestion sentence={card.question} answer={card.answer} />
               </div>
             ) : (
@@ -607,7 +799,7 @@ export default function Study() {
                   <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">{card.question}</p>
                 </div>
                 <div className="flex flex-col flex-1">
-                  <p className="text-xs font-medium text-indigo-400 dark:text-indigo-400 uppercase tracking-wide mb-2">Answer</p>
+                  <p className="text-xs font-medium text-indigo-400 uppercase tracking-wide mb-2">Answer</p>
                   {card.type === 'multiple_choice' && selectedOption && (
                     <div className={`flex items-center gap-2 mb-3 px-4 py-2.5 rounded-xl text-sm font-medium ${
                       isCorrectSelection
