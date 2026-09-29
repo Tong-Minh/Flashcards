@@ -2,26 +2,38 @@
 @tailwind components;
 @tailwind utilities;
 
-@keyframes flipIn {
-  from {
-    opacity: 0;
-    transform: rotateY(-90deg) scale(0.95);
-  }
-  to {
-    opacity: 1;
-    transform: rotateY(0deg) scale(1);
-  }
+/* New card entering the screen */
+@keyframes cardEnter {
+  from { opacity: 0; transform: perspective(800px) rotateY(-90deg) scale(0.95); }
+  to   { opacity: 1; transform: perspective(800px) rotateY(0deg)   scale(1);    }
+}
+.card-enter {
+  animation: cardEnter 0.22s ease-out;
 }
 
-.flip-in {
-  animation: flipIn 0.25s ease-out;
+/* Card face flip — out (front disappears) */
+@keyframes cardFlipOut {
+  from { transform: perspective(800px) rotateY(0deg);  }
+  to   { transform: perspective(800px) rotateY(90deg); }
+}
+.card-flip-out {
+  animation: cardFlipOut 0.15s ease-in forwards;
 }
 
+/* Card face flip — in (back appears) */
+@keyframes cardFlipIn {
+  from { transform: perspective(800px) rotateY(-90deg); }
+  to   { transform: perspective(800px) rotateY(0deg);   }
+}
+.card-flip-in {
+  animation: cardFlipIn 0.15s ease-out forwards;
+}
+
+/* Rating buttons fade up */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  to   { opacity: 1; transform: translateY(0);   }
 }
-
 .fade-in {
   animation: fadeIn 0.2s ease-out;
 }

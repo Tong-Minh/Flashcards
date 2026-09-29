@@ -102,8 +102,13 @@ export default function SetDetail() {
   }
 
   const mastered = cards.filter((c) => c.progress?.status === 'mastered').length
-  const toStudy = cards.length - mastered
   const masteryPct = cards.length > 0 ? Math.round((mastered / cards.length) * 100) : 0
+  const now = new Date()
+  const dueToday = cards.filter((c) => {
+    const p = c.progress
+    if (!p || (p.fsrs_state ?? 0) === 0) return true // new cards always show
+    return new Date(p.due ?? now) <= now
+  }).length
 
   const lastStudied = sessions[0]?.completed_at ?? null
   const totalSessions = sessions.length
@@ -179,8 +184,8 @@ export default function SetDetail() {
       {cards.length > 0 && (
         <div className="mb-5">
           <div className="flex justify-between text-xs text-gray-400 mb-1">
-            <span>{mastered} mastered</span>
-            <span>{toStudy} remaining</span>
+            <span>{mastered} mature</span>
+            <span>{cards.length - mastered} remaining</span>
           </div>
           <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
             <div
@@ -192,16 +197,16 @@ export default function SetDetail() {
       )}
 
       {/* Study CTA */}
-      {toStudy > 0 ? (
+      {dueToday > 0 ? (
         <Link
           href={`/sets/${id}/study`}
           className="block w-full text-center bg-indigo-600 text-white py-4 rounded-2xl font-semibold text-lg mb-6 hover:bg-indigo-700 active:bg-indigo-800 transition-colors shadow-sm"
         >
-          Study Now — {toStudy} card{toStudy !== 1 ? 's' : ''}
+          Study Now — {dueToday} card{dueToday !== 1 ? 's' : ''} due
         </Link>
       ) : cards.length > 0 ? (
         <div className="bg-green-50 border border-green-200 text-green-700 py-4 rounded-2xl text-center font-medium mb-6">
-          All cards mastered!
+          All caught up — no cards due!
         </div>
       ) : null}
 
@@ -237,37 +242,55 @@ export default function SetDetail() {
             return (
               <div
                 key={card.id}
-                className="bg-white rounded-xl p-3.5 shadow-sm border border-gray-100 flex items-start gap-3"
+                className="bg-white rounded-xl p-3.5 shadow-sm border border-gray-100"
               >
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 line-clamp-1">{card.question}</p>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${badge.className}`}>
-                      {badge.label}
-                    </span>
-                    <span className="text-xs text-gray-400">
-                      {card.type === 'multiple_choice' ? 'MC' : 'OE'}
-                    </span>
-                    {status !== 'mastered' && (
-                      <span className="text-xs text-gray-400">
-                        {card.progress?.correct_count ?? 0}/3
+                <div className="flex items-start gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900">{card.question}</p>
+                    <div className="flex items-center gap-2 mt-1.5">
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${badge.className}`}>
+                        {badge.label}
                       </span>
-                    )}
+                      <span className="text-xs text-gray-400">
+                        {card.type === 'multiple_choice' ? 'MC' : 'OE'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <Link
+                      href={`/sets/${id}/edit/${card.id}`}
+                      className="p-1.5 text-gray-400 hover:text-indigo-500 transition-colors text-sm"
+                    >
+                      Edit
+                    </Link>
+                    <button
+                      onClick={() => deleteCard(card.id)}
+                      className="p-1.5 text-gray-300 hover:text-red-400 transition-colors text-xl leading-none"
+                    >
+                      ×
+                    </button>
                   </div>
                 </div>
-                <div className="flex items-center gap-1 flex-shrink-0">
-                  <Link
-                    href={`/sets/${id}/edit/${card.id}`}
-                    className="p-1.5 text-gray-400 hover:text-indigo-500 transition-colors text-sm"
-                  >
-                    Edit
-                  </Link>
-                  <button
-                    onClick={() => deleteCard(card.id)}
-                    className="p-1.5 text-gray-300 hover:text-red-400 transition-colors text-xl leading-none"
-                  >
-                    ×
-                  </button>
+                <div className="mt-2 pt-2 border-t border-gray-100">
+                  {card.type === 'multiple_choice' && card.options ? (
+                    <ul className="space-y-1">
+                      {card.options.map((opt) => (
+                        <li
+                          key={opt}
+                          className={`text-xs px-2 py-1 rounded-lg ${
+                            opt === card.answer
+                              ? 'bg-green-50 text-green-700 font-medium'
+                              : 'text-gray-500'
+                          }`}
+                        >
+                          {opt === card.answer ? '✓ ' : ''}
+                          {opt}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-xs text-gray-600">{card.answer}</p>
+                  )}
                 </div>
               </div>
             )
