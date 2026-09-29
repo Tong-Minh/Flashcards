@@ -22,10 +22,12 @@ function parseCards(text: string): ParsedCard[] {
   // Tab-separated: detect by presence of tab in first non-empty line
   const firstLine = lines.find((l) => l.trim())
   if (firstLine?.includes('\t')) {
+    // Unescape literal \n so AI-generated code blocks survive one-per-line format
+    const unescape = (s: string) => s.replace(/\\n/g, '\n')
     return lines
       .filter((l) => l.trim() && l.includes('\t'))
       .map((line) => {
-        const parts = line.split('\t').map((p) => p.trim())
+        const parts = line.split('\t').map((p) => unescape(p.trim()))
         if (parts.length >= 4) {
           // MC: question | correct answer | option C | option D (optionally E)
           const question = parts[0]
@@ -77,7 +79,7 @@ Instructions:
 - Generate as many cards as needed to build a comprehensive understanding of the topic — do not limit yourself to a fixed count
 - Base all content on accurate, real-world information from credible sources (textbooks, peer-reviewed research, official documentation, encyclopedias, authoritative references)
 - Include a mix of card types: open-ended recall, fill-in-the-blank (use ___ in the question), and multiple choice
-- For programming or technical topics, you may include code examples using triple-backtick blocks (e.g. \`\`\`python ... \`\`\`)
+- For programming or technical topics, include code examples where helpful
 
 Output ONLY the raw card data — one card per line, tab-separated. No headers, numbering, labels, or extra text of any kind.
 
@@ -86,10 +88,18 @@ Formats (use a real tab character between each column):
 - Fill-in-blank:   Sentence with ___ in it [TAB] Missing word or phrase
 - Multiple choice: Question [TAB] Correct answer [TAB] Wrong option [TAB] Wrong option [TAB] Wrong option
 
-Example output:
+Code blocks: since each card must be one line, use \\n for line breaks inside code fields.
+Wrap code with triple backticks and the language name. Example of a code card:
+What does this function return?[TAB]\`\`\`python\\ndef double(x):\\n    return x * 2\\n\`\`\`[TAB]The number multiplied by 2
+
+For short inline code, use single backticks: What does \`n & (n-1)\` do?[TAB]Clears the lowest set bit of n
+
+Example output (replace [TAB] with a real tab character):
 What is the powerhouse of the cell?	Mitochondria
 The ___ model describes DNA as a double helix.	Watson-Crick
-What type of bond holds the two DNA strands together?	Hydrogen bonds	Covalent bonds	Ionic bonds	Peptide bonds`
+What type of bond holds the two DNA strands together?	Hydrogen bonds	Covalent bonds	Ionic bonds	Peptide bonds
+What does \`arr.sort()\` return in Python?	None — it sorts in-place
+What does this do?	\`\`\`python\\ndef fib(n):\\n    if n <= 1: return n\\n    return fib(n-1) + fib(n-2)\\n\`\`\`	Computes the nth Fibonacci number recursively`
 
 export default function ImportCards() {
   const { id: setId } = useParams<{ id: string }>()

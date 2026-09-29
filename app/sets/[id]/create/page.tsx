@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase/client'
+import { RichTextarea } from '@/components/RichTextarea'
 import type { CardType } from '@/lib/types'
 
 const TYPE_LABELS: Record<CardType, string> = {
@@ -91,20 +92,17 @@ export default function CreateCard() {
         </div>
 
         <div>
-          <div className="flex items-baseline justify-between mb-1.5">
-            <label className="block text-sm font-medium text-gray-700">
-              {type === 'fill_blank' ? 'Sentence (use ___ for the blank)' : 'Question'}
-            </label>
-            <span className="text-xs text-gray-400 font-mono">```lang … ``` for code</span>
-          </div>
-          <textarea
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">
+            {type === 'fill_blank' ? 'Sentence (use ___ for the blank)' : 'Question'}
+          </label>
+          <RichTextarea
             value={question}
-            onChange={(e) => setQuestion(e.target.value)}
+            onChange={setQuestion}
             rows={3}
             placeholder={
               type === 'fill_blank'
                 ? 'The capital of France is ___'
-                : 'What is the capital of France?'
+                : 'What is the capital of France?  (type / for code block)'
             }
             className="w-full border border-gray-300 rounded-xl px-4 py-3 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
           />
@@ -115,11 +113,11 @@ export default function CreateCard() {
             <label className="block text-sm font-medium text-gray-700 mb-1.5">
               {type === 'fill_blank' ? 'Answer (fills the blank)' : 'Answer'}
             </label>
-            <textarea
+            <RichTextarea
               value={answer}
-              onChange={(e) => setAnswer(e.target.value)}
+              onChange={setAnswer}
               rows={type === 'fill_blank' ? 1 : 3}
-              placeholder="Paris"
+              placeholder={type === 'fill_blank' ? '' : 'Paris  (type / for code block)'}
               className="w-full border border-gray-300 rounded-xl px-4 py-3 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
             />
           </div>

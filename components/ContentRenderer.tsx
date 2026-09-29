@@ -1,5 +1,6 @@
 'use client'
 
+import type { ReactNode } from 'react'
 import Prism from 'prismjs'
 // Core (prismjs) already bundles: markup, css, clike, javascript
 import 'prismjs/components/prism-typescript'
@@ -49,8 +50,25 @@ export function hasCodeBlock(text: string): boolean {
 }
 
 export function previewText(text: string): string {
-  const stripped = text.replace(/```[\s\S]*?```/g, '[code]').trim()
+  const stripped = text
+    .replace(/```[\s\S]*?```/g, '[code]')
+    .replace(/`([^`\n]+)`/g, '$1')   // strip inline backticks for preview
+    .trim()
   return stripped || '[code block]'
+}
+
+function renderInline(text: string): ReactNode {
+  const parts = text.split(/`([^`\n]+)`/)
+  if (parts.length === 1) return text
+  return (
+    <>
+      {parts.map((part, i) =>
+        i % 2 === 1
+          ? <code key={i} className="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-1.5 py-0.5 rounded text-[0.85em] font-mono">{part}</code>
+          : part || null
+      )}
+    </>
+  )
 }
 
 function escapeHtml(s: string): string {
@@ -93,7 +111,7 @@ export function ContentRenderer({ text, className }: Props) {
   const anyCode = segments.some(s => s.type === 'code')
 
   if (!anyCode) {
-    return <>{text}</>
+    return <>{renderInline(text)}</>
   }
 
   return (
@@ -102,7 +120,7 @@ export function ContentRenderer({ text, className }: Props) {
         seg.type === 'code'
           ? <CodeBlock key={i} code={seg.code} lang={seg.lang} />
           : seg.text.trim()
-            ? <p key={i} className="mb-1 last:mb-0 whitespace-pre-wrap">{seg.text}</p>
+            ? <p key={i} className="mb-1 last:mb-0 whitespace-pre-wrap">{renderInline(seg.text)}</p>
             : null
       )}
     </div>
