@@ -304,9 +304,10 @@ export default function SetDetail() {
                 return (
                   <div key={card.id} className="bg-white rounded-xl p-3.5 shadow-sm border border-gray-100">
                     <div className="flex items-start gap-3">
-                      <span className="flex-shrink-0 text-xs font-semibold text-gray-400 mt-0.5 w-5 text-right">{idx + 1}.</span>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900">{card.question}</p>
+                        <p className="text-sm font-medium text-gray-900">
+                          <span className="text-gray-400 mr-1">{idx + 1}.</span>{card.question}
+                        </p>
                         <div className="flex items-center gap-2 mt-1.5">
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${badge.className}`}>
                             {badge.label}
@@ -316,35 +317,39 @@ export default function SetDetail() {
                           </span>
                         </div>
                       </div>
-                      <div className="flex items-center gap-0.5 flex-shrink-0">
-                        <div className="flex flex-col mr-1">
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        {/* Edit | Delete pill */}
+                        <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
+                          <Link
+                            href={`/sets/${id}/edit/${card.id}`}
+                            className="px-2 py-1 text-xs text-gray-500 hover:bg-gray-50 hover:text-indigo-600 transition-colors border-r border-gray-200"
+                          >
+                            Edit
+                          </Link>
                           <button
-                            onClick={() => reorderCard(cards.indexOf(card), 'up')}
-                            disabled={cards.indexOf(card) === 0}
-                            className="p-0.5 text-gray-300 hover:text-gray-500 disabled:opacity-20 transition-colors leading-none text-xs"
+                            onClick={() => deleteCard(card.id)}
+                            className="px-2 py-1 text-xs text-gray-400 hover:bg-red-50 hover:text-red-500 transition-colors"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                        {/* Reorder */}
+                        <div className="flex flex-col border border-gray-200 rounded-lg overflow-hidden">
+                          <button
+                            onClick={() => reorderCard(idx, 'up')}
+                            disabled={idx === 0}
+                            className="px-1.5 py-0.5 text-gray-400 hover:bg-gray-50 hover:text-gray-600 disabled:opacity-20 transition-colors leading-none text-xs border-b border-gray-200"
                           >
                             ▲
                           </button>
                           <button
-                            onClick={() => reorderCard(cards.indexOf(card), 'down')}
-                            disabled={cards.indexOf(card) === cards.length - 1}
-                            className="p-0.5 text-gray-300 hover:text-gray-500 disabled:opacity-20 transition-colors leading-none text-xs"
+                            onClick={() => reorderCard(idx, 'down')}
+                            disabled={idx === cards.length - 1}
+                            className="px-1.5 py-0.5 text-gray-400 hover:bg-gray-50 hover:text-gray-600 disabled:opacity-20 transition-colors leading-none text-xs"
                           >
                             ▼
                           </button>
                         </div>
-                        <Link
-                          href={`/sets/${id}/edit/${card.id}`}
-                          className="p-1.5 text-gray-400 hover:text-indigo-500 transition-colors text-sm"
-                        >
-                          Edit
-                        </Link>
-                        <button
-                          onClick={() => deleteCard(card.id)}
-                          className="p-1.5 text-gray-300 hover:text-red-400 transition-colors text-xl leading-none"
-                        >
-                          ×
-                        </button>
                       </div>
                     </div>
                     <div className="mt-2 pt-2 border-t border-gray-100">
