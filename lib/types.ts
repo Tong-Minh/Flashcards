@@ -33,6 +33,8 @@ export interface LeaderboardEntry {
   cards_studied_week: number
   sessions_week: number
   is_me: boolean
+  last_set_name: string | null
+  last_studied_at: string | null
 }
 
 export interface Flashcard {

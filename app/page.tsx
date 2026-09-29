@@ -23,9 +23,15 @@ interface SetWithStats extends FlashcardSet {
 
 function timeAgo(iso: string | null): string {
   if (!iso) return 'Never'
-  const diff = Date.now() - new Date(iso).getTime()
+  const date = new Date(iso)
+  const diff = Date.now() - date.getTime()
   const days = Math.floor(diff / 86400000)
-  if (days === 0) return 'Today'
+  if (days === 0) {
+    const h = date.getHours() % 12 || 12
+    const m = date.getMinutes().toString().padStart(2, '0')
+    const ampm = date.getHours() >= 12 ? 'pm' : 'am'
+    return `Today ${h}:${m}${ampm}`
+  }
   if (days === 1) return 'Yesterday'
   if (days < 7) return `${days}d ago`
   if (days < 30) return `${Math.floor(days / 7)}w ago`
