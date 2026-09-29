@@ -59,11 +59,11 @@ export function RichTextarea({ value, onChange, rows = 3, placeholder, className
 
     const lineStart   = val.lastIndexOf('\n', pos - 2) + 1
     const lineContent = val.slice(lineStart, pos)
-    const slashMatch  = lineContent.match(/^\s*\/(\w*)$/)
+    const slashMatch  = lineContent.match(/(^|\s)\/(\w*)$/)
 
     if (slashMatch) {
-      setSlashAt(lineStart + lineContent.indexOf('/'))
-      setFilter(slashMatch[1].toLowerCase())
+      setSlashAt(lineStart + lineContent.lastIndexOf('/'))
+      setFilter(slashMatch[2].toLowerCase())
       setSelIdx(0)
       setShow(true)
       return

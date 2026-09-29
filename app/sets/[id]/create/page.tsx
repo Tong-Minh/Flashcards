@@ -105,7 +105,6 @@ export default function CreateCard() {
                 ? 'The capital of France is ___'
                 : 'What is the capital of France?'
             }
-            className="w-full border border-gray-300 dark:border-gray-600 rounded-xl px-4 py-3 text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
           />
         </div>
 
@@ -119,7 +118,6 @@ export default function CreateCard() {
               onChange={setAnswer}
               rows={type === 'fill_blank' ? 1 : 3}
               placeholder={type === 'fill_blank' ? '' : 'Paris'}
-              className="w-full border border-gray-300 dark:border-gray-600 rounded-xl px-4 py-3 text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
               hideHint
             />
           </div>

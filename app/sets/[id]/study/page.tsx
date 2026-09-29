@@ -801,7 +801,8 @@ export default function Study() {
                     onClick={e => { e.stopPropagation(); haptic(20); setSelectedOption(opt); triggerFlip() }}
                     className="w-full text-left px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 active:bg-gray-100 dark:active:bg-gray-600 transition-colors font-medium"
                   >
-                    <span className="text-gray-400 dark:text-gray-500 mr-2">{String.fromCharCode(65 + i)}.</span>{opt}
+                    <span className="text-gray-400 dark:text-gray-500 mr-2">{String.fromCharCode(65 + i)}.</span>
+                    {hasFormattedContent(opt) ? <ContentRenderer text={opt} readOnly /> : opt}
                   </button>
                 ))}
               </div>
@@ -850,7 +851,7 @@ export default function Study() {
                             : 'text-gray-400 dark:text-gray-500'
                           }`}>
                             <span>{String.fromCharCode(65 + i)}.</span>
-                            <span>{opt}</span>
+                            {hasFormattedContent(opt) ? <ContentRenderer text={opt} readOnly /> : <span>{opt}</span>}
                             {isCorrect && <span className="ml-auto">✓</span>}
                           </div>
                         )

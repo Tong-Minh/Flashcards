@@ -130,7 +130,6 @@ export default function EditCard() {
             onChange={setQuestion}
             rows={3}
             placeholder={type === 'fill_blank' ? 'The capital of France is ___' : ''}
-            className="w-full border border-gray-300 dark:border-gray-600 rounded-xl px-4 py-3 text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
           />
         </div>
 
@@ -143,7 +142,6 @@ export default function EditCard() {
               value={answer}
               onChange={setAnswer}
               rows={type === 'fill_blank' ? 1 : 3}
-              className="w-full border border-gray-300 dark:border-gray-600 rounded-xl px-4 py-3 text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
               hideHint
             />
           </div>
