@@ -33,13 +33,20 @@ interface PendingRequest extends FriendRequest {
   from_profile: Profile
 }
 
-function Avatar({ profile, size = 8 }: { profile: { display_name: string | null; avatar_url: string | null }; size?: number }) {
-  const cls = `w-${size} h-${size} rounded-full flex-shrink-0`
+type AvatarSize = 'sm' | 'md' | 'lg'
+const AVATAR_SIZES: Record<AvatarSize, string> = {
+  sm: 'w-6 h-6 text-xs',
+  md: 'w-8 h-8 text-xs',
+  lg: 'w-9 h-9 text-sm',
+}
+
+function Avatar({ profile, size = 'md' }: { profile: { display_name: string | null; avatar_url: string | null }; size?: AvatarSize }) {
+  const cls = `${AVATAR_SIZES[size]} rounded-full flex-shrink-0 object-cover`
   if (profile.avatar_url) {
-    return <img src={profile.avatar_url} alt="" className={`${cls} object-cover`} />
+    return <img src={profile.avatar_url} alt="" className={cls} />
   }
   return (
-    <div className={`${cls} bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-xs`}>
+    <div className={`${AVATAR_SIZES[size]} rounded-full flex-shrink-0 bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold`}>
       {(profile.display_name ?? '?')[0].toUpperCase()}
     </div>
   )
@@ -190,7 +197,7 @@ export default function FriendsTab({ currentUser }: { currentUser: User }) {
                 }`}>
                   {i + 1}
                 </span>
-                <Avatar profile={entry} size={8} />
+                <Avatar profile={entry} size="md" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-gray-900 truncate">
                     {entry.is_me ? 'You' : (entry.display_name ?? 'Unknown')}
@@ -229,7 +236,7 @@ export default function FriendsTab({ currentUser }: { currentUser: User }) {
                 <div key={profile.id} className="bg-white border border-gray-100 rounded-2xl overflow-hidden">
                   {/* Friend row */}
                   <div className="flex items-center gap-3 px-4 py-3.5">
-                    <Avatar profile={profile} size={9} />
+                    <Avatar profile={profile} size="lg" />
                     <button
                       className="flex-1 flex items-center gap-2 text-left min-w-0"
                       onClick={() => sets.length > 0 && toggleExpanded(profile.id)}
@@ -298,7 +305,7 @@ export default function FriendsTab({ currentUser }: { currentUser: User }) {
           <div className="space-y-2">
             {pending.map(req => (
               <div key={req.id} className="flex items-center gap-3 bg-white border border-gray-100 rounded-2xl px-4 py-3">
-                <Avatar profile={req.from_profile ?? { display_name: null, avatar_url: null }} size={9} />
+                <Avatar profile={req.from_profile ?? { display_name: null, avatar_url: null }} size="lg" />
                 <p className="flex-1 text-sm font-medium text-gray-900">{req.from_profile?.display_name ?? 'Unknown'}</p>
                 <div className="flex gap-2">
                   <button onClick={() => rejectRequest(req.id)}
@@ -334,7 +341,7 @@ export default function FriendsTab({ currentUser }: { currentUser: User }) {
               const sent = sentIds.has(profile.id)
               return (
                 <div key={profile.id} className="flex items-center gap-3 bg-white border border-gray-100 rounded-xl px-3 py-2.5">
-                  <Avatar profile={profile} size={8} />
+                  <Avatar profile={profile} size="md" />
                   <p className="flex-1 text-sm font-medium text-gray-900">{profile.display_name ?? 'Unknown'}</p>
                   {alreadyFriend ? (
                     <span className="text-xs text-gray-400">Friends</span>

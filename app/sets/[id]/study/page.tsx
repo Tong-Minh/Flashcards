@@ -577,7 +577,7 @@ export default function Study() {
       {/* Card */}
       <div
         key={cardKey}
-        className={`card-enter bg-white rounded-2xl shadow-md border border-gray-100 p-6 mb-5 min-h-[220px] flex flex-col ${cardAnimClass}`}
+        className={`${flipState === 'front' ? 'card-enter' : ''} bg-white rounded-2xl shadow-md border border-gray-100 p-6 mb-5 min-h-[220px] flex flex-col ${cardAnimClass}`}
         onClick={!showBack && (card.type === 'open_ended' || card.type === 'fill_blank') ? triggerFlip : undefined}
         style={{ cursor: !showBack && (card.type === 'open_ended' || card.type === 'fill_blank') ? 'pointer' : 'default' }}
       >
