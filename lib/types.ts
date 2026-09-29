@@ -7,6 +7,32 @@ export interface FlashcardSet {
   name: string
   description: string | null
   created_at: string
+  user_id: string | null
+  is_public: boolean
+}
+
+export interface Profile {
+  id: string
+  display_name: string | null
+  avatar_url: string | null
+  created_at: string
+}
+
+export interface FriendRequest {
+  id: string
+  from_user_id: string
+  to_user_id: string
+  status: 'pending' | 'accepted' | 'rejected'
+  created_at: string
+}
+
+export interface LeaderboardEntry {
+  user_id: string
+  display_name: string | null
+  avatar_url: string | null
+  cards_studied_week: number
+  sessions_week: number
+  is_me: boolean
 }
 
 export interface Flashcard {

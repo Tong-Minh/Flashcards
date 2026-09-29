@@ -121,7 +121,8 @@ export default function Study() {
 
   const [queue,          setQueue]         = useState<SessionCard[]>([])
   const [totalInSession, setTotalInSession] = useState(0)
-  const statsRef    = useRef({ cardsStudied: 0, correctCount: 0, masteredCount: 0 })
+  const statsRef      = useRef({ cardsStudied: 0, correctCount: 0, masteredCount: 0 })
+  const sessionStart  = useRef<number>(0)
   const [displayStats, setDisplayStats]   = useState({ cardsStudied: 0, correctCount: 0, masteredCount: 0 })
   const progressMap = useRef(new Map<string, CardProgress>())
 
@@ -163,7 +164,7 @@ export default function Study() {
           status:         u.status,
           correct_count:  u.correctCount,
           last_reviewed:  u.lastReviewed,
-        }, { onConflict: 'card_id' })
+        }, { onConflict: 'user_id,card_id' })
         if (!error) removePendingUpdate(u.cardId)
       } catch {}
     }
@@ -232,6 +233,7 @@ export default function Study() {
     setSelectedOption(null)
     setCardKey(0)
     setScheduling(null)
+    sessionStart.current = Date.now()
     setPhase('session')
   }
 
@@ -258,9 +260,13 @@ export default function Study() {
   async function persistSession() {
     const s = statsRef.current
     if (s.cardsStudied === 0 || !navigator.onLine) return
+    const duration = sessionStart.current > 0
+      ? Math.round((Date.now() - sessionStart.current) / 1000)
+      : null
     await supabase.from('study_sessions').insert({
       set_id: setId, cards_studied: s.cardsStudied,
       correct_count: s.correctCount, mastered_count: s.masteredCount,
+      duration_seconds: duration,
     })
   }
 
@@ -344,7 +350,7 @@ export default function Study() {
           learning_steps: newProgress.learning_steps,
           fsrs_state:     newProgress.fsrs_state,
           last_review:    newProgress.last_review,
-        }, { onConflict: 'card_id' })
+        }, { onConflict: 'user_id,card_id' })
         synced = !error
       } catch {}
     }

@@ -9,6 +9,7 @@ export default function NewSet() {
   const router = useRouter()
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  const [isPublic, setIsPublic] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -19,7 +20,7 @@ export default function NewSet() {
 
     const { data, error: err } = await supabase
       .from('sets')
-      .insert({ name: name.trim(), description: description.trim() || null })
+      .insert({ name: name.trim(), description: description.trim() || null, is_public: isPublic })
       .select()
       .single()
 
@@ -66,6 +67,20 @@ export default function NewSet() {
             className="w-full border border-gray-300 rounded-xl px-4 py-3 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
           />
         </div>
+
+        <button
+          type="button"
+          onClick={() => setIsPublic(v => !v)}
+          className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-colors ${isPublic ? 'border-indigo-300 bg-indigo-50' : 'border-gray-200 bg-white'}`}
+        >
+          <div className="text-left">
+            <p className="text-sm font-medium text-gray-800">{isPublic ? 'Public' : 'Private'}</p>
+            <p className="text-xs text-gray-400">{isPublic ? 'Anyone can find and study this set' : 'Only visible to you'}</p>
+          </div>
+          <div className={`w-11 h-6 rounded-full transition-colors relative ${isPublic ? 'bg-indigo-500' : 'bg-gray-200'}`}>
+            <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${isPublic ? 'translate-x-5' : 'translate-x-0.5'}`} />
+          </div>
+        </button>
 
         {error && (
           <p className="text-red-500 text-sm bg-red-50 border border-red-200 rounded-lg px-4 py-3">{error}</p>

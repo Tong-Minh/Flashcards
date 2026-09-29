@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase/client'
+import { useUser } from '@/components/AuthGuard'
 import {
   cacheCards, getCachedCards, getCachedSets,
   cacheSessions, getCachedSessions,
@@ -32,19 +33,24 @@ function timeAgo(iso: string | null): string {
 export default function SetDetail() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
+  const currentUser = useUser()
 
   const [set,      setSet]      = useState<FlashcardSet | null>(null)
   const [cards,    setCards]    = useState<FlashcardWithProgress[]>([])
   const [sessions, setSessions] = useState<StudySession[]>([])
   const [loading,  setLoading]  = useState(true)
   const [tab,      setTab]      = useState<'cards' | 'history'>('cards')
+  const [forking,  setForking]  = useState(false)
 
   // Settings sheet
   const [showSettings,      setShowSettings]      = useState(false)
   const [nameInput,         setNameInput]         = useState('')
   const [descInput,         setDescInput]         = useState('')
+  const [isPublicInput,     setIsPublicInput]     = useState(false)
   const [dailyLimitInput,   setDailyLimitInput]   = useState(20)
   const nameRef = useRef<HTMLInputElement>(null)
+
+  const isOwner = !!currentUser && set?.user_id === currentUser.id
 
   useEffect(() => { loadAll() }, [id])
 
@@ -56,7 +62,12 @@ export default function SetDetail() {
     const cachedSess  = getCachedSessions(id)
 
     if (cachedSet || cachedCards.length > 0) {
-      if (cachedSet) { setSet(cachedSet); setNameInput(cachedSet.name); setDescInput(cachedSet.description ?? '') }
+      if (cachedSet) {
+        setSet(cachedSet)
+        setNameInput(cachedSet.name)
+        setDescInput(cachedSet.description ?? '')
+        setIsPublicInput(cachedSet.is_public ?? false)
+      }
       if (cachedCards.length > 0) setCards(cachedCards)
       if (cachedSess.length  > 0) setSessions(cachedSess)
       setLoading(false)
@@ -94,6 +105,7 @@ export default function SetDetail() {
     setSet(setRes.data)
     setNameInput(setRes.data.name)
     setDescInput(setRes.data.description ?? '')
+    setIsPublicInput(setRes.data.is_public ?? false)
     setCards(freshCards)
     setSessions(freshSessions)
     cacheCards(id, freshCards)
@@ -107,9 +119,22 @@ export default function SetDetail() {
     const trimmedName = nameInput.trim()
     const trimmedDesc = descInput.trim()
     if (!trimmedName) return
-    if (trimmedName === set?.name && trimmedDesc === (set?.description ?? '')) return
-    await supabase.from('sets').update({ name: trimmedName, description: trimmedDesc || null }).eq('id', id)
-    setSet(s => s ? { ...s, name: trimmedName, description: trimmedDesc || null } : s)
+    await supabase.from('sets').update({
+      name: trimmedName,
+      description: trimmedDesc || null,
+      is_public: isPublicInput,
+    }).eq('id', id)
+    setSet(s => s ? { ...s, name: trimmedName, description: trimmedDesc || null, is_public: isPublicInput } : s)
+  }
+
+  async function forkSet() {
+    setForking(true)
+    try {
+      const { data, error } = await supabase.rpc('fork_set', { original_set_id: id })
+      if (!error && data) router.push(`/sets/${data}`)
+    } finally {
+      setForking(false)
+    }
   }
 
   function saveDailyLimit(val: number) {
@@ -180,21 +205,30 @@ export default function SetDetail() {
       <div className="flex items-start gap-3 mb-4">
         <Link href="/" className="text-gray-400 hover:text-gray-600 text-xl transition-colors flex-shrink-0 mt-1">←</Link>
         <div className="flex-1 min-w-0">
-          <h1 className="text-2xl font-bold text-gray-900 leading-tight">{set?.name}</h1>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-2xl font-bold text-gray-900 leading-tight">{set?.name}</h1>
+            {set?.is_public && (
+              <span className="text-xs font-medium text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">
+                Public
+              </span>
+            )}
+          </div>
           {set?.description && (
             <p className="text-sm text-gray-500 mt-1">{set.description}</p>
           )}
         </div>
-        <button
-          onClick={() => setShowSettings(true)}
-          className="flex-shrink-0 text-gray-400 hover:text-gray-700 transition-colors p-1 mt-0.5"
-          aria-label="Settings"
-        >
-          <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-          </svg>
-        </button>
+        {isOwner && (
+          <button
+            onClick={() => setShowSettings(true)}
+            className="flex-shrink-0 text-gray-400 hover:text-gray-700 transition-colors p-1 mt-0.5"
+            aria-label="Settings"
+          >
+            <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
+        )}
       </div>
 
       {/* Stats */}
@@ -234,12 +268,26 @@ export default function SetDetail() {
       )}
 
       {/* Study CTA */}
-      <Link
-        href={`/sets/${id}/study`}
-        className="block w-full text-center bg-indigo-600 text-white py-4 rounded-2xl font-semibold text-lg mb-5 hover:bg-indigo-700 active:bg-indigo-800 transition-colors shadow-sm"
-      >
-        {dueToday > 0 ? `Study Now — ${dueToday} card${dueToday !== 1 ? 's' : ''} due` : 'Study'}
-      </Link>
+      <div className={`flex gap-3 mb-5 ${!isOwner ? '' : ''}`}>
+        <Link
+          href={`/sets/${id}/study`}
+          className="flex-1 block text-center bg-indigo-600 text-white py-4 rounded-2xl font-semibold text-lg hover:bg-indigo-700 active:bg-indigo-800 transition-colors shadow-sm"
+        >
+          {dueToday > 0 ? `Study — ${dueToday} due` : 'Study'}
+        </Link>
+        {!isOwner && (
+          <button
+            onClick={forkSet}
+            disabled={forking}
+            className="flex items-center gap-1.5 px-4 py-4 bg-white border border-gray-200 rounded-2xl text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors shadow-sm disabled:opacity-50"
+          >
+            <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+            {forking ? 'Copying…' : 'Copy'}
+          </button>
+        )}
+      </div>
       {dueToday === 0 && cards.length > 0 && (
         <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-xl text-center text-sm font-medium mb-5 -mt-3">
           All caught up — no cards due
@@ -270,20 +318,22 @@ export default function SetDetail() {
             <h2 className="font-semibold text-gray-900">
               {cards.length} card{cards.length !== 1 ? 's' : ''}
             </h2>
-            <div className="flex items-center gap-2">
-              <Link
-                href={`/sets/${id}/import`}
-                className="text-sm text-indigo-600 hover:text-indigo-700 font-medium px-3 py-1.5"
-              >
-                Import
-              </Link>
-              <Link
-                href={`/sets/${id}/create`}
-                className="text-sm bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 font-medium transition-colors"
-              >
-                + Add
-              </Link>
-            </div>
+            {isOwner && (
+              <div className="flex items-center gap-2">
+                <Link
+                  href={`/sets/${id}/import`}
+                  className="text-sm text-indigo-600 hover:text-indigo-700 font-medium px-3 py-1.5"
+                >
+                  Import
+                </Link>
+                <Link
+                  href={`/sets/${id}/create`}
+                  className="text-sm bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 font-medium transition-colors"
+                >
+                  + Add
+                </Link>
+              </div>
+            )}
           </div>
 
           {cards.length === 0 ? (
@@ -312,30 +362,32 @@ export default function SetDetail() {
                           </span>
                         </div>
                       </div>
-                      <div className="flex items-stretch gap-3 flex-shrink-0">
-                        <Link
-                          href={`/sets/${id}/edit/${card.id}`}
-                          className="flex items-center px-2.5 text-xs text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 hover:text-indigo-600 transition-colors"
-                        >
-                          Edit
-                        </Link>
-                        <div className="flex flex-col rounded-lg border border-gray-200 overflow-hidden w-7">
-                          <button
-                            onClick={() => reorderCard(idx, 'up')}
-                            disabled={idx === 0}
-                            className="flex-1 flex items-center justify-center text-gray-400 hover:bg-gray-50 hover:text-gray-600 disabled:opacity-20 transition-colors border-b border-gray-200"
+                      {isOwner && (
+                        <div className="flex items-stretch gap-3 flex-shrink-0">
+                          <Link
+                            href={`/sets/${id}/edit/${card.id}`}
+                            className="flex items-center px-2.5 text-xs text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 hover:text-indigo-600 transition-colors"
                           >
-                            <svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor"><path d="M4 1L7 6H1L4 1Z"/></svg>
-                          </button>
-                          <button
-                            onClick={() => reorderCard(idx, 'down')}
-                            disabled={idx === cards.length - 1}
-                            className="flex-1 flex items-center justify-center text-gray-400 hover:bg-gray-50 hover:text-gray-600 disabled:opacity-20 transition-colors"
-                          >
-                            <svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor"><path d="M4 7L1 2H7L4 7Z"/></svg>
-                          </button>
+                            Edit
+                          </Link>
+                          <div className="flex flex-col rounded-lg border border-gray-200 overflow-hidden w-7">
+                            <button
+                              onClick={() => reorderCard(idx, 'up')}
+                              disabled={idx === 0}
+                              className="flex-1 flex items-center justify-center text-gray-400 hover:bg-gray-50 hover:text-gray-600 disabled:opacity-20 transition-colors border-b border-gray-200"
+                            >
+                              <svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor"><path d="M4 1L7 6H1L4 1Z"/></svg>
+                            </button>
+                            <button
+                              onClick={() => reorderCard(idx, 'down')}
+                              disabled={idx === cards.length - 1}
+                              className="flex-1 flex items-center justify-center text-gray-400 hover:bg-gray-50 hover:text-gray-600 disabled:opacity-20 transition-colors"
+                            >
+                              <svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor"><path d="M4 7L1 2H7L4 7Z"/></svg>
+                            </button>
+                          </div>
                         </div>
-                      </div>
+                      )}
                     </div>
                     <div className="mt-2 pt-2 border-t border-gray-100">
                       {card.type === 'multiple_choice' && card.options ? (
@@ -450,6 +502,19 @@ export default function SetDetail() {
                     className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm outline-none focus:border-indigo-500 resize-none"
                   />
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setIsPublicInput(v => !v)}
+                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl border transition-colors ${isPublicInput ? 'border-indigo-300 bg-indigo-50' : 'border-gray-200 bg-white'}`}
+                >
+                  <div className="text-left">
+                    <p className="text-sm font-medium text-gray-800">{isPublicInput ? 'Public' : 'Private'}</p>
+                    <p className="text-xs text-gray-400">{isPublicInput ? 'Anyone can study this set' : 'Only visible to you'}</p>
+                  </div>
+                  <div className={`w-10 h-5 rounded-full transition-colors relative flex-shrink-0 ${isPublicInput ? 'bg-indigo-500' : 'bg-gray-200'}`}>
+                    <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${isPublicInput ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                  </div>
+                </button>
                 <button
                   onClick={saveInfo}
                   className="w-full py-2 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 transition-colors"
