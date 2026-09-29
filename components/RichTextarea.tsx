@@ -40,9 +40,20 @@ export function RichTextarea({ value, onChange, rows = 3, placeholder, className
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === 'Tab') {
+      e.preventDefault()
+      if (show) { insert(); return }
+      const el  = e.currentTarget
+      const s   = el.selectionStart ?? 0
+      const end = el.selectionEnd ?? 0
+      const next = value.slice(0, s) + '  ' + value.slice(end)
+      onChange(next)
+      setTimeout(() => el.setSelectionRange(s + 2, s + 2), 0)
+      return
+    }
     if (!show) return
     if (e.key === 'Escape') { e.preventDefault(); setShow(false) }
-    if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); insert() }
+    if (e.key === 'Enter')  { e.preventDefault(); insert() }
   }
 
   function handleLangChange(blockIndex: number, newLang: string) {
