@@ -298,12 +298,13 @@ export default function SetDetail() {
             </div>
           ) : (
             <div className="space-y-2">
-              {cards.map(card => {
+              {cards.map((card, idx) => {
                 const status = card.progress?.status ?? 'new'
                 const badge  = STATUS_STYLES[status]
                 return (
                   <div key={card.id} className="bg-white rounded-xl p-3.5 shadow-sm border border-gray-100">
                     <div className="flex items-start gap-3">
+                      <span className="flex-shrink-0 text-xs font-semibold text-gray-400 mt-0.5 w-5 text-right">{idx + 1}.</span>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-gray-900">{card.question}</p>
                         <div className="flex items-center gap-2 mt-1.5">
