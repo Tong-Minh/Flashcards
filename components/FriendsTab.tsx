@@ -203,10 +203,14 @@ export default function FriendsTab({ currentUser }: { currentUser: User }) {
                     {entry.is_me ? 'You' : (entry.display_name ?? 'Unknown')}
                   </p>
                   {entry.last_set_name ? (
-                    <p className="text-xs text-gray-400 truncate">{entry.last_set_name}</p>
+                    <p className="text-xs text-gray-400 truncate">
+                      <span className="text-gray-300">Recent: </span>{entry.last_set_name}
+                    </p>
                   ) : null}
                   {entry.last_studied_at ? (
-                    <p className="text-xs text-gray-300">{timeAgo(entry.last_studied_at)}</p>
+                    <p className="text-xs text-gray-400">
+                      <span className="text-gray-300">Last: </span>{timeAgo(entry.last_studied_at)}
+                    </p>
                   ) : (
                     <p className="text-xs text-gray-300">No sessions yet</p>
                   )}
