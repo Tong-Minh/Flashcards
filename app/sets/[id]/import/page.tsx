@@ -34,11 +34,12 @@ function parseCards(text: string): ParsedCard[] {
           const allOptions = [correctAnswer, ...extras].sort(() => Math.random() - 0.5)
           return { question, answer: correctAnswer, options: allOptions, type: 'multiple_choice' as CardType }
         }
+        const q = parts[0]
         return {
-          question: parts[0],
+          question: q,
           answer: parts[1] ?? '',
           options: null,
-          type: 'open_ended' as CardType,
+          type: (q.includes('___') ? 'fill_blank' : 'open_ended') as CardType,
         }
       })
       .filter((c) => c.question && c.answer)
@@ -59,12 +60,15 @@ function parseCards(text: string): ParsedCard[] {
 
   return groups
     .filter((g) => g.length >= 2)
-    .map((g) => ({
-      question: g[0],
-      answer: g.slice(1).join('\n'),
-      options: null,
-      type: 'open_ended' as CardType,
-    }))
+    .map((g) => {
+      const q = g[0]
+      return {
+        question: q,
+        answer: g.slice(1).join('\n'),
+        options: null,
+        type: (q.includes('___') ? 'fill_blank' : 'open_ended') as CardType,
+      }
+    })
 }
 
 export default function ImportCards() {
@@ -144,7 +148,7 @@ export default function ImportCards() {
                 <div key={i} className="bg-white rounded-lg px-3 py-2.5 border border-gray-100 text-sm">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-xs text-gray-400 font-medium">
-                      {card.type === 'multiple_choice' ? 'MC' : 'OE'}
+                      {card.type === 'multiple_choice' ? 'MC' : card.type === 'fill_blank' ? 'FB' : 'OE'}
                     </span>
                     <span className="text-gray-900 font-medium line-clamp-1">{card.question}</span>
                   </div>

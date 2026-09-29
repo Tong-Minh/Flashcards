@@ -53,11 +53,25 @@ What is the powerhouse of the cell?	Mitochondria	Nucleus	Ribosome	Golgi`}</pre>
           </div>
         </section>
 
+        {/* Format 4 — Fill in blank */}
+        <section className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+          <h2 className="font-semibold text-gray-900 text-base mb-1">Fill in the Blank — automatic detection</h2>
+          <p className="text-gray-500 mb-3">
+            Any card (in either format above) whose question contains <code className="bg-gray-100 px-1 rounded text-xs font-mono">___</code> is automatically imported as a fill-in-the-blank card. The answer fills the blank during study.
+          </p>
+          <pre className="bg-gray-50 rounded-xl p-4 text-xs leading-relaxed overflow-x-auto border border-gray-100">{`The capital of France is ___
+Paris
+
+___ is the powerhouse of the cell.
+Mitochondria`}</pre>
+          <p className="text-xs text-gray-400 mt-2">Tab format works too: <span className="font-mono">The capital of France is ___{"\\t"}Paris</span></p>
+        </section>
+
         {/* Tips */}
         <section className="bg-indigo-50 rounded-2xl border border-indigo-100 p-5">
           <h2 className="font-semibold text-indigo-900 text-base mb-2">Tips</h2>
           <ul className="space-y-1.5 text-indigo-800 text-sm">
-            <li>• You can mix open-ended and multiple-choice in the same import (as long as you use tab format for MC)</li>
+            <li>• You can mix all card types in the same import — fill-in-blank is auto-detected by <span className="font-mono text-xs">___</span></li>
             <li>• Blank-line format works great for pasting from notes apps</li>
             <li>• Tab format works great for pasting from Google Sheets or Excel</li>
             <li>• The app shows a live preview before you import — check it looks right first</li>

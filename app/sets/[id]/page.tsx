@@ -239,18 +239,17 @@ export default function SetDetail() {
       )}
 
       {/* Study CTA */}
-      {dueToday > 0 ? (
-        <Link
-          href={`/sets/${id}/study`}
-          className="block w-full text-center bg-indigo-600 text-white py-4 rounded-2xl font-semibold text-lg mb-5 hover:bg-indigo-700 active:bg-indigo-800 transition-colors shadow-sm"
-        >
-          Study Now — {dueToday} card{dueToday !== 1 ? 's' : ''} due
-        </Link>
-      ) : cards.length > 0 ? (
-        <div className="bg-green-50 border border-green-200 text-green-700 py-4 rounded-2xl text-center font-medium mb-5">
-          All caught up — no cards due!
+      <Link
+        href={`/sets/${id}/study`}
+        className="block w-full text-center bg-indigo-600 text-white py-4 rounded-2xl font-semibold text-lg mb-5 hover:bg-indigo-700 active:bg-indigo-800 transition-colors shadow-sm"
+      >
+        {dueToday > 0 ? `Study Now — ${dueToday} card${dueToday !== 1 ? 's' : ''} due` : 'Study'}
+      </Link>
+      {dueToday === 0 && cards.length > 0 && (
+        <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-xl text-center text-sm font-medium mb-5 -mt-3">
+          All caught up — no cards due
         </div>
-      ) : null}
+      )}
 
       {/* Tabs */}
       <div className="flex border-b border-gray-200 mb-4">

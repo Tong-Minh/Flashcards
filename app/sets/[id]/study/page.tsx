@@ -17,7 +17,7 @@ const f = fsrs()
 type SRSRating = 1 | 2 | 3 | 4 // Again | Hard | Good | Easy
 type Phase     = 'loading' | 'pre-session' | 'session' | 'done'
 type Order     = 'ordered' | 'random'
-type FlipState = 'front' | 'flip-out' | 'flip-in' | 'back'
+type FlipState = 'front' | 'flipping' | 'back'
 
 interface SessionCard extends FlashcardWithProgress { _key: number }
 
@@ -129,6 +129,7 @@ export default function Study() {
   const [scheduling, setScheduling] = useState<RecordLog | null>(null)
 
   const [flipState,      setFlipState]      = useState<FlipState>('front')
+  const [showBack,       setShowBack]       = useState(false)
   const [selectedOption, setSelectedOption] = useState<string | null>(null)
   const [cardKey,        setCardKey]        = useState(0)
 
@@ -227,6 +228,7 @@ export default function Study() {
     }
 
     setFlipState('front')
+    setShowBack(false)
     setSelectedOption(null)
     setCardKey(0)
     setScheduling(null)
@@ -265,17 +267,18 @@ export default function Study() {
   // ── Flip animation ─────────────────────────────────────────────────────────
   function triggerFlip() {
     if (flipState !== 'front') return
-    setFlipState('flip-out')
+    try { navigator.vibrate?.(20) } catch {}
+    setFlipState('flipping')
+    // At 150ms the card is at -90deg (invisible) — safe to switch content
     setTimeout(() => {
-      setFlipState('flip-in')
-      // Compute scheduling preview while card is mid-flip
+      setShowBack(true)
       const card = queue[0]
       if (card) {
         const current = progressMap.current.get(card.id) ?? card.progress
         setScheduling(f.repeat(progressToFSRS(current), new Date()))
       }
-      setTimeout(() => setFlipState('back'), 150)
     }, 150)
+    setTimeout(() => setFlipState('back'), 300)
   }
 
   // ── Rate ───────────────────────────────────────────────────────────────────
@@ -283,9 +286,7 @@ export default function Study() {
     const card = queue[0]
     if (!card) return
 
-    if (rating >= Rating.Good) {
-      try { navigator.vibrate?.(50) } catch {}
-    }
+    try { navigator.vibrate?.(30) } catch {}
 
     const now = new Date()
     const current = progressMap.current.get(card.id) ?? card.progress
@@ -385,6 +386,7 @@ export default function Study() {
       setPhase('done')
     } else {
       setFlipState('front')
+      setShowBack(false)
       setSelectedOption(null)
       setCardKey(k => k + 1)
       setScheduling(null)
@@ -536,13 +538,11 @@ export default function Study() {
   // ── Session ────────────────────────────────────────────────────────────────
   const card = queue[0]
   const done = totalInSession - queue.length
+  const cardNumber = done + 1
   const progressPct = totalInSession > 0 ? (done / totalInSession) * 100 : 0
-  const showBack = flipState === 'flip-in' || flipState === 'back'
   const isCorrectSelection = selectedOption !== null && selectedOption === card.answer
 
-  const cardAnimClass =
-    flipState === 'flip-out' ? 'card-flip-out' :
-    flipState === 'flip-in'  ? 'card-flip-in'  : ''
+  const cardAnimClass = flipState === 'flipping' ? 'card-flip' : ''
 
   // Interval labels from pre-computed scheduling
   const intervals = scheduling ? {
@@ -559,7 +559,7 @@ export default function Study() {
         <button onClick={handleExit} className="text-gray-400 hover:text-gray-600 transition-colors font-medium">
           ← Exit
         </button>
-        <p className="text-sm text-gray-400">{queue.length} remaining</p>
+        <p className="text-sm text-gray-400">{cardNumber} / {totalInSession}</p>
         <div className="w-12" />
       </div>
 
@@ -590,7 +590,7 @@ export default function Study() {
               <div className="mt-5 space-y-2">
                 {card.options.map((opt, i) => (
                   <button key={i}
-                    onClick={e => { e.stopPropagation(); setSelectedOption(opt); triggerFlip() }}
+                    onClick={e => { e.stopPropagation(); try { navigator.vibrate?.(20) } catch {}; setSelectedOption(opt); triggerFlip() }}
                     className="w-full text-left px-4 py-3 rounded-xl border border-gray-200 text-sm text-gray-700 hover:bg-gray-50 active:bg-gray-100 transition-colors font-medium"
                   >
                     <span className="text-gray-400 mr-2">{String.fromCharCode(65 + i)}.</span>{opt}
