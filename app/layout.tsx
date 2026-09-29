@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import { RegisterSW } from '@/components/RegisterSW'
+import AuthGuard from '@/components/AuthGuard'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -27,7 +28,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="bg-gray-50 min-h-screen">
         <RegisterSW />
-        {children}
+        <AuthGuard>{children}</AuthGuard>
       </body>
     </html>
   )

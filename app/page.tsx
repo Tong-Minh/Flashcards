@@ -6,6 +6,10 @@ import { supabase } from '@/lib/supabase/client'
 import { cacheSets, getCachedSets } from '@/lib/storage'
 import type { FlashcardSet } from '@/lib/types'
 
+async function signOut() {
+  await supabase.auth.signOut()
+}
+
 interface SetWithStats extends FlashcardSet {
   totalCards: number
   toStudy: number
@@ -89,12 +93,23 @@ export default function Home() {
     <div className="max-w-lg mx-auto px-4 py-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Flashcards</h1>
-        <Link
-          href="/sets/new"
-          className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 active:bg-indigo-800 transition-colors"
-        >
-          + New Set
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/sets/new"
+            className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 active:bg-indigo-800 transition-colors"
+          >
+            + New Set
+          </Link>
+          <button
+            onClick={signOut}
+            className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
+            title="Sign out"
+          >
+            <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h6a2 2 0 012 2v1" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {loading ? (
