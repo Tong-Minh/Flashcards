@@ -1,4 +1,4 @@
-export type CardType   = 'multiple_choice' | 'open_ended'
+export type CardType   = 'multiple_choice' | 'open_ended' | 'fill_blank'
 export type CardStatus = 'new' | 'learning' | 'mastered' | 'needs_review'
 export type FSRSState  = 0 | 1 | 2 | 3 // New | Learning | Review | Relearning
 
@@ -16,6 +16,7 @@ export interface Flashcard {
   type: CardType
   answer: string
   options: string[] | null
+  position: number | null
   created_at: string
 }
 

@@ -6,6 +6,12 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase/client'
 import type { CardType } from '@/lib/types'
 
+const TYPE_LABELS: Record<CardType, string> = {
+  open_ended:      'Open Ended',
+  multiple_choice: 'Multiple Choice',
+  fill_blank:      'Fill in Blank',
+}
+
 export default function CreateCard() {
   const { id: setId } = useParams<{ id: string }>()
   const router = useRouter()
@@ -26,6 +32,10 @@ export default function CreateCard() {
     setError('')
 
     if (!question.trim()) return setError('Please enter a question.')
+    if (type === 'fill_blank') {
+      if (!question.includes('___')) return setError('Question must contain ___ to mark the blank.')
+      if (!answer.trim()) return setError('Please enter the answer for the blank.')
+    }
     if (type === 'open_ended' && !answer.trim()) return setError('Please enter an answer.')
     if (type === 'multiple_choice') {
       if (options.some((o) => !o.trim())) return setError('Please fill in all four options.')
@@ -34,7 +44,8 @@ export default function CreateCard() {
 
     setSaving(true)
 
-    const cardAnswer = type === 'open_ended' ? answer.trim() : options[correctIndex!].trim()
+    const cardAnswer =
+      type === 'multiple_choice' ? options[correctIndex!].trim() : answer.trim()
     const cardOptions = type === 'multiple_choice' ? options.map((o) => o.trim()) : null
 
     const { error: err } = await supabase.from('flashcards').insert({
@@ -65,38 +76,46 @@ export default function CreateCard() {
 
       <form onSubmit={handleSubmit} className="space-y-5">
         <div className="flex rounded-xl overflow-hidden border border-gray-200 bg-white">
-          {(['open_ended', 'multiple_choice'] as CardType[]).map((t) => (
+          {(['open_ended', 'multiple_choice', 'fill_blank'] as CardType[]).map((t) => (
             <button
               key={t}
               type="button"
               onClick={() => setType(t)}
-              className={`flex-1 py-3 text-sm font-semibold transition-colors ${
+              className={`flex-1 py-3 text-xs font-semibold transition-colors ${
                 type === t ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-50'
               }`}
             >
-              {t === 'open_ended' ? 'Open Ended' : 'Multiple Choice'}
+              {TYPE_LABELS[t]}
             </button>
           ))}
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Question</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">
+            {type === 'fill_blank' ? 'Sentence (use ___ for the blank)' : 'Question'}
+          </label>
           <textarea
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             rows={3}
-            placeholder="What is the capital of France?"
+            placeholder={
+              type === 'fill_blank'
+                ? 'The capital of France is ___'
+                : 'What is the capital of France?'
+            }
             className="w-full border border-gray-300 rounded-xl px-4 py-3 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
           />
         </div>
 
-        {type === 'open_ended' && (
+        {(type === 'open_ended' || type === 'fill_blank') && (
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Answer</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              {type === 'fill_blank' ? 'Answer (fills the blank)' : 'Answer'}
+            </label>
             <textarea
               value={answer}
               onChange={(e) => setAnswer(e.target.value)}
-              rows={3}
+              rows={type === 'fill_blank' ? 1 : 3}
               placeholder="Paris"
               className="w-full border border-gray-300 rounded-xl px-4 py-3 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
             />
@@ -122,11 +141,7 @@ export default function CreateCard() {
                   >
                     {correctIndex === i && (
                       <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-                        <path
-                          fillRule="evenodd"
-                          d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                          clipRule="evenodd"
-                        />
+                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                       </svg>
                     )}
                   </button>

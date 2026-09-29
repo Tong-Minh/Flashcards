@@ -86,6 +86,26 @@ function buildQueue(
   return { queue: sorted, dueCount: dueCards.length, newCount: newCards.length }
 }
 
+// ── Fill-in-the-blank renderer ────────────────────────────────────────────────
+
+function ClozeQuestion({ sentence, answer }: { sentence: string; answer?: string }) {
+  const parts = sentence.split('___')
+  return (
+    <p className="text-xl font-medium text-gray-900 leading-relaxed flex-1">
+      {parts.map((part, i) => (
+        <span key={i}>
+          {part}
+          {i < parts.length - 1 && (
+            answer
+              ? <span className="inline-block bg-green-100 text-green-800 font-semibold px-2 py-0.5 rounded mx-0.5">{answer}</span>
+              : <span className="inline-block border-b-2 border-gray-400 w-16 mx-1 align-bottom" />
+          )}
+        </span>
+      ))}
+    </p>
+  )
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function Study() {
@@ -552,15 +572,20 @@ export default function Study() {
       <div
         key={cardKey}
         className={`card-enter bg-white rounded-2xl shadow-md border border-gray-100 p-6 mb-5 min-h-[220px] flex flex-col ${cardAnimClass}`}
-        onClick={!showBack && card.type === 'open_ended' ? triggerFlip : undefined}
-        style={{ cursor: !showBack && card.type === 'open_ended' ? 'pointer' : 'default' }}
+        onClick={!showBack && (card.type === 'open_ended' || card.type === 'fill_blank') ? triggerFlip : undefined}
+        style={{ cursor: !showBack && (card.type === 'open_ended' || card.type === 'fill_blank') ? 'pointer' : 'default' }}
       >
         {!showBack ? (
           <div className="flex flex-col flex-1">
             <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">
-              {card.type === 'multiple_choice' ? 'Multiple Choice' : 'Tap to reveal answer'}
+              {card.type === 'multiple_choice' ? 'Multiple Choice'
+               : card.type === 'fill_blank'   ? 'Fill in the blank'
+               : 'Tap to reveal answer'}
             </p>
-            <p className="text-xl font-medium text-gray-900 leading-relaxed flex-1">{card.question}</p>
+            {card.type === 'fill_blank'
+              ? <ClozeQuestion sentence={card.question} />
+              : <p className="text-xl font-medium text-gray-900 leading-relaxed flex-1">{card.question}</p>
+            }
             {card.type === 'multiple_choice' && card.options && (
               <div className="mt-5 space-y-2">
                 {card.options.map((opt, i) => (
@@ -576,40 +601,49 @@ export default function Study() {
           </div>
         ) : (
           <div className="flex flex-col flex-1">
-            <div className="mb-4 pb-4 border-b border-gray-100">
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">Question</p>
-              <p className="text-sm text-gray-600 leading-relaxed">{card.question}</p>
-            </div>
-            <div className="flex flex-col flex-1">
-              <p className="text-xs font-medium text-indigo-400 uppercase tracking-wide mb-2">Answer</p>
-              {card.type === 'multiple_choice' && selectedOption && (
-                <div className={`flex items-center gap-2 mb-3 px-4 py-2.5 rounded-xl text-sm font-medium ${
-                  isCorrectSelection ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'
-                }`}>
-                  {isCorrectSelection ? '✓ Correct!' : `✗ Incorrect — you picked: ${selectedOption}`}
+            {card.type === 'fill_blank' ? (
+              <div className="flex flex-col flex-1">
+                <p className="text-xs font-medium text-indigo-400 uppercase tracking-wide mb-3">Answer</p>
+                <ClozeQuestion sentence={card.question} answer={card.answer} />
+              </div>
+            ) : (
+              <>
+                <div className="mb-4 pb-4 border-b border-gray-100">
+                  <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">Question</p>
+                  <p className="text-sm text-gray-600 leading-relaxed">{card.question}</p>
                 </div>
-              )}
-              <p className="text-xl font-semibold text-gray-900 leading-relaxed flex-1">{card.answer}</p>
-              {card.type === 'multiple_choice' && card.options && (
-                <div className="mt-4 space-y-1.5">
-                  {card.options.map((opt, i) => {
-                    const isCorrect  = opt === card.answer
-                    const isSelected = opt === selectedOption
-                    return (
-                      <div key={i} className={`px-4 py-2.5 rounded-xl text-sm flex items-center gap-2 ${
-                        isCorrect  ? 'bg-green-50 text-green-700 font-medium border border-green-200'
-                        : isSelected ? 'bg-red-50 text-red-400 line-through border border-red-100'
-                        : 'text-gray-400'
-                      }`}>
-                        <span>{String.fromCharCode(65 + i)}.</span>
-                        <span>{opt}</span>
-                        {isCorrect && <span className="ml-auto">✓</span>}
-                      </div>
-                    )
-                  })}
+                <div className="flex flex-col flex-1">
+                  <p className="text-xs font-medium text-indigo-400 uppercase tracking-wide mb-2">Answer</p>
+                  {card.type === 'multiple_choice' && selectedOption && (
+                    <div className={`flex items-center gap-2 mb-3 px-4 py-2.5 rounded-xl text-sm font-medium ${
+                      isCorrectSelection ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'
+                    }`}>
+                      {isCorrectSelection ? '✓ Correct!' : `✗ Incorrect — you picked: ${selectedOption}`}
+                    </div>
+                  )}
+                  <p className="text-xl font-semibold text-gray-900 leading-relaxed flex-1">{card.answer}</p>
+                  {card.type === 'multiple_choice' && card.options && (
+                    <div className="mt-4 space-y-1.5">
+                      {card.options.map((opt, i) => {
+                        const isCorrect  = opt === card.answer
+                        const isSelected = opt === selectedOption
+                        return (
+                          <div key={i} className={`px-4 py-2.5 rounded-xl text-sm flex items-center gap-2 ${
+                            isCorrect  ? 'bg-green-50 text-green-700 font-medium border border-green-200'
+                            : isSelected ? 'bg-red-50 text-red-400 line-through border border-red-100'
+                            : 'text-gray-400'
+                          }`}>
+                            <span>{String.fromCharCode(65 + i)}.</span>
+                            <span>{opt}</span>
+                            {isCorrect && <span className="ml-auto">✓</span>}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -643,7 +677,7 @@ export default function Study() {
           </button>
         </div>
       ) : (
-        card.type === 'open_ended' && (
+        (card.type === 'open_ended' || card.type === 'fill_blank') && (
           <button onClick={triggerFlip}
             className="w-full py-4 rounded-2xl bg-indigo-600 text-white font-semibold text-base hover:bg-indigo-700 active:bg-indigo-800 transition-colors"
           >

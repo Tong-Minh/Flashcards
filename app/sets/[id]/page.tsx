@@ -40,9 +40,10 @@ export default function SetDetail() {
   const [tab,      setTab]      = useState<'cards' | 'history'>('cards')
 
   // Settings sheet
-  const [showSettings,   setShowSettings]   = useState(false)
-  const [nameInput,      setNameInput]      = useState('')
-  const [dailyLimitInput, setDailyLimitInput] = useState(20)
+  const [showSettings,      setShowSettings]      = useState(false)
+  const [nameInput,         setNameInput]         = useState('')
+  const [descInput,         setDescInput]         = useState('')
+  const [dailyLimitInput,   setDailyLimitInput]   = useState(20)
   const nameRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => { loadAll() }, [id])
@@ -55,7 +56,7 @@ export default function SetDetail() {
     const cachedSess  = getCachedSessions(id)
 
     if (cachedSet || cachedCards.length > 0) {
-      if (cachedSet) { setSet(cachedSet); setNameInput(cachedSet.name) }
+      if (cachedSet) { setSet(cachedSet); setNameInput(cachedSet.name); setDescInput(cachedSet.description ?? '') }
       if (cachedCards.length > 0) setCards(cachedCards)
       if (cachedSess.length  > 0) setSessions(cachedSess)
       setLoading(false)
@@ -73,6 +74,7 @@ export default function SetDetail() {
         .from('flashcards')
         .select('*, progress:card_progress(*)')
         .eq('set_id', id)
+        .order('position', { ascending: true, nullsFirst: false })
         .order('created_at', { ascending: true }),
       supabase
         .from('study_sessions')
@@ -91,6 +93,7 @@ export default function SetDetail() {
 
     setSet(setRes.data)
     setNameInput(setRes.data.name)
+    setDescInput(setRes.data.description ?? '')
     setCards(freshCards)
     setSessions(freshSessions)
     cacheCards(id, freshCards)
@@ -100,11 +103,13 @@ export default function SetDetail() {
 
   // ── Settings actions ──────────────────────────────────────────────────────
 
-  async function saveName() {
-    const trimmed = nameInput.trim()
-    if (!trimmed || trimmed === set?.name) return
-    await supabase.from('sets').update({ name: trimmed }).eq('id', id)
-    setSet(s => s ? { ...s, name: trimmed } : s)
+  async function saveInfo() {
+    const trimmedName = nameInput.trim()
+    const trimmedDesc = descInput.trim()
+    if (!trimmedName) return
+    if (trimmedName === set?.name && trimmedDesc === (set?.description ?? '')) return
+    await supabase.from('sets').update({ name: trimmedName, description: trimmedDesc || null }).eq('id', id)
+    setSet(s => s ? { ...s, name: trimmedName, description: trimmedDesc || null } : s)
   }
 
   function saveDailyLimit(val: number) {
@@ -135,6 +140,18 @@ export default function SetDetail() {
   async function deleteCard(cardId: string) {
     await supabase.from('flashcards').delete().eq('id', cardId)
     setCards(prev => prev.filter(c => c.id !== cardId))
+  }
+
+  async function reorderCard(index: number, dir: 'up' | 'down') {
+    const other = dir === 'up' ? index - 1 : index + 1
+    if (other < 0 || other >= cards.length) return
+    const newCards = [...cards]
+    ;[newCards[index], newCards[other]] = [newCards[other], newCards[index]]
+    setCards(newCards)
+    cacheCards(id, newCards)
+    await Promise.all(
+      newCards.map((c, i) => supabase.from('flashcards').update({ position: i }).eq('id', c.id))
+    )
   }
 
   // ── Derived stats ─────────────────────────────────────────────────────────
@@ -295,11 +312,27 @@ export default function SetDetail() {
                             {badge.label}
                           </span>
                           <span className="text-xs text-gray-400">
-                            {card.type === 'multiple_choice' ? 'MC' : 'OE'}
+                            {card.type === 'multiple_choice' ? 'MC' : card.type === 'fill_blank' ? 'FB' : 'OE'}
                           </span>
                         </div>
                       </div>
-                      <div className="flex items-center gap-1 flex-shrink-0">
+                      <div className="flex items-center gap-0.5 flex-shrink-0">
+                        <div className="flex flex-col mr-1">
+                          <button
+                            onClick={() => reorderCard(cards.indexOf(card), 'up')}
+                            disabled={cards.indexOf(card) === 0}
+                            className="p-0.5 text-gray-300 hover:text-gray-500 disabled:opacity-20 transition-colors leading-none text-xs"
+                          >
+                            ▲
+                          </button>
+                          <button
+                            onClick={() => reorderCard(cards.indexOf(card), 'down')}
+                            disabled={cards.indexOf(card) === cards.length - 1}
+                            className="p-0.5 text-gray-300 hover:text-gray-500 disabled:opacity-20 transition-colors leading-none text-xs"
+                          >
+                            ▼
+                          </button>
+                        </div>
                         <Link
                           href={`/sets/${id}/edit/${card.id}`}
                           className="p-1.5 text-gray-400 hover:text-indigo-500 transition-colors text-sm"
@@ -405,24 +438,34 @@ export default function SetDetail() {
                 </button>
               </div>
 
-              {/* Rename */}
-              <div className="mb-5">
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Set name</label>
-                <div className="flex gap-2">
+              {/* Rename + description */}
+              <div className="mb-5 space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Set name</label>
                   <input
                     ref={nameRef}
                     value={nameInput}
                     onChange={e => setNameInput(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && saveName()}
-                    className="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-sm outline-none focus:border-indigo-500"
+                    onKeyDown={e => e.key === 'Enter' && saveInfo()}
+                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm outline-none focus:border-indigo-500"
                   />
-                  <button
-                    onClick={saveName}
-                    className="px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 transition-colors"
-                  >
-                    Save
-                  </button>
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Description</label>
+                  <textarea
+                    value={descInput}
+                    onChange={e => setDescInput(e.target.value)}
+                    rows={2}
+                    placeholder="Optional"
+                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm outline-none focus:border-indigo-500 resize-none"
+                  />
+                </div>
+                <button
+                  onClick={saveInfo}
+                  className="w-full py-2 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 transition-colors"
+                >
+                  Save
+                </button>
               </div>
 
               {/* FSRS — daily new cards */}
