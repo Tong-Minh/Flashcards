@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase/client'
 import { useUser } from '@/components/AuthGuard'
+import { useDarkMode } from '@/components/ThemeProvider'
 import { cacheSets, getCachedSets } from '@/lib/storage'
 import FriendsTab from '@/components/FriendsTab'
 import type { FlashcardSet } from '@/lib/types'
@@ -40,6 +41,7 @@ function timeAgo(iso: string | null): string {
 
 export default function Home() {
   const currentUser = useUser()
+  const { theme, toggle } = useDarkMode()
   const [tab,     setTab]     = useState<Tab>('mine')
   const [sets,    setSets]    = useState<SetWithStats[]>([])
   const [loading, setLoading] = useState(true)
@@ -110,7 +112,7 @@ export default function Home() {
     <div className="max-w-lg mx-auto px-4 py-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-5">
-        <h1 className="text-2xl font-bold text-gray-900">Flashcards</h1>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Flashcards</h1>
         <div className="flex items-center gap-2">
           {tab === 'mine' && (
             <Link
@@ -121,8 +123,24 @@ export default function Home() {
             </Link>
           )}
           <button
+            onClick={toggle}
+            className="p-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors"
+            title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          >
+            {theme === 'dark' ? (
+              <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="5" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+              </svg>
+            ) : (
+              <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
+              </svg>
+            )}
+          </button>
+          <button
             onClick={signOut}
-            className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
+            className="p-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors"
             title="Sign out"
           >
             <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -133,15 +151,15 @@ export default function Home() {
       </div>
 
       {/* Tab bar */}
-      <div className="flex border-b border-gray-200 mb-5">
+      <div className="flex border-b border-gray-200 dark:border-gray-700 mb-5">
         {(Object.keys(TAB_LABELS) as Tab[]).map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
             className={`flex-1 py-2.5 text-sm font-semibold transition-colors ${
               tab === t
-                ? 'text-indigo-600 border-b-2 border-indigo-600'
-                : 'text-gray-400 hover:text-gray-600'
+                ? 'text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400'
+                : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400'
             }`}
           >
             {TAB_LABELS[t]}
@@ -152,50 +170,50 @@ export default function Home() {
       {/* ── My Sets ─────────────────────────────────────────────────────── */}
       {tab === 'mine' && (
         loading ? (
-          <div className="text-center text-gray-400 py-16">Loading...</div>
+          <div className="text-center text-gray-400 dark:text-gray-500 py-16">Loading...</div>
         ) : sets.length === 0 ? (
-          <div className="text-center text-gray-400 py-16">
+          <div className="text-center text-gray-400 dark:text-gray-500 py-16">
             <p className="text-4xl mb-3">📚</p>
-            <p className="font-medium text-gray-500 mb-1">No sets yet</p>
+            <p className="font-medium text-gray-500 dark:text-gray-400 mb-1">No sets yet</p>
             <p className="text-sm">Create a set to start studying</p>
           </div>
         ) : (
           <div className="space-y-3">
             {sets.map((set) => (
-              <div key={set.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+              <div key={set.id} className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
                 <Link href={`/sets/${set.id}`} className="block p-4">
                   <div className="flex items-start justify-between gap-2 mb-3">
                     <div>
                       <div className="flex items-center gap-2">
-                        <h2 className="font-semibold text-gray-900 text-base leading-snug">{set.name}</h2>
+                        <h2 className="font-semibold text-gray-900 dark:text-gray-100 text-base leading-snug">{set.name}</h2>
                         {!set.is_public && (
-                          <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">Private</span>
+                          <span className="text-xs text-gray-400 bg-gray-100 dark:bg-gray-700 dark:text-gray-400 px-1.5 py-0.5 rounded-full">Private</span>
                         )}
                       </div>
                       {set.description && (
-                        <p className="text-sm text-gray-400 mt-0.5 line-clamp-1">{set.description}</p>
+                        <p className="text-sm text-gray-400 dark:text-gray-500 mt-0.5 line-clamp-1">{set.description}</p>
                       )}
                     </div>
                     {set.toStudy > 0 && (
-                      <span className="flex-shrink-0 bg-indigo-100 text-indigo-700 text-xs font-semibold px-2.5 py-1 rounded-full">
+                      <span className="flex-shrink-0 bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 text-xs font-semibold px-2.5 py-1 rounded-full">
                         {set.toStudy} to study
                       </span>
                     )}
                     {set.toStudy === 0 && set.totalCards > 0 && (
-                      <span className="flex-shrink-0 bg-green-100 text-green-700 text-xs font-semibold px-2.5 py-1 rounded-full">
+                      <span className="flex-shrink-0 bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 text-xs font-semibold px-2.5 py-1 rounded-full">
                         Mastered
                       </span>
                     )}
                   </div>
 
-                  <div className="flex items-center gap-4 text-xs text-gray-400">
+                  <div className="flex items-center gap-4 text-xs text-gray-400 dark:text-gray-500">
                     <span>{set.totalCards} card{set.totalCards !== 1 ? 's' : ''}</span>
                     <span>{set.totalSessions} session{set.totalSessions !== 1 ? 's' : ''}</span>
                     <span>Last: {timeAgo(set.lastStudied)}</span>
                   </div>
 
                   {set.totalCards > 0 && (
-                    <div className="mt-3 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="mt-3 h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
                       <div
                         className="h-full bg-green-400 rounded-full transition-all"
                         style={{
@@ -206,16 +224,16 @@ export default function Home() {
                   )}
                 </Link>
 
-                <div className="flex border-t border-gray-100">
+                <div className="flex border-t border-gray-100 dark:border-gray-700">
                   <Link
                     href={`/sets/${set.id}/study`}
-                    className="flex-1 text-center py-3 text-sm font-semibold text-indigo-600 hover:bg-indigo-50 transition-colors"
+                    className="flex-1 text-center py-3 text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors"
                   >
                     Study
                   </Link>
                   <Link
                     href={`/sets/${set.id}`}
-                    className="flex-1 text-center py-3 text-sm font-medium text-gray-500 hover:bg-gray-50 transition-colors"
+                    className="flex-1 text-center py-3 text-sm font-medium text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                   >
                     Manage
                   </Link>

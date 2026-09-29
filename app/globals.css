@@ -2,6 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
+:root { color-scheme: light; }
+.dark { color-scheme: dark; }
+
 /* New card entering the screen */
 @keyframes cardEnter {
   from { opacity: 0; transform: perspective(800px) rotateY(-90deg) scale(0.95); }
