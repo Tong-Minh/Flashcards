@@ -9,7 +9,7 @@ export default function NewSet() {
   const router = useRouter()
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
-  const [isPublic, setIsPublic] = useState(false)
+  const [isPublic, setIsPublic] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -71,13 +71,17 @@ export default function NewSet() {
         <button
           type="button"
           onClick={() => setIsPublic(v => !v)}
-          className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-colors ${isPublic ? 'border-indigo-300 bg-indigo-50' : 'border-gray-200 bg-white'}`}
+          className="w-full flex items-center justify-between px-4 py-3 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 transition-colors"
         >
           <div className="text-left">
-            <p className="text-sm font-medium text-gray-800">{isPublic ? 'Public' : 'Private'}</p>
-            <p className="text-xs text-gray-400">{isPublic ? 'Anyone can find and study this set' : 'Only visible to you'}</p>
+            <p className="text-sm font-medium text-gray-800">
+              {isPublic ? 'Public' : 'Private'}
+            </p>
+            <p className="text-xs text-gray-400">
+              {isPublic ? 'Friends and anyone you share it with can study this' : 'Only visible to you'}
+            </p>
           </div>
-          <div className={`w-11 h-6 rounded-full transition-colors relative ${isPublic ? 'bg-indigo-500' : 'bg-gray-200'}`}>
+          <div className={`w-11 h-6 rounded-full transition-colors relative flex-shrink-0 ${isPublic ? 'bg-indigo-500' : 'bg-gray-300'}`}>
             <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${isPublic ? 'translate-x-5' : 'translate-x-0.5'}`} />
           </div>
         </button>

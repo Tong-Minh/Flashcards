@@ -40,17 +40,18 @@ export default function SetDetail() {
   const [sessions, setSessions] = useState<StudySession[]>([])
   const [loading,  setLoading]  = useState(true)
   const [tab,      setTab]      = useState<'cards' | 'history'>('cards')
-  const [forking,  setForking]  = useState(false)
+  const [forking,     setForking]     = useState(false)
+  const [showMoreMenu, setShowMoreMenu] = useState(false)
 
   // Settings sheet
   const [showSettings,      setShowSettings]      = useState(false)
   const [nameInput,         setNameInput]         = useState('')
   const [descInput,         setDescInput]         = useState('')
-  const [isPublicInput,     setIsPublicInput]     = useState(false)
+  const [isPublicInput,     setIsPublicInput]     = useState(true)
   const [dailyLimitInput,   setDailyLimitInput]   = useState(20)
   const nameRef = useRef<HTMLInputElement>(null)
 
-  const isOwner = !!currentUser && set?.user_id === currentUser.id
+  const isOwner = !!currentUser && !!set && set.user_id === currentUser.id
 
   useEffect(() => { loadAll() }, [id])
 
@@ -207,9 +208,9 @@ export default function SetDetail() {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-2xl font-bold text-gray-900 leading-tight">{set?.name}</h1>
-            {set?.is_public && (
-              <span className="text-xs font-medium text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">
-                Public
+            {set && !set.is_public && (
+              <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                Private
               </span>
             )}
           </div>
@@ -268,7 +269,7 @@ export default function SetDetail() {
       )}
 
       {/* Study CTA */}
-      <div className={`flex gap-3 mb-5 ${!isOwner ? '' : ''}`}>
+      <div className="flex gap-3 mb-5">
         <Link
           href={`/sets/${id}/study`}
           className="flex-1 block text-center bg-indigo-600 text-white py-4 rounded-2xl font-semibold text-lg hover:bg-indigo-700 active:bg-indigo-800 transition-colors shadow-sm"
@@ -276,16 +277,30 @@ export default function SetDetail() {
           {dueToday > 0 ? `Study — ${dueToday} due` : 'Study'}
         </Link>
         {!isOwner && (
-          <button
-            onClick={forkSet}
-            disabled={forking}
-            className="flex items-center gap-1.5 px-4 py-4 bg-white border border-gray-200 rounded-2xl text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors shadow-sm disabled:opacity-50"
-          >
-            <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-            </svg>
-            {forking ? 'Copying…' : 'Copy'}
-          </button>
+          <div className="relative">
+            <button
+              onClick={() => setShowMoreMenu(v => !v)}
+              className="h-full px-4 bg-white border border-gray-200 rounded-2xl text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors shadow-sm text-xl leading-none tracking-widest"
+              aria-label="More options"
+            >
+              •••
+            </button>
+            {showMoreMenu && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setShowMoreMenu(false)} />
+                <div className="absolute right-0 top-full mt-2 z-20 w-52 bg-white rounded-2xl shadow-lg border border-gray-100 py-1 overflow-hidden">
+                  <button
+                    onClick={() => { setShowMoreMenu(false); forkSet() }}
+                    disabled={forking}
+                    className="w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                  >
+                    <p className="text-sm font-semibold text-gray-900">{forking ? 'Duplicating…' : 'Duplicate set'}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">Save your own copy to study &amp; edit</p>
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         )}
       </div>
       {dueToday === 0 && cards.length > 0 && (
@@ -505,13 +520,17 @@ export default function SetDetail() {
                 <button
                   type="button"
                   onClick={() => setIsPublicInput(v => !v)}
-                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl border transition-colors ${isPublicInput ? 'border-indigo-300 bg-indigo-50' : 'border-gray-200 bg-white'}`}
+                  className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 transition-colors"
                 >
                   <div className="text-left">
-                    <p className="text-sm font-medium text-gray-800">{isPublicInput ? 'Public' : 'Private'}</p>
-                    <p className="text-xs text-gray-400">{isPublicInput ? 'Anyone can study this set' : 'Only visible to you'}</p>
+                    <p className="text-sm font-medium text-gray-800">
+                      {isPublicInput ? 'Public' : 'Private'}
+                    </p>
+                    <p className="text-xs text-gray-400">
+                      {isPublicInput ? 'Friends and anyone you share it with can study this' : 'Only visible to you'}
+                    </p>
                   </div>
-                  <div className={`w-10 h-5 rounded-full transition-colors relative flex-shrink-0 ${isPublicInput ? 'bg-indigo-500' : 'bg-gray-200'}`}>
+                  <div className={`w-10 h-5 rounded-full transition-colors relative flex-shrink-0 ${isPublicInput ? 'bg-indigo-500' : 'bg-gray-300'}`}>
                     <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${isPublicInput ? 'translate-x-5' : 'translate-x-0.5'}`} />
                   </div>
                 </button>

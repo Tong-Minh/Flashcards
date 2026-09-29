@@ -6,14 +6,13 @@ import { supabase } from '@/lib/supabase/client'
 import { useUser } from '@/components/AuthGuard'
 import { cacheSets, getCachedSets } from '@/lib/storage'
 import FriendsTab from '@/components/FriendsTab'
-import DiscoverTab from '@/components/DiscoverTab'
 import type { FlashcardSet } from '@/lib/types'
 
 async function signOut() {
   await supabase.auth.signOut()
 }
 
-type Tab = 'mine' | 'friends' | 'discover'
+type Tab = 'mine' | 'friends'
 
 interface SetWithStats extends FlashcardSet {
   totalCards: number
@@ -97,9 +96,8 @@ export default function Home() {
   }
 
   const TAB_LABELS: Record<Tab, string> = {
-    mine:     'My Sets',
-    friends:  'Friends',
-    discover: 'Discover',
+    mine:    'My Sets',
+    friends: 'Friends',
   }
 
   return (
@@ -164,8 +162,8 @@ export default function Home() {
                     <div>
                       <div className="flex items-center gap-2">
                         <h2 className="font-semibold text-gray-900 text-base leading-snug">{set.name}</h2>
-                        {set.is_public && (
-                          <span className="text-xs text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded-full border border-indigo-100">Public</span>
+                        {!set.is_public && (
+                          <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">Private</span>
                         )}
                       </div>
                       {set.description && (
@@ -227,10 +225,6 @@ export default function Home() {
         <FriendsTab currentUser={currentUser} />
       )}
 
-      {/* ── Discover ────────────────────────────────────────────────────── */}
-      {tab === 'discover' && currentUser && (
-        <DiscoverTab currentUser={currentUser} />
-      )}
     </div>
   )
 }
