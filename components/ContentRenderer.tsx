@@ -16,6 +16,7 @@ import 'prismjs/components/prism-rust'
 import 'prismjs/components/prism-kotlin'
 import 'prismjs/components/prism-swift'
 import 'prismjs/components/prism-ruby'
+import 'prismjs/components/prism-markup-templating'  // required by php — must come first
 import 'prismjs/components/prism-php'
 import 'prismjs/components/prism-bash'
 import 'prismjs/components/prism-sql'
@@ -76,9 +77,11 @@ function escapeHtml(s: string): string {
 }
 
 function highlight(code: string, rawLang: string): string {
-  const lang = LANG_ALIASES[rawLang] ?? rawLang
-  const grammar = lang ? Prism.languages[lang] : undefined
-  if (grammar) return Prism.highlight(code, grammar, lang)
+  try {
+    const lang = LANG_ALIASES[rawLang] ?? rawLang
+    const grammar = lang ? Prism.languages[lang] : undefined
+    if (grammar) return Prism.highlight(code, grammar, lang)
+  } catch {}
   return escapeHtml(code)
 }
 
