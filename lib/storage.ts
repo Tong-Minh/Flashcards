@@ -37,12 +37,9 @@ export function updateCachedProgress(setId: string, cardId: string, progress: Ca
 export interface PendingProgressUpdate {
   cardId: string
   setId: string
-  // legacy
   correctCount: number
   status: CardStatus
   lastReviewed: string
-  existingProgressId: string | null
-  // FSRS
   due: string
   stability: number
   difficulty: number
@@ -69,6 +66,26 @@ export function getPendingUpdates(): PendingProgressUpdate[] {
 export function removePendingUpdate(cardId: string) {
   try {
     localStorage.setItem(K.pending, JSON.stringify(getPendingUpdates().filter(p => p.cardId !== cardId)))
+  } catch {}
+}
+
+// ── Daily new-card quota (resets at midnight, per set) ───────────────────────
+
+const todayStr = () => new Date().toISOString().slice(0, 10) // YYYY-MM-DD
+
+export function getTodayNewCount(setId: string): number {
+  try {
+    const raw = localStorage.getItem(`fc_daily_${setId}`)
+    if (!raw) return 0
+    const { date, count } = JSON.parse(raw) as { date: string; count: number }
+    return date === todayStr() ? count : 0
+  } catch { return 0 }
+}
+
+export function incrementTodayNewCount(setId: string): void {
+  try {
+    const count = getTodayNewCount(setId) + 1
+    localStorage.setItem(`fc_daily_${setId}`, JSON.stringify({ date: todayStr(), count }))
   } catch {}
 }
 

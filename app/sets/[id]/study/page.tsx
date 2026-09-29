@@ -9,10 +9,11 @@ import {
   cacheCards, getCachedCards, updateCachedProgress,
   queueProgressUpdate, getPendingUpdates, removePendingUpdate,
   saveSessionState, getSavedSession, clearSavedSession,
+  getTodayNewCount, incrementTodayNewCount,
 } from '@/lib/storage'
 import type { FlashcardWithProgress, CardStatus, CardProgress } from '@/lib/types'
 
-const MAX_NEW = 20
+const MAX_NEW_PER_DAY = 20
 const f = fsrs()
 
 type SRSRating = 1 | 2 | 3 | 4 // Again | Hard | Good | Easy
@@ -75,11 +76,12 @@ function buildQueue(
   cards: FlashcardWithProgress[],
   order: Order,
   progressOverrides: Map<string, CardProgress>,
+  remainingNew: number,
 ): { queue: FlashcardWithProgress[]; dueCount: number; newCount: number } {
   const resolve = (c: FlashcardWithProgress) => progressOverrides.get(c.id) ?? c.progress
 
   const dueCards = cards.filter(c => isDue(resolve(c)))
-  const newCards  = cards.filter(c => isNew(resolve(c))).slice(0, MAX_NEW)
+  const newCards  = cards.filter(c => isNew(resolve(c))).slice(0, Math.max(0, remainingNew))
 
   const combined = [...dueCards, ...newCards]
   const sorted = order === 'random' ? combined.sort(() => Math.random() - 0.5) : combined
@@ -113,8 +115,11 @@ export default function Study() {
   const [cardKey,        setCardKey]        = useState(0)
 
   // Pre-session stats
-  const [dueCount, setDueCount] = useState(0)
-  const [newCount, setNewCount] = useState(0)
+  const [dueCount,      setDueCount]      = useState(0)
+  const [newCount,      setNewCount]      = useState(0)
+  const [todayNewCount, setTodayNewCount] = useState(0)
+  // Tracks which new-card IDs were counted toward today's quota this session
+  const countedNewIds = useRef(new Set<string>())
 
   // ── Boot ───────────────────────────────────────────────────────────────────
   useEffect(() => { syncPending().then(loadCards) }, [setId])
@@ -123,7 +128,8 @@ export default function Study() {
     if (!navigator.onLine) return
     for (const u of getPendingUpdates().filter(p => p.setId === setId)) {
       try {
-        const fsrsFields = {
+        const { error } = await supabase.from('card_progress').upsert({
+          card_id:        u.cardId,
           due:            u.due,
           stability:      u.stability,
           difficulty:     u.difficulty,
@@ -137,14 +143,8 @@ export default function Study() {
           status:         u.status,
           correct_count:  u.correctCount,
           last_reviewed:  u.lastReviewed,
-        }
-        if (u.existingProgressId) {
-          const { error } = await supabase.from('card_progress').update(fsrsFields).eq('card_id', u.cardId)
-          if (!error) removePendingUpdate(u.cardId)
-        } else {
-          const { error } = await supabase.from('card_progress').insert({ card_id: u.cardId, ...fsrsFields })
-          if (!error) removePendingUpdate(u.cardId)
-        }
+        }, { onConflict: 'card_id' })
+        if (!error) removePendingUpdate(u.cardId)
       } catch {}
     }
   }
@@ -169,10 +169,13 @@ export default function Study() {
       setIsOffline(true)
     }
 
-    const { dueCount: d, newCount: n } = buildQueue(cards, 'ordered', new Map())
+    const todayCount = getTodayNewCount(setId)
+    const remaining  = Math.max(0, MAX_NEW_PER_DAY - todayCount)
+    const { dueCount: d, newCount: n } = buildQueue(cards, 'ordered', new Map(), remaining)
     setAllCards(cards)
     setDueCount(d)
     setNewCount(n)
+    setTodayNewCount(todayCount)
     setSavedSession(getSavedSession(setId))
     setPhase(cards.length === 0 ? 'done' : 'pre-session')
   }
@@ -193,7 +196,9 @@ export default function Study() {
       setDisplayStats({ ...savedSession.stats })
     } else {
       clearSavedSession(setId)
-      const { queue: q } = buildQueue(allCards, order, progressMap.current)
+      countedNewIds.current = new Set()
+      const remaining = Math.max(0, MAX_NEW_PER_DAY - getTodayNewCount(setId))
+      const { queue: q } = buildQueue(allCards, order, progressMap.current, remaining)
       setTotalInSession(q.length)
       setQueue(q.map(c => ({ ...c, _key: 0 })))
       statsRef.current = { cardsStudied: 0, correctCount: 0, masteredCount: 0 }
@@ -263,6 +268,14 @@ export default function Study() {
 
     const now = new Date()
     const current = progressMap.current.get(card.id) ?? card.progress
+
+    // Count each new card once toward today's daily quota
+    if (isNew(current) && !countedNewIds.current.has(card.id)) {
+      countedNewIds.current.add(card.id)
+      incrementTodayNewCount(setId)
+      setTodayNewCount(c => c + 1)
+    }
+
     const result  = f.repeat(progressToFSRS(current), now)
     const next    = result[rating].card
 
@@ -294,7 +307,8 @@ export default function Study() {
     let synced = false
     if (navigator.onLine) {
       try {
-        const fields = {
+        const { error } = await supabase.from('card_progress').upsert({
+          card_id:        card.id,
           correct_count:  newProgress.correct_count,
           status:         newProgress.status,
           last_reviewed:  newProgress.last_reviewed,
@@ -308,14 +322,8 @@ export default function Study() {
           learning_steps: newProgress.learning_steps,
           fsrs_state:     newProgress.fsrs_state,
           last_review:    newProgress.last_review,
-        }
-        if (current?.id) {
-          const { error } = await supabase.from('card_progress').update(fields).eq('card_id', card.id)
-          synced = !error
-        } else {
-          const { error } = await supabase.from('card_progress').insert({ card_id: card.id, ...fields })
-          synced = !error
-        }
+        }, { onConflict: 'card_id' })
+        synced = !error
       } catch {}
     }
     if (!synced) {
@@ -324,7 +332,6 @@ export default function Study() {
         correctCount:  newProgress.correct_count,
         status:        newProgress.status,
         lastReviewed:  newProgress.last_reviewed!,
-        existingProgressId: current?.id ?? null,
         due:           newProgress.due,
         stability:     newProgress.stability,
         difficulty:    newProgress.difficulty,
@@ -404,8 +411,10 @@ export default function Study() {
 
   // ── Pre-session ────────────────────────────────────────────────────────────
   if (phase === 'pre-session') {
-    const totalToStudy = dueCount + newCount
-    const nothing = totalToStudy === 0
+    const totalToStudy   = dueCount + newCount
+    const nothing        = totalToStudy === 0
+    const limitReached   = todayNewCount >= MAX_NEW_PER_DAY
+    const remainingToday = Math.max(0, MAX_NEW_PER_DAY - todayNewCount)
 
     return (
       <div className="max-w-lg mx-auto px-4 py-6">
@@ -427,7 +436,11 @@ export default function Study() {
           {nothing ? (
             <div className="text-center py-2">
               <p className="text-green-600 font-semibold text-lg">All caught up!</p>
-              <p className="text-gray-400 text-sm mt-1">No cards due right now. Check back later.</p>
+              <p className="text-gray-400 text-sm mt-1">
+                {limitReached
+                  ? 'Daily new card limit reached — come back tomorrow.'
+                  : 'No cards due right now. Check back later.'}
+              </p>
             </div>
           ) : (
             <div className="flex gap-4 justify-center">
@@ -443,7 +456,9 @@ export default function Study() {
               {newCount > 0 && (
                 <div className="text-center">
                   <div className="text-3xl font-bold text-blue-500">{newCount}</div>
-                  <div className="text-xs text-gray-400 mt-0.5">new cards</div>
+                  <div className="text-xs text-gray-400 mt-0.5">
+                    new · {remainingToday}/{MAX_NEW_PER_DAY} today
+                  </div>
                 </div>
               )}
             </div>
@@ -451,7 +466,7 @@ export default function Study() {
 
           {!nothing && (
             <p className="text-xs text-center text-gray-400 mt-4">
-              Uses FSRS spaced repetition — cards are shown right before you forget them
+              FSRS · up to {MAX_NEW_PER_DAY} new cards per day
             </p>
           )}
         </div>
