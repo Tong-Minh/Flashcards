@@ -256,7 +256,7 @@ function CodeBlock({ code, lang, readOnly, onLangChange }: {
     <select
       value={currentLang}
       onChange={e => handleLangChange(e.target.value)}
-      className="text-xs font-mono text-gray-400 bg-transparent border-none outline-none cursor-pointer hover:text-gray-200 transition-colors flex-1 min-w-0"
+      className="text-xs font-mono text-gray-500 dark:text-gray-400 bg-transparent border-none outline-none cursor-pointer hover:text-gray-800 dark:hover:text-gray-200 transition-colors flex-1 min-w-0"
     >
       {LANGUAGE_OPTIONS.map(opt => (
         <option key={opt.value} value={opt.value} className="bg-gray-800 text-gray-300">
@@ -268,13 +268,13 @@ function CodeBlock({ code, lang, readOnly, onLangChange }: {
 
   return (
     <>
-      <div className="my-2 rounded-lg overflow-hidden border border-gray-700/50">
-        <div className="px-3 py-1.5 bg-gray-800 flex items-center gap-2">
+      <div className="my-2 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700/50">
+        <div className="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 flex items-center gap-2">
           {langControl()}
           <button
             type="button"
             onClick={() => setFullscreen(true)}
-            className="text-gray-500 hover:text-gray-300 transition-colors flex-shrink-0 p-0.5 rounded"
+            className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors flex-shrink-0 p-0.5 rounded"
             title="Expand"
           >
             <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
@@ -282,7 +282,7 @@ function CodeBlock({ code, lang, readOnly, onLangChange }: {
             </svg>
           </button>
         </div>
-        <pre className="overflow-x-auto overflow-y-auto max-h-72 bg-gray-900 p-3 m-0 text-[0.8rem] leading-relaxed text-gray-300">
+        <pre className="overflow-x-auto overflow-y-auto max-h-72 bg-gray-50 dark:bg-gray-900 p-3 m-0 text-[0.8rem] leading-relaxed text-gray-800 dark:text-gray-300">
           <code
             className={currentLang ? `language-${currentLang}` : undefined}
             dangerouslySetInnerHTML={{ __html: highlighted }}
@@ -296,15 +296,15 @@ function CodeBlock({ code, lang, readOnly, onLangChange }: {
           onClick={() => setFullscreen(false)}
         >
           <div
-            className="bg-gray-900 rounded-xl overflow-hidden w-full max-w-4xl max-h-[90vh] flex flex-col"
+            className="bg-gray-50 dark:bg-gray-900 rounded-xl overflow-hidden w-full max-w-4xl max-h-[90vh] flex flex-col"
             onClick={e => e.stopPropagation()}
           >
-            <div className="px-3 py-2 bg-gray-800 flex items-center gap-2 flex-shrink-0 border-b border-gray-700/50">
+            <div className="px-3 py-2 bg-gray-100 dark:bg-gray-800 flex items-center gap-2 flex-shrink-0 border-b border-gray-200 dark:border-gray-700/50">
               {langControl(true)}
               <button
                 type="button"
                 onClick={() => setFullscreen(false)}
-                className="text-gray-400 hover:text-gray-200 transition-colors flex-shrink-0 p-1 rounded"
+                className="text-gray-400 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors flex-shrink-0 p-1 rounded"
                 title="Close"
               >
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
@@ -312,7 +312,7 @@ function CodeBlock({ code, lang, readOnly, onLangChange }: {
                 </svg>
               </button>
             </div>
-            <pre className="overflow-auto flex-1 p-4 m-0 text-sm leading-relaxed text-gray-300 bg-gray-900">
+            <pre className="overflow-auto flex-1 p-4 m-0 text-sm leading-relaxed text-gray-800 dark:text-gray-300 bg-gray-50 dark:bg-gray-900">
               <code
                 className={currentLang ? `language-${currentLang}` : undefined}
                 dangerouslySetInnerHTML={{ __html: highlighted }}

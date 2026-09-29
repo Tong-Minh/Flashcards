@@ -36,9 +36,10 @@ interface Props {
   rows?: number
   placeholder?: string
   className?: string
+  hideHint?: boolean
 }
 
-export function RichTextarea({ value, onChange, rows = 3, placeholder, className }: Props) {
+export function RichTextarea({ value, onChange, rows = 3, placeholder, className, hideHint }: Props) {
   const ref       = useRef<HTMLTextAreaElement>(null)
   const [show,    setShow]    = useState(false)
   const [slashAt, setSlashAt] = useState(-1)
@@ -167,9 +168,11 @@ export function RichTextarea({ value, onChange, rows = 3, placeholder, className
       )}
 
       {/* Hint */}
-      <p className="mt-1 text-xs text-gray-300 dark:text-gray-600 select-none">
-        Type <span className="font-mono bg-gray-100 dark:bg-gray-700 px-1 rounded">/</span> on a new line to insert a block
-      </p>
+      {!hideHint && (
+        <p className="mt-1 text-xs text-gray-300 dark:text-gray-600 select-none">
+          Type <span className="font-mono bg-gray-100 dark:bg-gray-700 px-1 rounded">/</span> on a new line to insert a block
+        </p>
+      )}
 
       {/* Live preview — shown when rich formatting is present */}
       {showPreview && (

@@ -170,12 +170,13 @@ export default function EditCard() {
                       </svg>
                     )}
                   </button>
-                  <input
-                    type="text"
+                  <RichTextarea
                     value={opt}
-                    onChange={(e) => updateOption(i, e.target.value)}
+                    onChange={(val) => updateOption(i, val)}
+                    rows={1}
                     placeholder={`Option ${String.fromCharCode(65 + i)}`}
-                    className="flex-1 border border-gray-300 dark:border-gray-600 rounded-xl px-4 py-3 text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    className="flex-1 border border-gray-300 dark:border-gray-600 rounded-xl px-4 py-3 text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
+                    hideHint
                   />
                 </div>
               ))}
