@@ -23,6 +23,7 @@ export default function EditCard() {
   const [correctIndex, setCorrectIndex] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => { loadCard() }, [cardId])
@@ -79,6 +80,13 @@ export default function EditCard() {
       return
     }
 
+    router.push(`/sets/${setId}`)
+  }
+
+  async function handleDelete() {
+    if (!confirm('Delete this card?')) return
+    setDeleting(true)
+    await supabase.from('flashcards').delete().eq('id', cardId)
     router.push(`/sets/${setId}`)
   }
 
@@ -186,6 +194,14 @@ export default function EditCard() {
           {saving ? 'Saving...' : 'Save Changes'}
         </button>
       </form>
+
+      <button
+        onClick={handleDelete}
+        disabled={deleting}
+        className="w-full mt-3 py-4 rounded-2xl border border-red-200 text-red-500 font-semibold text-base hover:bg-red-50 active:bg-red-100 disabled:opacity-50 transition-colors"
+      >
+        {deleting ? 'Deleting...' : 'Delete Card'}
+      </button>
     </div>
   )
 }

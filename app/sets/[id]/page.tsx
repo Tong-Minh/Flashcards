@@ -137,11 +137,6 @@ export default function SetDetail() {
     router.push('/')
   }
 
-  async function deleteCard(cardId: string) {
-    await supabase.from('flashcards').delete().eq('id', cardId)
-    setCards(prev => prev.filter(c => c.id !== cardId))
-  }
-
   async function reorderCard(index: number, dir: 'up' | 'down') {
     const other = dir === 'up' ? index - 1 : index + 1
     if (other < 0 || other >= cards.length) return
@@ -317,37 +312,27 @@ export default function SetDetail() {
                           </span>
                         </div>
                       </div>
-                      <div className="flex items-center gap-1.5 flex-shrink-0">
-                        {/* Edit | Delete pill */}
-                        <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
-                          <Link
-                            href={`/sets/${id}/edit/${card.id}`}
-                            className="px-2 py-1 text-xs text-gray-500 hover:bg-gray-50 hover:text-indigo-600 transition-colors border-r border-gray-200"
-                          >
-                            Edit
-                          </Link>
-                          <button
-                            onClick={() => deleteCard(card.id)}
-                            className="px-2 py-1 text-xs text-gray-400 hover:bg-red-50 hover:text-red-500 transition-colors"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                        {/* Reorder */}
-                        <div className="flex flex-col border border-gray-200 rounded-lg overflow-hidden">
+                      <div className="flex items-center gap-3 flex-shrink-0">
+                        <Link
+                          href={`/sets/${id}/edit/${card.id}`}
+                          className="px-2.5 py-1.5 text-xs text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 hover:text-indigo-600 transition-colors"
+                        >
+                          Edit
+                        </Link>
+                        <div className="flex flex-col rounded-lg border border-gray-200 overflow-hidden w-7">
                           <button
                             onClick={() => reorderCard(idx, 'up')}
                             disabled={idx === 0}
-                            className="px-1.5 py-0.5 text-gray-400 hover:bg-gray-50 hover:text-gray-600 disabled:opacity-20 transition-colors leading-none text-xs border-b border-gray-200"
+                            className="flex items-center justify-center h-5 text-gray-400 hover:bg-gray-50 hover:text-gray-600 disabled:opacity-20 transition-colors border-b border-gray-200"
                           >
-                            ▲
+                            <svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor"><path d="M4 1L7 6H1L4 1Z"/></svg>
                           </button>
                           <button
                             onClick={() => reorderCard(idx, 'down')}
                             disabled={idx === cards.length - 1}
-                            className="px-1.5 py-0.5 text-gray-400 hover:bg-gray-50 hover:text-gray-600 disabled:opacity-20 transition-colors leading-none text-xs"
+                            className="flex items-center justify-center h-5 text-gray-400 hover:bg-gray-50 hover:text-gray-600 disabled:opacity-20 transition-colors"
                           >
-                            ▼
+                            <svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor"><path d="M4 7L1 2H7L4 7Z"/></svg>
                           </button>
                         </div>
                       </div>
