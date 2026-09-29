@@ -1,19 +1,23 @@
-import type { FlashcardWithProgress, CardProgress, CardStatus, FlashcardSet } from './types'
+import type { FlashcardWithProgress, CardProgress, CardStatus, FlashcardSet, StudySession } from './types'
 
 const K = {
-  cards:   (setId: string) => `fc_cards_${setId}`,
-  sets:    'fc_sets_v1',
-  pending: 'fc_pending_v1',
-  session: (setId: string) => `fc_session_${setId}`,
+  cards:    (setId: string) => `fc_cards_${setId}`,
+  sets:     'fc_sets_v2',   // bumped so old stat-less cache is ignored
+  sessions: (setId: string) => `fc_sessions_${setId}`,
+  pending:  'fc_pending_v1',
+  session:  (setId: string) => `fc_session_${setId}`,
+  settings: (setId: string) => `fc_settings_${setId}`,
 }
 
-// ── Sets cache ────────────────────────────────────────────────────────────────
+// ── Sets cache (stores full stats so home page works offline) ─────────────────
 
 export function cacheSets(sets: object[]) {
   try { localStorage.setItem(K.sets, JSON.stringify(sets)) } catch {}
 }
 
-export function getCachedSets(): FlashcardSet[] {
+export function getCachedSets(): (FlashcardSet & {
+  totalCards: number; toStudy: number; lastStudied: string | null; totalSessions: number
+})[] {
   try { return JSON.parse(localStorage.getItem(K.sets) ?? '[]') } catch { return [] }
 }
 
@@ -30,6 +34,36 @@ export function getCachedCards(setId: string): FlashcardWithProgress[] {
 export function updateCachedProgress(setId: string, cardId: string, progress: CardProgress) {
   const cards = getCachedCards(setId)
   cacheCards(setId, cards.map(c => (c.id === cardId ? { ...c, progress } : c)))
+}
+
+// ── Sessions cache (per set) ──────────────────────────────────────────────────
+
+export function cacheSessions(setId: string, sessions: StudySession[]) {
+  try { localStorage.setItem(K.sessions(setId), JSON.stringify(sessions)) } catch {}
+}
+
+export function getCachedSessions(setId: string): StudySession[] {
+  try { return JSON.parse(localStorage.getItem(K.sessions(setId)) ?? '[]') } catch { return [] }
+}
+
+// ── Per-set settings ──────────────────────────────────────────────────────────
+
+export interface SetSettings {
+  dailyNewLimit: number
+}
+
+const DEFAULT_SETTINGS: SetSettings = { dailyNewLimit: 20 }
+
+export function getSetSettings(setId: string): SetSettings {
+  try {
+    const raw = localStorage.getItem(K.settings(setId))
+    if (!raw) return { ...DEFAULT_SETTINGS }
+    return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) } as SetSettings
+  } catch { return { ...DEFAULT_SETTINGS } }
+}
+
+export function saveSetSettings(setId: string, settings: SetSettings) {
+  try { localStorage.setItem(K.settings(setId), JSON.stringify(settings)) } catch {}
 }
 
 // ── Offline sync queue ────────────────────────────────────────────────────────
@@ -71,7 +105,7 @@ export function removePendingUpdate(cardId: string) {
 
 // ── Daily new-card quota (resets at midnight, per set) ───────────────────────
 
-const todayStr = () => new Date().toISOString().slice(0, 10) // YYYY-MM-DD
+const todayStr = () => new Date().toISOString().slice(0, 10)
 
 export function getTodayNewCount(setId: string): number {
   try {
@@ -87,6 +121,10 @@ export function incrementTodayNewCount(setId: string): void {
     const count = getTodayNewCount(setId) + 1
     localStorage.setItem(`fc_daily_${setId}`, JSON.stringify({ date: todayStr(), count }))
   } catch {}
+}
+
+export function resetTodayNewCount(setId: string): void {
+  try { localStorage.removeItem(`fc_daily_${setId}`) } catch {}
 }
 
 // ── Session state (continue where you left off) ───────────────────────────────
@@ -107,7 +145,6 @@ export function getSavedSession(setId: string): SavedSession | null {
     const raw = localStorage.getItem(K.session(setId))
     if (!raw) return null
     const s = JSON.parse(raw) as SavedSession
-    // Expire after 24 hours
     if (Date.now() - new Date(s.savedAt).getTime() > 86400000) {
       clearSavedSession(setId)
       return null

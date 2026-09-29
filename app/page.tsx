@@ -29,10 +29,9 @@ export default function Home() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Show cached sets immediately while fetching
     const cached = getCachedSets()
     if (cached.length > 0) {
-      setSets(cached.map((s) => ({ ...s, totalCards: 0, toStudy: 0, lastStudied: null, totalSessions: 0 })))
+      setSets(cached)   // now stores full stats — no need to zero them out
       setLoading(false)
     }
     loadSets()
@@ -82,14 +81,8 @@ export default function Home() {
       totalSessions: sessionCountBySet[s.id] ?? 0,
     }))
     setSets(processed)
-    cacheSets(setsRes.data ?? [])
+    cacheSets(processed)   // cache with stats so offline shows correct counts
     setLoading(false)
-  }
-
-  async function deleteSet(id: string) {
-    if (!confirm('Delete this set and all its cards?')) return
-    await supabase.from('sets').delete().eq('id', id)
-    setSets((prev) => prev.filter((s) => s.id !== id))
   }
 
   return (
@@ -155,26 +148,18 @@ export default function Home() {
               </Link>
 
               <div className="flex border-t border-gray-100">
-                {set.toStudy > 0 && (
-                  <Link
-                    href={`/sets/${set.id}/study`}
-                    className="flex-1 text-center py-3 text-sm font-semibold text-indigo-600 hover:bg-indigo-50 transition-colors"
-                  >
-                    Study
-                  </Link>
-                )}
+                <Link
+                  href={`/sets/${set.id}/study`}
+                  className="flex-1 text-center py-3 text-sm font-semibold text-indigo-600 hover:bg-indigo-50 transition-colors"
+                >
+                  Study
+                </Link>
                 <Link
                   href={`/sets/${set.id}`}
                   className="flex-1 text-center py-3 text-sm font-medium text-gray-500 hover:bg-gray-50 transition-colors"
                 >
                   Manage
                 </Link>
-                <button
-                  onClick={() => deleteSet(set.id)}
-                  className="px-4 py-3 text-sm text-gray-300 hover:text-red-400 transition-colors"
-                >
-                  ×
-                </button>
               </div>
             </div>
           ))}

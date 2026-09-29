@@ -9,11 +9,9 @@ import {
   cacheCards, getCachedCards, updateCachedProgress,
   queueProgressUpdate, getPendingUpdates, removePendingUpdate,
   saveSessionState, getSavedSession, clearSavedSession,
-  getTodayNewCount, incrementTodayNewCount,
+  getTodayNewCount, incrementTodayNewCount, getSetSettings,
 } from '@/lib/storage'
 import type { FlashcardWithProgress, CardStatus, CardProgress } from '@/lib/types'
-
-const MAX_NEW_PER_DAY = 20
 const f = fsrs()
 
 type SRSRating = 1 | 2 | 3 | 4 // Again | Hard | Good | Easy
@@ -118,6 +116,7 @@ export default function Study() {
   const [dueCount,      setDueCount]      = useState(0)
   const [newCount,      setNewCount]      = useState(0)
   const [todayNewCount, setTodayNewCount] = useState(0)
+  const [dailyLimit,    setDailyLimit]    = useState(20)
   // Tracks which new-card IDs were counted toward today's quota this session
   const countedNewIds = useRef(new Set<string>())
 
@@ -170,12 +169,14 @@ export default function Study() {
     }
 
     const todayCount = getTodayNewCount(setId)
-    const remaining  = Math.max(0, MAX_NEW_PER_DAY - todayCount)
+    const { dailyNewLimit } = getSetSettings(setId)
+    const remaining  = Math.max(0, dailyNewLimit - todayCount)
     const { dueCount: d, newCount: n } = buildQueue(cards, 'ordered', new Map(), remaining)
     setAllCards(cards)
     setDueCount(d)
     setNewCount(n)
     setTodayNewCount(todayCount)
+    setDailyLimit(dailyNewLimit)
     setSavedSession(getSavedSession(setId))
     setPhase(cards.length === 0 ? 'done' : 'pre-session')
   }
@@ -197,7 +198,7 @@ export default function Study() {
     } else {
       clearSavedSession(setId)
       countedNewIds.current = new Set()
-      const remaining = Math.max(0, MAX_NEW_PER_DAY - getTodayNewCount(setId))
+      const remaining = Math.max(0, getSetSettings(setId).dailyNewLimit - getTodayNewCount(setId))
       const { queue: q } = buildQueue(allCards, order, progressMap.current, remaining)
       setTotalInSession(q.length)
       setQueue(q.map(c => ({ ...c, _key: 0 })))
@@ -413,8 +414,8 @@ export default function Study() {
   if (phase === 'pre-session') {
     const totalToStudy   = dueCount + newCount
     const nothing        = totalToStudy === 0
-    const limitReached   = todayNewCount >= MAX_NEW_PER_DAY
-    const remainingToday = Math.max(0, MAX_NEW_PER_DAY - todayNewCount)
+    const limitReached   = todayNewCount >= dailyLimit
+    const remainingToday = Math.max(0, dailyLimit - todayNewCount)
 
     return (
       <div className="max-w-lg mx-auto px-4 py-6">
@@ -457,7 +458,7 @@ export default function Study() {
                 <div className="text-center">
                   <div className="text-3xl font-bold text-blue-500">{newCount}</div>
                   <div className="text-xs text-gray-400 mt-0.5">
-                    new · {remainingToday}/{MAX_NEW_PER_DAY} today
+                    new · {remainingToday}/{dailyLimit} today
                   </div>
                 </div>
               )}
@@ -466,7 +467,7 @@ export default function Study() {
 
           {!nothing && (
             <p className="text-xs text-center text-gray-400 mt-4">
-              FSRS · up to {MAX_NEW_PER_DAY} new cards per day
+              FSRS · up to {dailyLimit} new cards per day
             </p>
           )}
         </div>

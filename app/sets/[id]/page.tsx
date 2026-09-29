@@ -4,14 +4,19 @@ import { useEffect, useState, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase/client'
-import { cacheCards, getCachedCards } from '@/lib/storage'
+import {
+  cacheCards, getCachedCards, getCachedSets,
+  cacheSessions, getCachedSessions,
+  getSetSettings, saveSetSettings,
+  resetTodayNewCount,
+} from '@/lib/storage'
 import type { FlashcardSet, FlashcardWithProgress, StudySession } from '@/lib/types'
 
 const STATUS_STYLES: Record<string, { label: string; className: string }> = {
-  new: { label: 'New', className: 'bg-blue-100 text-blue-700' },
-  learning: { label: 'Learning', className: 'bg-yellow-100 text-yellow-700' },
-  needs_review: { label: 'Review', className: 'bg-orange-100 text-orange-700' },
-  mastered: { label: 'Mastered', className: 'bg-green-100 text-green-700' },
+  new:          { label: 'New',      className: 'bg-blue-100 text-blue-700'   },
+  learning:     { label: 'Learning', className: 'bg-yellow-100 text-yellow-700' },
+  needs_review: { label: 'Review',   className: 'bg-orange-100 text-orange-700' },
+  mastered:     { label: 'Mature',   className: 'bg-green-100 text-green-700'   },
 }
 
 function timeAgo(iso: string | null): string {
@@ -20,7 +25,7 @@ function timeAgo(iso: string | null): string {
   const days = Math.floor(diff / 86400000)
   if (days === 0) return 'Today'
   if (days === 1) return 'Yesterday'
-  if (days < 7) return `${days}d ago`
+  if (days < 7)  return `${days}d ago`
   return `${Math.floor(days / 7)}w ago`
 }
 
@@ -28,28 +33,40 @@ export default function SetDetail() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
 
-  const [set, setSet] = useState<FlashcardSet | null>(null)
-  const [cards, setCards] = useState<FlashcardWithProgress[]>([])
+  const [set,      setSet]      = useState<FlashcardSet | null>(null)
+  const [cards,    setCards]    = useState<FlashcardWithProgress[]>([])
   const [sessions, setSessions] = useState<StudySession[]>([])
-  const [loading, setLoading] = useState(true)
-  const [editingName, setEditingName] = useState(false)
-  const [nameInput, setNameInput] = useState('')
+  const [loading,  setLoading]  = useState(true)
+  const [tab,      setTab]      = useState<'cards' | 'history'>('cards')
+
+  // Settings sheet
+  const [showSettings,   setShowSettings]   = useState(false)
+  const [nameInput,      setNameInput]      = useState('')
+  const [dailyLimitInput, setDailyLimitInput] = useState(20)
   const nameRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
-    loadAll()
-  }, [id])
+  useEffect(() => { loadAll() }, [id])
 
   async function loadAll() {
-    // Show cached cards immediately (works offline)
-    const cached = getCachedCards(id)
-    if (cached.length > 0) {
-      setCards(cached)
+    // ── Serve from cache immediately (offline-first) ──────────────────────────
+    const cachedCards = getCachedCards(id)
+    const cachedSets  = getCachedSets()
+    const cachedSet   = cachedSets.find(s => s.id === id) ?? null
+    const cachedSess  = getCachedSessions(id)
+
+    if (cachedSet || cachedCards.length > 0) {
+      if (cachedSet) { setSet(cachedSet); setNameInput(cachedSet.name) }
+      if (cachedCards.length > 0) setCards(cachedCards)
+      if (cachedSess.length  > 0) setSessions(cachedSess)
       setLoading(false)
     }
 
+    const settings = getSetSettings(id)
+    setDailyLimitInput(settings.dailyNewLimit)
+
     if (!navigator.onLine) { setLoading(false); return }
 
+    // ── Fetch fresh data ──────────────────────────────────────────────────────
     const [setRes, cardsRes, sessionsRes] = await Promise.all([
       supabase.from('sets').select('*').eq('id', id).single(),
       supabase
@@ -70,25 +87,43 @@ export default function SetDetail() {
       ...c,
       progress: Array.isArray(c.progress) ? (c.progress[0] ?? null) : c.progress,
     }))
+    const freshSessions = sessionsRes.data ?? []
 
     setSet(setRes.data)
     setNameInput(setRes.data.name)
     setCards(freshCards)
-    setSessions(sessionsRes.data ?? [])
+    setSessions(freshSessions)
     cacheCards(id, freshCards)
+    cacheSessions(id, freshSessions)
     setLoading(false)
   }
 
+  // ── Settings actions ──────────────────────────────────────────────────────
+
   async function saveName() {
-    if (!nameInput.trim() || nameInput === set?.name) { setEditingName(false); return }
-    await supabase.from('sets').update({ name: nameInput.trim() }).eq('id', id)
-    setSet((s) => s ? { ...s, name: nameInput.trim() } : s)
-    setEditingName(false)
+    const trimmed = nameInput.trim()
+    if (!trimmed || trimmed === set?.name) return
+    await supabase.from('sets').update({ name: trimmed }).eq('id', id)
+    setSet(s => s ? { ...s, name: trimmed } : s)
   }
 
-  async function deleteCard(cardId: string) {
-    await supabase.from('flashcards').delete().eq('id', cardId)
-    setCards((prev) => prev.filter((c) => c.id !== cardId))
+  function saveDailyLimit(val: number) {
+    const clamped = Math.max(1, Math.min(999, val || 1))
+    setDailyLimitInput(clamped)
+    saveSetSettings(id, { ...getSetSettings(id), dailyNewLimit: clamped })
+  }
+
+  async function resetProgress() {
+    if (!confirm('Reset all FSRS progress for this set? Cards will return to New state.')) return
+    const cardIds = cards.map(c => c.id)
+    if (cardIds.length > 0) {
+      await supabase.from('card_progress').delete().in('card_id', cardIds)
+    }
+    resetTodayNewCount(id)
+    const reset = cards.map(c => ({ ...c, progress: null }))
+    setCards(reset)
+    cacheCards(id, reset)
+    setShowSettings(false)
   }
 
   async function deleteSet() {
@@ -97,73 +132,66 @@ export default function SetDetail() {
     router.push('/')
   }
 
-  if (loading) {
-    return <div className="max-w-lg mx-auto px-4 py-6 text-center text-gray-400 py-16">Loading...</div>
+  async function deleteCard(cardId: string) {
+    await supabase.from('flashcards').delete().eq('id', cardId)
+    setCards(prev => prev.filter(c => c.id !== cardId))
   }
 
-  const mastered = cards.filter((c) => c.progress?.status === 'mastered').length
-  const masteryPct = cards.length > 0 ? Math.round((mastered / cards.length) * 100) : 0
-  const now = new Date()
-  const dueToday = cards.filter((c) => {
+  // ── Derived stats ─────────────────────────────────────────────────────────
+
+  if (loading && !set) {
+    return <div className="max-w-lg mx-auto px-4 py-6 text-center text-gray-400 py-16">Loading…</div>
+  }
+
+  const mastered    = cards.filter(c => c.progress?.status === 'mastered').length
+  const masteryPct  = cards.length > 0 ? Math.round((mastered / cards.length) * 100) : 0
+  const now         = new Date()
+  const dueToday    = cards.filter(c => {
     const p = c.progress
-    if (!p || (p.fsrs_state ?? 0) === 0) return true // new cards always show
+    if (!p || (p.fsrs_state ?? 0) === 0) return true
     return new Date(p.due ?? now) <= now
   }).length
 
-  const lastStudied = sessions[0]?.completed_at ?? null
+  const lastStudied  = sessions[0]?.completed_at ?? null
   const totalSessions = sessions.length
-  const avgCorrect =
+  const avgCorrect   =
     sessions.length > 0
       ? Math.round(
           (sessions.reduce((s, x) => s + x.correct_count, 0) /
-            sessions.reduce((s, x) => s + Math.max(x.cards_studied, 1), 0)) *
-            100
+            sessions.reduce((s, x) => s + Math.max(x.cards_studied, 1), 0)) * 100
         )
       : null
 
   return (
     <div className="max-w-lg mx-auto px-4 py-6">
       {/* Header */}
-      <div className="flex items-center gap-3 mb-5">
-        <Link href="/" className="text-gray-400 hover:text-gray-600 text-xl transition-colors flex-shrink-0">
-          ←
-        </Link>
+      <div className="flex items-start gap-3 mb-4">
+        <Link href="/" className="text-gray-400 hover:text-gray-600 text-xl transition-colors flex-shrink-0 mt-1">←</Link>
         <div className="flex-1 min-w-0">
-          {editingName ? (
-            <input
-              ref={nameRef}
-              value={nameInput}
-              onChange={(e) => setNameInput(e.target.value)}
-              onBlur={saveName}
-              onKeyDown={(e) => e.key === 'Enter' && saveName()}
-              className="text-2xl font-bold text-gray-900 bg-transparent border-b-2 border-indigo-500 outline-none w-full"
-              autoFocus
-            />
-          ) : (
-            <button
-              onClick={() => setEditingName(true)}
-              className="text-2xl font-bold text-gray-900 text-left hover:text-indigo-600 transition-colors truncate block w-full"
-              title="Click to rename"
-            >
-              {set?.name}
-            </button>
+          <h1 className="text-2xl font-bold text-gray-900 leading-tight">{set?.name}</h1>
+          {set?.description && (
+            <p className="text-sm text-gray-500 mt-1">{set.description}</p>
           )}
         </div>
         <button
-          onClick={deleteSet}
-          className="flex-shrink-0 text-gray-300 hover:text-red-400 transition-colors text-sm px-2 py-1"
+          onClick={() => setShowSettings(true)}
+          className="flex-shrink-0 text-gray-400 hover:text-gray-700 transition-colors p-1 mt-0.5"
+          aria-label="Settings"
         >
-          Delete
+          <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
         </button>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-2 mb-5">
+      <div className="grid grid-cols-4 gap-2 mb-4">
         {[
-          { value: cards.length, label: 'Cards' },
-          { value: `${masteryPct}%`, label: 'Mastered' },
-          { value: totalSessions, label: 'Sessions' },
-          { value: timeAgo(lastStudied), label: 'Last' },
+          { value: cards.length,        label: 'Cards'    },
+          { value: `${masteryPct}%`,    label: 'Mature'   },
+          { value: totalSessions,       label: 'Sessions' },
+          { value: timeAgo(lastStudied), label: 'Last'    },
         ].map(({ value, label }) => (
           <div key={label} className="bg-white rounded-xl p-2.5 text-center shadow-sm border border-gray-100">
             <div className="text-base font-bold text-gray-900 truncate">{value}</div>
@@ -172,26 +200,23 @@ export default function SetDetail() {
         ))}
       </div>
 
-      {/* Session accuracy */}
+      {/* Accuracy banner */}
       {avgCorrect !== null && (
-        <div className="bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3 mb-5 flex items-center justify-between">
-          <span className="text-sm text-indigo-700">Avg accuracy across all sessions</span>
+        <div className="bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3 mb-4 flex items-center justify-between">
+          <span className="text-sm text-indigo-700">Avg accuracy</span>
           <span className="text-sm font-bold text-indigo-700">{avgCorrect}%</span>
         </div>
       )}
 
       {/* Mastery bar */}
       {cards.length > 0 && (
-        <div className="mb-5">
+        <div className="mb-4">
           <div className="flex justify-between text-xs text-gray-400 mb-1">
             <span>{mastered} mature</span>
             <span>{cards.length - mastered} remaining</span>
           </div>
           <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-green-400 rounded-full transition-all"
-              style={{ width: `${masteryPct}%` }}
-            />
+            <div className="h-full bg-green-400 rounded-full transition-all" style={{ width: `${masteryPct}%` }} />
           </div>
         </div>
       )}
@@ -200,142 +225,234 @@ export default function SetDetail() {
       {dueToday > 0 ? (
         <Link
           href={`/sets/${id}/study`}
-          className="block w-full text-center bg-indigo-600 text-white py-4 rounded-2xl font-semibold text-lg mb-6 hover:bg-indigo-700 active:bg-indigo-800 transition-colors shadow-sm"
+          className="block w-full text-center bg-indigo-600 text-white py-4 rounded-2xl font-semibold text-lg mb-5 hover:bg-indigo-700 active:bg-indigo-800 transition-colors shadow-sm"
         >
           Study Now — {dueToday} card{dueToday !== 1 ? 's' : ''} due
         </Link>
       ) : cards.length > 0 ? (
-        <div className="bg-green-50 border border-green-200 text-green-700 py-4 rounded-2xl text-center font-medium mb-6">
+        <div className="bg-green-50 border border-green-200 text-green-700 py-4 rounded-2xl text-center font-medium mb-5">
           All caught up — no cards due!
         </div>
       ) : null}
 
-      {/* Cards section */}
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="font-semibold text-gray-900">Cards</h2>
-        <div className="flex gap-2">
-          <Link
-            href={`/sets/${id}/import`}
-            className="text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+      {/* Tabs */}
+      <div className="flex border-b border-gray-200 mb-4">
+        {(['cards', 'history'] as const).map(t => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={`flex-1 py-2.5 text-sm font-semibold transition-colors capitalize ${
+              tab === t
+                ? 'text-indigo-600 border-b-2 border-indigo-600'
+                : 'text-gray-400 hover:text-gray-600'
+            }`}
           >
-            Import
-          </Link>
-          <Link
-            href={`/sets/${id}/create`}
-            className="text-sm bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 font-medium transition-colors"
-          >
-            + Add
-          </Link>
-        </div>
+            {t === 'history' ? `History${sessions.length > 0 ? ` (${sessions.length})` : ''}` : 'Cards'}
+          </button>
+        ))}
       </div>
 
-      {cards.length === 0 ? (
-        <div className="text-center text-gray-400 py-10 bg-white rounded-2xl border border-gray-100">
-          <p className="mb-1">No cards yet</p>
-          <p className="text-sm">Add cards or import a list</p>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {cards.map((card) => {
-            const status = card.progress?.status ?? 'new'
-            const badge = STATUS_STYLES[status]
-            return (
-              <div
-                key={card.id}
-                className="bg-white rounded-xl p-3.5 shadow-sm border border-gray-100"
+      {/* ── Cards tab ─────────────────────────────────────────────────────── */}
+      {tab === 'cards' && (
+        <>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-semibold text-gray-900">
+              {cards.length} card{cards.length !== 1 ? 's' : ''}
+            </h2>
+            <div className="flex items-center gap-2">
+              <Link
+                href={`/sets/${id}/import`}
+                className="text-sm text-indigo-600 hover:text-indigo-700 font-medium px-3 py-1.5"
               >
-                <div className="flex items-start gap-3">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900">{card.question}</p>
-                    <div className="flex items-center gap-2 mt-1.5">
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${badge.className}`}>
-                        {badge.label}
-                      </span>
-                      <span className="text-xs text-gray-400">
-                        {card.type === 'multiple_choice' ? 'MC' : 'OE'}
-                      </span>
+                Import
+              </Link>
+              <Link
+                href={`/sets/${id}/create`}
+                className="text-sm bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 font-medium transition-colors"
+              >
+                + Add
+              </Link>
+            </div>
+          </div>
+
+          {cards.length === 0 ? (
+            <div className="text-center text-gray-400 py-10 bg-white rounded-2xl border border-gray-100">
+              <p className="mb-1">No cards yet</p>
+              <p className="text-sm">Add cards or import a list</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {cards.map(card => {
+                const status = card.progress?.status ?? 'new'
+                const badge  = STATUS_STYLES[status]
+                return (
+                  <div key={card.id} className="bg-white rounded-xl p-3.5 shadow-sm border border-gray-100">
+                    <div className="flex items-start gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900">{card.question}</p>
+                        <div className="flex items-center gap-2 mt-1.5">
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${badge.className}`}>
+                            {badge.label}
+                          </span>
+                          <span className="text-xs text-gray-400">
+                            {card.type === 'multiple_choice' ? 'MC' : 'OE'}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <Link
+                          href={`/sets/${id}/edit/${card.id}`}
+                          className="p-1.5 text-gray-400 hover:text-indigo-500 transition-colors text-sm"
+                        >
+                          Edit
+                        </Link>
+                        <button
+                          onClick={() => deleteCard(card.id)}
+                          className="p-1.5 text-gray-300 hover:text-red-400 transition-colors text-xl leading-none"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    </div>
+                    <div className="mt-2 pt-2 border-t border-gray-100">
+                      {card.type === 'multiple_choice' && card.options ? (
+                        <ul className="space-y-1">
+                          {card.options.map(opt => (
+                            <li
+                              key={opt}
+                              className={`text-xs px-2 py-1 rounded-lg ${
+                                opt === card.answer
+                                  ? 'bg-green-50 text-green-700 font-medium'
+                                  : 'text-gray-500'
+                              }`}
+                            >
+                              {opt === card.answer ? '✓ ' : ''}{opt}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-xs text-gray-600">{card.answer}</p>
+                      )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-1 flex-shrink-0">
-                    <Link
-                      href={`/sets/${id}/edit/${card.id}`}
-                      className="p-1.5 text-gray-400 hover:text-indigo-500 transition-colors text-sm"
-                    >
-                      Edit
-                    </Link>
-                    <button
-                      onClick={() => deleteCard(card.id)}
-                      className="p-1.5 text-gray-300 hover:text-red-400 transition-colors text-xl leading-none"
-                    >
-                      ×
-                    </button>
-                  </div>
-                </div>
-                <div className="mt-2 pt-2 border-t border-gray-100">
-                  {card.type === 'multiple_choice' && card.options ? (
-                    <ul className="space-y-1">
-                      {card.options.map((opt) => (
-                        <li
-                          key={opt}
-                          className={`text-xs px-2 py-1 rounded-lg ${
-                            opt === card.answer
-                              ? 'bg-green-50 text-green-700 font-medium'
-                              : 'text-gray-500'
-                          }`}
-                        >
-                          {opt === card.answer ? '✓ ' : ''}
-                          {opt}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="text-xs text-gray-600">{card.answer}</p>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-        </div>
+                )
+              })}
+            </div>
+          )}
+        </>
       )}
 
-      {/* Session history */}
-      {sessions.length > 0 && (
-        <div className="mt-8">
-          <h2 className="font-semibold text-gray-900 mb-3">Session History</h2>
-          <div className="space-y-2">
-            {sessions.slice(0, 5).map((session) => (
-              <div
-                key={session.id}
-                className="bg-white rounded-xl px-4 py-3 shadow-sm border border-gray-100 flex items-center justify-between"
-              >
-                <div>
-                  <p className="text-sm font-medium text-gray-900">
-                    {session.cards_studied} card{session.cards_studied !== 1 ? 's' : ''} studied
-                  </p>
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    {new Date(session.completed_at).toLocaleDateString(undefined, {
-                      month: 'short',
-                      day: 'numeric',
-                      year: 'numeric',
-                    })}
-                  </p>
+      {/* ── History tab ───────────────────────────────────────────────────── */}
+      {tab === 'history' && (
+        <>
+          {sessions.length === 0 ? (
+            <div className="text-center text-gray-400 py-10 bg-white rounded-2xl border border-gray-100">
+              <p>No sessions yet</p>
+              <p className="text-sm mt-1">Complete a study session to see history</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {sessions.map(session => (
+                <div
+                  key={session.id}
+                  className="bg-white rounded-xl px-4 py-3 shadow-sm border border-gray-100 flex items-center justify-between"
+                >
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">
+                      {session.cards_studied} card{session.cards_studied !== 1 ? 's' : ''} studied
+                    </p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {new Date(session.completed_at).toLocaleDateString(undefined, {
+                        month: 'short', day: 'numeric', year: 'numeric',
+                      })}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-semibold text-gray-700">
+                      {session.cards_studied > 0
+                        ? Math.round((session.correct_count / session.cards_studied) * 100)
+                        : 0}%
+                    </p>
+                    <p className="text-xs text-gray-400">correct</p>
+                    {session.mastered_count > 0 && (
+                      <p className="text-xs text-green-600 font-medium">+{session.mastered_count} matured</p>
+                    )}
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-sm font-semibold text-gray-700">
-                    {session.cards_studied > 0
-                      ? Math.round((session.correct_count / session.cards_studied) * 100)
-                      : 0}
-                    %
-                  </p>
-                  <p className="text-xs text-gray-400">correct</p>
-                  {session.mastered_count > 0 && (
-                    <p className="text-xs text-green-600 font-medium">+{session.mastered_count} mastered</p>
-                  )}
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ── Settings bottom sheet ─────────────────────────────────────────── */}
+      {showSettings && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/50 z-40"
+            onClick={() => setShowSettings(false)}
+          />
+          <div className="fixed bottom-0 left-0 right-0 z-50 max-w-lg mx-auto bg-white rounded-t-2xl shadow-xl">
+            <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mt-3" />
+            <div className="px-5 pt-4 pb-8">
+              <h2 className="text-lg font-bold text-gray-900 mb-5">Settings</h2>
+
+              {/* Rename */}
+              <div className="mb-5">
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Set name</label>
+                <div className="flex gap-2">
+                  <input
+                    ref={nameRef}
+                    value={nameInput}
+                    onChange={e => setNameInput(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && saveName()}
+                    className="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-sm outline-none focus:border-indigo-500"
+                  />
+                  <button
+                    onClick={saveName}
+                    className="px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 transition-colors"
+                  >
+                    Save
+                  </button>
                 </div>
               </div>
-            ))}
+
+              {/* FSRS — daily new cards */}
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-700 mb-0.5">
+                  Daily new cards
+                </label>
+                <p className="text-xs text-gray-400 mb-1.5">
+                  How many new cards to introduce per day (like Anki&apos;s new card limit)
+                </p>
+                <input
+                  type="number"
+                  min={1}
+                  max={999}
+                  value={dailyLimitInput}
+                  onChange={e => setDailyLimitInput(Number(e.target.value))}
+                  onBlur={e => saveDailyLimit(Number(e.target.value))}
+                  className="w-24 border border-gray-300 rounded-xl px-3 py-2 text-sm outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div className="space-y-3 pt-4 border-t border-gray-100">
+                <button
+                  onClick={resetProgress}
+                  className="w-full py-3 rounded-xl border border-orange-200 text-orange-600 text-sm font-semibold hover:bg-orange-50 transition-colors"
+                >
+                  Reset all progress
+                </button>
+                <button
+                  onClick={deleteSet}
+                  className="w-full py-3 rounded-xl bg-red-50 text-red-600 text-sm font-semibold hover:bg-red-100 transition-colors border border-red-100"
+                >
+                  Delete set
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   )
