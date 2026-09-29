@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase/client'
 import { RichTextarea } from '@/components/RichTextarea'
+import { BlockEditor } from '@/components/BlockEditor'
 import type { CardType } from '@/lib/types'
 
 const TYPE_LABELS: Record<CardType, string> = {
@@ -95,7 +96,7 @@ export default function CreateCard() {
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
             {type === 'fill_blank' ? 'Sentence (use ___ for the blank)' : 'Question'}
           </label>
-          <RichTextarea
+          <BlockEditor
             value={question}
             onChange={setQuestion}
             rows={3}
@@ -113,12 +114,13 @@ export default function CreateCard() {
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
               {type === 'fill_blank' ? 'Answer (fills the blank)' : 'Answer'}
             </label>
-            <RichTextarea
+            <BlockEditor
               value={answer}
               onChange={setAnswer}
               rows={type === 'fill_blank' ? 1 : 3}
               placeholder={type === 'fill_blank' ? '' : 'Paris'}
               className="w-full border border-gray-300 dark:border-gray-600 rounded-xl px-4 py-3 text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
+              hideHint
             />
           </div>
         )}

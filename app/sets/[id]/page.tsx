@@ -11,7 +11,7 @@ import {
   getSetSettings, saveSetSettings,
   resetTodayNewCount,
 } from '@/lib/storage'
-import { previewText } from '@/components/ContentRenderer'
+import { previewText, ContentRenderer, hasFormattedContent } from '@/components/ContentRenderer'
 import type { FlashcardSet, FlashcardWithProgress, StudySession } from '@/lib/types'
 
 const STATUS_STYLES: Record<string, { label: string; className: string }> = {
@@ -387,9 +387,12 @@ export default function SetDetail() {
                   <div key={card.id} className="bg-white dark:bg-gray-800 rounded-xl p-3.5 shadow-sm border border-gray-100 dark:border-gray-700">
                     <div className="flex items-start gap-3">
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                          <span className="text-gray-400 dark:text-gray-500 mr-1">{idx + 1}.</span>{previewText(card.question)}
-                        </p>
+                        <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                          <span className="text-gray-400 dark:text-gray-500 mr-1">{idx + 1}.</span>
+                          {hasFormattedContent(card.question)
+                            ? <ContentRenderer text={card.question} readOnly className="text-sm font-medium text-gray-900 dark:text-gray-100" />
+                            : previewText(card.question)}
+                        </div>
                         <div className="flex items-center gap-2 mt-1.5">
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${badge.className}`}>
                             {badge.label}
@@ -438,12 +441,17 @@ export default function SetDetail() {
                                   : 'text-gray-500 dark:text-gray-400'
                               }`}
                             >
-                              {opt === card.answer ? '✓ ' : ''}{opt}
+                              {opt === card.answer ? '✓ ' : ''}
+                              {hasFormattedContent(opt)
+                                ? <ContentRenderer text={opt} readOnly className="inline-block text-xs" />
+                                : opt}
                             </li>
                           ))}
                         </ul>
                       ) : (
-                        <p className="text-xs text-gray-600 dark:text-gray-400">{previewText(card.answer)}</p>
+                        hasFormattedContent(card.answer)
+                          ? <div className="text-xs text-gray-600 dark:text-gray-400"><ContentRenderer text={card.answer} readOnly /></div>
+                          : <p className="text-xs text-gray-600 dark:text-gray-400">{previewText(card.answer)}</p>
                       )}
                     </div>
                   </div>

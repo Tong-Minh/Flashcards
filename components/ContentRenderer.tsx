@@ -147,7 +147,7 @@ function tokenizeInline(text: string): InlineToken[] {
   return tokens
 }
 
-function escapeHtml(s: string): string {
+export function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
@@ -216,7 +216,9 @@ function renderTextBlock(text: string, blockKey: number): ReactNode {
 
 // ── Syntax highlighting ───────────────────────────────────────────────────────
 
-function highlight(code: string, rawLang: string): string {
+export { LANG_ALIASES, LANGUAGE_OPTIONS }
+
+export function highlight(code: string, rawLang: string): string {
   try {
     const lang = LANG_ALIASES[rawLang] ?? rawLang
     const grammar = lang ? Prism.languages[lang] : undefined
