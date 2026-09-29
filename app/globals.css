@@ -5,31 +5,6 @@
 :root { color-scheme: light; }
 .dark { color-scheme: dark; }
 
-/* Block landscape on mobile devices */
-@media screen and (orientation: landscape) and (max-height: 600px) {
-  body { overflow: hidden; }
-  body::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background: #f9fafb;
-    z-index: 9999;
-  }
-  body::after {
-    content: '↻  Rotate to portrait';
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    color: #9ca3af;
-    font-family: system-ui, sans-serif;
-    font-size: 1rem;
-    z-index: 10000;
-    white-space: nowrap;
-  }
-}
-.dark body::before { background: #111827; }
-.dark body::after  { color: #6b7280; }
 
 /* New card entering the screen */
 @keyframes cardEnter {

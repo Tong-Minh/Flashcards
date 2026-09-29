@@ -18,6 +18,11 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       stored ?? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
     setTheme(resolved)
     document.documentElement.classList.toggle('dark', resolved === 'dark')
+
+    // Lock to portrait — works on Android Chrome/PWA; silently ignored on iOS
+    try {
+      screen.orientation.lock('portrait').catch(() => {})
+    } catch {}
   }, [])
 
   function toggle() {
