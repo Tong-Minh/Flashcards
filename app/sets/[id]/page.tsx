@@ -139,6 +139,7 @@ export default function SetDetail() {
       is_public: isPublicInput,
     }).eq('id', id)
     setSet(s => s ? { ...s, name: trimmedName, description: trimmedDesc || null, is_public: isPublicInput } : s)
+    setShowSettings(false)
   }
 
   async function forkSet() {
@@ -545,16 +546,10 @@ export default function SetDetail() {
                     <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${isPublicInput ? 'translate-x-5' : 'translate-x-0.5'}`} />
                   </div>
                 </button>
-                <button
-                  onClick={saveInfo}
-                  className="w-full py-2 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 transition-colors"
-                >
-                  Save
-                </button>
               </div>
 
               {/* FSRS — daily new cards */}
-              <div className="mb-6">
+              <div className="mb-5">
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-0.5">
                   Daily new cards
                 </label>
@@ -571,6 +566,13 @@ export default function SetDetail() {
                   className="w-24 border border-gray-300 dark:border-gray-600 rounded-xl px-3 py-2 text-sm text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-700 outline-none focus:border-indigo-500"
                 />
               </div>
+
+              <button
+                onClick={saveInfo}
+                className="w-full py-2 mb-5 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 transition-colors"
+              >
+                Save
+              </button>
 
               <div className="space-y-3 pt-4 border-t border-gray-100 dark:border-gray-700">
                 <button
