@@ -137,17 +137,21 @@ const RELEASES_PAGE  = 'https://github.com/Tong-Minh/Flashcards/releases/latest'
 const LATEST_RELEASE = 'https://api.github.com/repos/Tong-Minh/Flashcards/releases/latest'
 const PROMO_DISMISSED = 'fc_desktop_promo_dismissed'
 
-// Web app on Windows: offers the desktop app. Links straight to the newest installer (falling back to
-// the releases page), and stays hidden once dismissed.
+// Web app on Windows and Mac: offers the desktop app. On Windows it links straight to the newest
+// installer (falling back to the releases page); Macs don't have a build yet, so they see "coming
+// soon". Stays hidden once dismissed.
 export function DesktopAppPromo() {
-  const [show, setShow] = useState(false)
-  const [href, setHref] = useState(RELEASES_PAGE)
+  const [platform, setPlatform] = useState<'windows' | 'mac' | null>(null)
+  const [href,     setHref]     = useState(RELEASES_PAGE)
 
   useEffect(() => {
     let dismissed = false
     try { dismissed = localStorage.getItem(PROMO_DISMISSED) === '1' } catch {}
-    if (dismissed || !/Windows/i.test(navigator.userAgent)) return
-    setShow(true)
+    const ua = navigator.userAgent
+    const found = /Windows/i.test(ua) ? 'windows' : /Macintosh|Mac OS X/i.test(ua) && !/iPhone|iPad/i.test(ua) ? 'mac' : null
+    if (dismissed || !found) return
+    setPlatform(found)
+    if (found !== 'windows') return
     fetch(LATEST_RELEASE)
       .then(r => (r.ok ? r.json() : null))
       .then((release: { assets?: { name: string; browser_download_url: string }[] } | null) => {
@@ -157,11 +161,11 @@ export function DesktopAppPromo() {
       .catch(() => {})
   }, [])
 
-  if (!show) return null
+  if (!platform) return null
   return (
     <div className="relative mx-3 mb-3 rounded-xl border border-indigo-100 dark:border-indigo-900/60 bg-indigo-50 dark:bg-indigo-900/20 p-3">
       <button
-        onClick={() => { try { localStorage.setItem(PROMO_DISMISSED, '1') } catch {}; setShow(false) }}
+        onClick={() => { try { localStorage.setItem(PROMO_DISMISSED, '1') } catch {}; setPlatform(null) }}
         className="absolute top-1.5 right-1.5 p-1 rounded-md text-indigo-300 hover:text-indigo-600 dark:text-indigo-700 dark:hover:text-indigo-300 transition-colors"
         aria-label="Dismiss"
         title="Dismiss"
@@ -170,14 +174,23 @@ export function DesktopAppPromo() {
       </button>
       <p className="text-sm font-semibold text-indigo-900 dark:text-indigo-200 pr-4">Get the desktop app</p>
       <p className="text-xs text-indigo-700/80 dark:text-indigo-300/80 mt-0.5 mb-2.5 text-pretty">
-        Study offline with your cards saved in a folder on your PC. No size limits.
+        Study offline with your cards saved in a folder on your {platform === 'mac' ? 'Mac' : 'PC'}. No size limits.
       </p>
-      <a
-        href={href}
-        className="flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 transition-colors"
-      >
-        <Download size={14} /> Download for Windows
-      </a>
+      {platform === 'windows' ? (
+        <a
+          href={href}
+          className="flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 transition-colors"
+        >
+          <Download size={14} /> Download for Windows
+        </a>
+      ) : (
+        <button
+          disabled
+          className="flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg bg-indigo-600/40 dark:bg-indigo-500/30 text-white text-xs font-semibold cursor-not-allowed"
+        >
+          Mac version coming soon
+        </button>
+      )}
     </div>
   )
 }
