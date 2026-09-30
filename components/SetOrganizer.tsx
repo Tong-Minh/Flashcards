@@ -29,8 +29,8 @@ const collision: CollisionDetection = args => {
 
 // A list of the user's sets that can be organized:
 // - Long-press a set (or tap Select) to enter selection mode, then Move / Public·Private / Delete.
-// - Drag a set onto another to reorder (when `sortable`), or onto a collection card to move it.
-//   Mouse drags start from anywhere on the card; touch drags use the handle shown in selection mode.
+// - In selection mode, drag a set by its handle onto another to reorder (when `sortable`), or onto a
+//   collection card to move it. Outside selection mode sets can't be dragged.
 export function SetOrganizer({
   allSets, onSetsChange, collections, onCollectionsChange,
   listSets, dropCollections = [], setsByCollection = {}, sortable, label, title, actions, currentCollectionId = null, empty,
@@ -328,9 +328,8 @@ function SortableSet({ set, selecting, selected, onToggle, onLongPress }: {
     useSortable({ id: set.id })
   const longPress = useLongPress(onLongPress)
 
-  // Mouse: drag from anywhere on the card. Touch: only from the handle (selection mode), so a
-  // finger on the card still scrolls the page and a hold selects it.
-  const cardDrag = !selecting ? listeners : undefined
+  // Dragging only starts from the handle, which appears in selection mode (mouse and touch alike),
+  // so outside selection mode a set can't be moved by accident.
   return (
     <div
       ref={setNodeRef}
@@ -340,7 +339,6 @@ function SortableSet({ set, selecting, selected, onToggle, onLongPress }: {
       role={undefined}
       tabIndex={undefined}
       {...longPress}
-      onPointerDown={e => { longPress.onPointerDown(e); cardDrag?.onPointerDown?.(e) }}
     >
       <SetCard
         set={set}
