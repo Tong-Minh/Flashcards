@@ -21,6 +21,7 @@ import { ShareButton } from '@/components/ShareButton'
 import { DetailHeader, SettingsButton } from '@/components/DetailHeader'
 import { SearchBar } from '@/components/SearchBar'
 import { SetPickerSheet } from '@/components/SetPickerSheet'
+import { QuickActions, type QuickAction } from '@/components/QuickActions'
 import { useLongPress } from '@/lib/useLongPress'
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable'
@@ -423,6 +424,23 @@ export default function SetDetail() {
     ? Math.round((stats.correct_count / stats.cards_studied) * 100)
     : null
 
+  const noCards = cards.length === 0
+  // ` then a number: fixed order so the numbers stay the same (unavailable actions are greyed out)
+  const quickActions: QuickAction[] = isOwner ? [
+    { label: 'Add a card',   description: 'Create a new card in this set',     run: () => router.push(`/sets/${id}/create`), disabled: atCardLimit },
+    { label: 'Import cards', description: 'Paste text or generate with AI',    run: () => router.push(`/sets/${id}/import`), disabled: atCardLimit },
+    { label: 'Study',        description: dueToday > 0 ? `${dueToday} due` : 'Nothing due', run: () => router.push(`/sets/${id}/study`), disabled: noCards },
+    { label: 'View',         description: 'Flip through every card',          run: () => router.push(`/sets/${id}/study?mode=view`), disabled: noCards },
+    { label: 'Export as .txt',                                                  run: exportSet, disabled: noCards },
+    { label: 'Select cards', description: 'Move, reset or delete cards',       run: () => setSelecting(true), disabled: noCards },
+    { label: 'Settings',     description: 'Name, icon, collection, sharing',   run: () => setShowSettings(true) },
+  ] : [
+    { label: 'Study',          run: () => router.push(`/sets/${id}/study`), disabled: noCards },
+    { label: 'View',           run: () => router.push(`/sets/${id}/study?mode=view`), disabled: noCards },
+    { label: 'Duplicate set',  description: 'Save your own copy to study & edit', run: forkSet },
+    { label: 'Export as .txt', run: exportSet, disabled: noCards },
+  ]
+
   return (
     <div className="max-w-lg lg:max-w-6xl mx-auto px-4 py-6 lg:px-8 lg:py-8">
       {/* Desktop: the set (header, stats, Study) stays in a sticky left column beside the card list */}
@@ -558,6 +576,9 @@ export default function SetDetail() {
         </div>
       )}
 
+      <p className="hidden lg:block text-xs text-gray-400 dark:text-gray-500 mb-5">
+        Press <kbd className="px-1.5 py-px rounded border border-gray-300 dark:border-gray-600 font-sans text-[11px]">`</kbd> for quick actions
+      </p>
       </div>
 
       <div className="min-w-0">
@@ -833,6 +854,8 @@ export default function SetDetail() {
 
       </div>
       </div>
+
+      <QuickActions actions={quickActions} enabled={!showSettings && !previewCard && !showSetPicker} />
 
       {previewCard && <CardPreviewModal card={previewCard} onClose={closePreview} />}
 
