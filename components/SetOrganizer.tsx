@@ -33,7 +33,7 @@ const collision: CollisionDetection = args => {
 //   Mouse drags start from anywhere on the card; touch drags use the handle shown in selection mode.
 export function SetOrganizer({
   allSets, onSetsChange, collections, onCollectionsChange,
-  listSets, dropCollections = [], setsByCollection = {}, sortable, label, currentCollectionId = null, empty,
+  listSets, dropCollections = [], setsByCollection = {}, sortable, label, title, actions, currentCollectionId = null, empty,
 }: {
   allSets: SetWithStats[]
   onSetsChange: (next: SetWithStats[]) => void
@@ -47,6 +47,9 @@ export function SetOrganizer({
   // Off while a search or filter is hiding some sets
   sortable: boolean
   label?: string | null
+  // Replaces the small label with a heading, and extra buttons shown beside Select
+  title?: React.ReactNode
+  actions?: React.ReactNode
   // The collection page these sets are being viewed in
   currentCollectionId?: string | null
   empty?: React.ReactNode
@@ -210,11 +213,13 @@ export function SetOrganizer({
           </div>
         )}
 
-        {(listSets.length > 0 || selecting) && (
-          <div className="flex items-center justify-between mb-3 min-h-[1.75rem]">
-            <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">
-              {selecting ? `${selected.size} selected` : label ?? ''}
-            </p>
+        {(listSets.length > 0 || selecting || actions) && (
+          <div className="flex items-center justify-between gap-2 mb-3 min-h-[1.75rem]">
+            {title && !selecting ? title : (
+              <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">
+                {selecting ? `${selected.size} selected` : label ?? ''}
+              </p>
+            )}
             {selecting ? (
               <div className="flex items-center gap-3">
                 <button
@@ -226,7 +231,12 @@ export function SetOrganizer({
                 <button onClick={exitSelect} className="text-sm font-semibold text-gray-600 dark:text-gray-300">Done</button>
               </div>
             ) : (
-              <button onClick={() => enterSelect()} className="text-sm font-medium text-indigo-600 dark:text-indigo-400">Select</button>
+              <div className="flex items-center gap-2">
+                {listSets.length > 0 && (
+                  <button onClick={() => enterSelect()} className="text-sm font-medium text-indigo-600 dark:text-indigo-400 px-2 py-1.5">Select</button>
+                )}
+                {actions}
+              </div>
             )}
           </div>
         )}

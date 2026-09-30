@@ -205,12 +205,12 @@ export default function CollectionDetail() {
         ))}
       </div>
 
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="font-semibold text-gray-900 dark:text-gray-100">Sets</h2>
-        <div className="flex items-center gap-2">
+      <SetOrganizer
+        title={<h2 className="font-semibold text-gray-900 dark:text-gray-100">Sets</h2>}
+        actions={<>
           <button
             onClick={() => setShowPicker(true)}
-            className="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-medium px-3 py-1.5"
+            className="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-medium px-2 py-1.5"
           >
             Add existing
           </button>
@@ -220,10 +220,7 @@ export default function CollectionDetail() {
           >
             + New set
           </Link>
-        </div>
-      </div>
-
-      <SetOrganizer
+        </>}
         allSets={allSets}
         onSetsChange={next => { setAllSets(next); cacheSets(next) }}
         collections={ownCollections}
