@@ -1,0 +1,46 @@
+# Builds the Windows desktop app and publishes it as a GitHub Release when a version tag is pushed
+# (e.g. `npm version patch` then `git push --follow-tags`). The installed app checks the latest
+# release's latest.json and offers the update.
+name: Desktop release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - run: npm ci
+
+      # Runs `npm run build:desktop` (tauri.conf.json beforeBuildCommand), bundles the installers,
+      # signs the update, and uploads everything plus latest.json to the release
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Flashcards ${{ github.ref_name }}
+          releaseBody: Download the `_x64-setup.exe` file below and run it. Already installed? The app offers this update when it starts.
+          releaseDraft: false
+          prerelease: false
+          updaterJsonPreferNsis: true
