@@ -1,5 +1,8 @@
 import type { MetadataRoute } from 'next'
 
+// Static so the desktop build (a static export) can include it
+export const dynamic = 'force-static'
+
 export default function manifest(): MetadataRoute.Manifest {
   return {
     name: 'Flashcards',

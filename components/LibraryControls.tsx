@@ -64,7 +64,7 @@ export function DesktopLibraryFooter({ themeButton }: { themeButton: ReactNode }
     try {
       const [{ readLibraryZip }, { importLibraryFiles }] = await Promise.all([import('@/lib/libraryZip'), import('@/lib/store/desktop')])
       const { added, skipped } = await importLibraryFiles(await readLibraryZip(file))
-      alert(`Imported ${added} set${added !== 1 ? 's' : ''}${skipped ? ` (${skipped} already in this library were skipped)` : ''}.`)
+      alert(`Imported ${added} set${added !== 1 ? 's' : ''}.${skipped ? ` Skipped ${skipped} that ${skipped === 1 ? 'was' : 'were'} already in this library.` : ''}`)
       window.location.assign('/')
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Could not import that file.')
