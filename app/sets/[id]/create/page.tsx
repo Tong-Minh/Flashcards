@@ -2,8 +2,7 @@
 
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { supabase } from '@/lib/supabase/client'
-import { MAX_CARDS_PER_SET } from '@/lib/fetchAll'
+import { store } from '@/lib/store'
 import { CardForm, type CardDraft } from '@/components/CardForm'
 
 export default function CreateCard() {
@@ -11,16 +10,16 @@ export default function CreateCard() {
   const router = useRouter()
 
   async function save(card: CardDraft): Promise<string | null> {
-    const { count } = await supabase
-      .from('flashcards')
-      .select('id', { count: 'exact', head: true })
-      .eq('set_id', setId)
-    if ((count ?? 0) >= MAX_CARDS_PER_SET) {
-      return `This set already has the maximum of ${MAX_CARDS_PER_SET.toLocaleString()} cards.`
+    const count = await store.countCards(setId).catch(() => 0)
+    if (count >= store.maxCardsPerSet) {
+      return `This set already has the maximum of ${store.maxCardsPerSet.toLocaleString()} cards.`
     }
 
-    const { error } = await supabase.from('flashcards').insert({ set_id: setId, ...card })
-    if (error) return 'Failed to save. Please try again.'
+    try {
+      await store.addCards(setId, [card])
+    } catch {
+      return 'Failed to save. Please try again.'
+    }
     router.push(`/sets/${setId}`)
     return null
   }

@@ -3,9 +3,8 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { supabase } from '@/lib/supabase/client'
+import { store } from '@/lib/store'
 import { CardForm, type CardDraft } from '@/components/CardForm'
-import type { Flashcard } from '@/lib/types'
 
 export default function EditCard() {
   const { id: setId, cardId } = useParams<{ id: string; cardId: string }>()
@@ -17,15 +16,17 @@ export default function EditCard() {
   useEffect(() => { loadCard() }, [cardId])
 
   async function loadCard() {
-    const { data } = await supabase.from('flashcards').select('*').eq('id', cardId).single()
-    if (!data) { router.push(`/sets/${setId}`); return }
-    const c = data as Flashcard
+    const c = await store.getCard(cardId).catch(() => null)
+    if (!c) { router.push(`/sets/${setId}`); return }
     setCard({ type: c.type, question: c.question, answer: c.answer, options: c.options, pairs: c.pairs })
   }
 
   async function save(next: CardDraft): Promise<string | null> {
-    const { error } = await supabase.from('flashcards').update(next).eq('id', cardId)
-    if (error) return 'Failed to save. Please try again.'
+    try {
+      await store.updateCard(cardId, next)
+    } catch {
+      return 'Failed to save. Please try again.'
+    }
     router.push(`/sets/${setId}`)
     return null
   }
@@ -33,7 +34,7 @@ export default function EditCard() {
   async function handleDelete() {
     if (!confirm('Delete this card?')) return
     setDeleting(true)
-    await supabase.from('flashcards').delete().eq('id', cardId)
+    await store.deleteCards([cardId]).catch(() => {})
     router.push(`/sets/${setId}`)
   }
 

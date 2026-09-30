@@ -3,12 +3,10 @@
 import { useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { supabase } from '@/lib/supabase/client'
-import { MAX_CARDS_PER_SET } from '@/lib/fetchAll'
+import { store, PartialInsertError } from '@/lib/store'
 import { TYPE_BADGES } from '@/lib/cardTypes'
 import { parseCards } from '@/lib/cardFormat'
 
-const INSERT_CHUNK = 500
 
 const AI_PROMPT = `You are creating flashcards for a study set on: [REPLACE WITH YOUR TOPIC]
 
@@ -87,40 +85,26 @@ export default function ImportCards() {
     setError('')
     setImporting(true)
 
-    const { count } = await supabase
-      .from('flashcards')
-      .select('id', { count: 'exact', head: true })
-      .eq('set_id', setId)
-    const room = MAX_CARDS_PER_SET - (count ?? 0)
+    const count = await store.countCards(setId).catch(() => 0)
+    const room = store.maxCardsPerSet - count
     if (preview.length > room) {
       setError(
         room <= 0
-          ? `This set already has the maximum of ${MAX_CARDS_PER_SET.toLocaleString()} cards.`
-          : `Sets can hold up to ${MAX_CARDS_PER_SET.toLocaleString()} cards. This set has room for ${room.toLocaleString()} more, but you're importing ${preview.length.toLocaleString()}.`
+          ? `This set already has the maximum of ${store.maxCardsPerSet.toLocaleString()} cards.`
+          : `Sets can hold up to ${store.maxCardsPerSet.toLocaleString()} cards. This set has room for ${room.toLocaleString()} more, but you're importing ${preview.length.toLocaleString()}.`
       )
       setImporting(false)
       return
     }
 
-    const rows = preview.map((c) => ({
-      set_id: setId,
-      question: c.question,
-      answer: c.answer,
-      options: c.options,
-      pairs: c.pairs,
-      type: c.type,
-    }))
-
-    // Insert in chunks to keep request bodies reasonable for large imports
-    for (let i = 0; i < rows.length; i += INSERT_CHUNK) {
-      const { error: err } = await supabase.from('flashcards').insert(rows.slice(i, i + INSERT_CHUNK))
-      if (err) {
-        setError(i === 0
-          ? 'Import failed. Please try again.'
-          : `Import stopped partway — ${i} of ${rows.length} cards were added. Please try the rest again.`)
-        setImporting(false)
-        return
-      }
+    try {
+      await store.addCards(setId, preview.map(c => ({ type: c.type, question: c.question, answer: c.answer, options: c.options, pairs: c.pairs })))
+    } catch (err) {
+      setError(err instanceof PartialInsertError
+        ? `Import stopped partway — ${err.added} of ${preview.length} cards were added. Please try the rest again.`
+        : 'Import failed. Please try again.')
+      setImporting(false)
+      return
     }
 
     router.push(`/sets/${setId}`)
