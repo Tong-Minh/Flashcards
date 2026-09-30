@@ -12,7 +12,7 @@ import {
   resetTodayNewCount, clearSavedSession,
   getCachedCollections, cacheSets,
 } from '@/lib/storage'
-import { fetchAllRows, MAX_CARDS_PER_SET } from '@/lib/fetchAll'
+import { store } from '@/lib/store'
 import { previewText, ContentRenderer, hasFormattedContent } from '@/components/ContentRenderer'
 import { CardPreviewModal } from '@/components/CardPreview'
 import { TagInput } from '@/components/TagInput'
@@ -141,38 +141,25 @@ export default function SetDetail() {
     const settings = getSetSettings(id)
     setDailyLimitInput(settings.dailyNewLimit)
 
-    if (!navigator.onLine) { setLoading(false); return }
+    if (store.remote && !navigator.onLine) { setLoading(false); return }
 
-    const [setRes, rawCards, statsRes, collectionsRes] = await Promise.all([
-      supabase.from('sets').select('*').eq('id', id).single(),
-      fetchAllRows<FlashcardWithProgress>(() => supabase
-        .from('flashcards')
-        .select('*, progress:card_progress(*)')
-        .eq('set_id', id)
-        .order('position', { ascending: true, nullsFirst: false })
-        .order('created_at', { ascending: true })
-        .order('id', { ascending: true }), MAX_CARDS_PER_SET),
-      supabase.from('set_study_stats').select('sessions, cards_studied, correct_count, mastered_count, last_studied_at').eq('set_id', id).maybeSingle(),
-      // Own collections only: RLS also returns other people's shared ones
-      supabase.from('collections').select('*').eq('user_id', currentUser?.id ?? '00000000-0000-0000-0000-000000000000').order('name'),
+    const [freshSet, freshCards, freshStats, freshCollections] = await Promise.all([
+      store.getSet(id),
+      store.getCards(id),
+      store.getSetStats(id),
+      store.listCollections(currentUser?.id ?? '00000000-0000-0000-0000-000000000000').catch(() => null),
     ])
 
-    if (!setRes.data) { router.push('/'); return }
+    if (!freshSet) { router.push('/'); return }
 
-    const freshCards = rawCards.map((c) => ({
-      ...c,
-      progress: Array.isArray(c.progress) ? (c.progress[0] ?? null) : c.progress,
-    }))
-    const freshStats = (statsRes.data as SetStudyStats | null) ?? null
-
-    setSet(setRes.data)
-    setNameInput(setRes.data.name)
-    setDescInput(setRes.data.description ?? '')
-    setIsPublicInput(setRes.data.is_public ?? false)
-    setTagsInput(setRes.data.tags ?? [])
-    setCollectionInput(setRes.data.collection_id ?? '')
-    setIconInput({ icon: setRes.data.icon ?? null, color: setRes.data.color ?? null })
-    if (collectionsRes.data) setCollections(collectionsRes.data)
+    setSet(freshSet)
+    setNameInput(freshSet.name)
+    setDescInput(freshSet.description ?? '')
+    setIsPublicInput(freshSet.is_public ?? false)
+    setTagsInput(freshSet.tags ?? [])
+    setCollectionInput(freshSet.collection_id ?? '')
+    setIconInput({ icon: freshSet.icon ?? null, color: freshSet.color ?? null })
+    if (freshCollections) setCollections(freshCollections)
     setCards(freshCards)
     setStats(freshStats)
     cacheCards(id, freshCards)
@@ -193,8 +180,7 @@ export default function SetDetail() {
       icon: iconInput.icon,
       color: iconInput.color,
     }
-    const { error } = await supabase.from('sets').update(patch).eq('id', id)
-    if (error) return
+    try { await store.updateSet(id, patch) } catch { return }
     setSet(s => s ? { ...s, ...patch } : s)
     cacheSets(getCachedSets().map(s => (s.id === id ? { ...s, ...patch } : s)))
     setShowSettings(false)
@@ -224,15 +210,6 @@ export default function SetDetail() {
     setSelectedCards(new Set())
   }
 
-  // Applies to the selected cards, in chunks so id lists stay well under URL length limits
-  async function forSelected(fn: (chunk: string[]) => PromiseLike<{ error: unknown }>) {
-    const ids = [...selectedCards]
-    for (let i = 0; i < ids.length; i += 200) {
-      const { error } = await fn(ids.slice(i, i + 200))
-      if (error) throw error
-    }
-  }
-
   function adjustCachedCount(setId: string, delta: number) {
     cacheSets(getCachedSets().map(s => (s.id === setId ? { ...s, totalCards: Math.max(0, (s.totalCards ?? 0) + delta) } : s)))
   }
@@ -242,8 +219,7 @@ export default function SetDetail() {
     if (!confirm(`Delete ${n} card${n !== 1 ? 's' : ''}? This can't be undone.`)) return
     setCardBusy(true)
     try {
-      // card_progress rows cascade-delete with their cards
-      await forSelected(chunk => supabase.from('flashcards').delete().in('id', chunk))
+      await store.deleteCards([...selectedCards])
       const remaining = cards.filter(c => !selectedCards.has(c.id))
       setCards(remaining)
       cacheCards(id, remaining)
@@ -261,7 +237,7 @@ export default function SetDetail() {
     if (!confirm(`Reset progress on ${n} card${n !== 1 ? 's' : ''}? They go back to New.`)) return
     setCardBusy(true)
     try {
-      await forSelected(chunk => supabase.from('card_progress').delete().in('card_id', chunk))
+      await store.resetProgress([...selectedCards])
       const reset = cards.map(c => (selectedCards.has(c.id) ? { ...c, progress: null } : c))
       setCards(reset)
       cacheCards(id, reset)
@@ -279,13 +255,13 @@ export default function SetDetail() {
     setShowSetPicker(false)
     setCardBusy(true)
     try {
-      const { count } = await supabase.from('flashcards').select('id', { count: 'exact', head: true }).eq('set_id', destId)
-      if ((count ?? 0) + moving.length > MAX_CARDS_PER_SET) {
-        alert(`"${dest?.name ?? 'That set'}" can only take ${Math.max(0, MAX_CARDS_PER_SET - (count ?? 0))} more cards.`)
+      const count = await store.countCards(destId)
+      if (count + moving.length > store.maxCardsPerSet) {
+        alert(`"${dest?.name ?? 'That set'}" can only take ${Math.max(0, store.maxCardsPerSet - count)} more cards.`)
         return
       }
       // Moved cards go to the end of the other set; their study progress comes with them
-      await forSelected(chunk => supabase.from('flashcards').update({ set_id: destId, position: null }).in('id', chunk))
+      await store.moveCards([...selectedCards], destId)
       const remaining = cards.filter(c => !selectedCards.has(c.id))
       setCards(remaining)
       cacheCards(id, remaining)
@@ -314,11 +290,7 @@ export default function SetDetail() {
 
   async function resetProgress() {
     if (!confirm('Reset all FSRS progress for this set? Cards will return to New state.')) return
-    // Chunked so the id list in the query string stays well under URL length limits
-    const cardIds = cards.map(c => c.id)
-    for (let i = 0; i < cardIds.length; i += 200) {
-      await supabase.from('card_progress').delete().in('card_id', cardIds.slice(i, i + 200))
-    }
+    await store.resetProgress(cards.map(c => c.id)).catch(() => {})
     resetTodayNewCount(id)
     const reset = cards.map(c => ({ ...c, progress: null }))
     setCards(reset)
@@ -328,9 +300,12 @@ export default function SetDetail() {
 
   async function clearAllCards() {
     if (!confirm(`Delete all ${cards.length} cards in "${set?.name}"? The set, its settings, and its study history are kept. This can't be undone.`)) return
-    // card_progress rows cascade-delete with their cards
-    const { error } = await supabase.from('flashcards').delete().eq('set_id', id)
-    if (error) { alert('Failed to clear cards. Please try again.'); return }
+    try {
+      await store.clearCards(id)
+    } catch {
+      alert('Failed to clear cards. Please try again.')
+      return
+    }
     resetTodayNewCount(id)
     clearSavedSession(id)
     setCards([])
@@ -341,7 +316,7 @@ export default function SetDetail() {
 
   async function deleteSet() {
     if (!confirm(`Delete "${set?.name}" and all its cards?`)) return
-    await supabase.from('sets').delete().eq('id', id)
+    await store.deleteSets([id]).catch(() => {})
     router.push('/')
   }
 
@@ -363,11 +338,12 @@ export default function SetDetail() {
     const next    = moved.map((c, i) => ({ ...c, position: i }))
     setCards(next)
     cacheCards(id, next)
-    const { error } = await supabase.rpc('reorder_cards', {
-      card_ids: changed.map(c => c.id),
-      positions: changed.map(c => c.position),
-    })
-    if (error) { setCards(before); cacheCards(id, before) }
+    try {
+      await store.reorderCards(changed)
+    } catch {
+      setCards(before)
+      cacheCards(id, before)
+    }
   }
 
   if (loading && !set) {
@@ -384,7 +360,7 @@ export default function SetDetail() {
   }).length
 
   const setCollection = set?.collection_id ? collections.find(c => c.id === set.collection_id) ?? null : null
-  const atCardLimit   = cards.length >= MAX_CARDS_PER_SET
+  const atCardLimit   = cards.length >= store.maxCardsPerSet
   const statusCounts  = cards.reduce<Record<string, number>>((acc, c) => {
     const s = c.progress?.status ?? 'new'
     acc[s] = (acc[s] ?? 0) + 1
@@ -646,7 +622,7 @@ export default function SetDetail() {
                 </div>
               )}
               {isOwner && atCardLimit && (
-                <span className="text-xs text-gray-400 dark:text-gray-500 ml-1">Limit of {MAX_CARDS_PER_SET.toLocaleString()} reached</span>
+                <span className="text-xs text-gray-400 dark:text-gray-500 ml-1">Limit of {store.maxCardsPerSet.toLocaleString()} reached</span>
               )}
               {isOwner && !atCardLimit && (
                 <Link
