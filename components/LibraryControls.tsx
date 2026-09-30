@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { Download, FolderOpen, FileUp, RefreshCw } from 'lucide-react'
+import { Download, FolderOpen, FileUp, RefreshCw, X } from 'lucide-react'
 import { useUser } from '@/components/AuthGuard'
 import { inTauri } from '@/lib/platform'
 
@@ -129,6 +129,55 @@ export function DesktopLibraryFooter({ themeButton }: { themeButton: ReactNode }
           onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) importZip(f) }}
         />
       </div>
+    </div>
+  )
+}
+
+const RELEASES_PAGE  = 'https://github.com/Tong-Minh/Flashcards/releases/latest'
+const LATEST_RELEASE = 'https://api.github.com/repos/Tong-Minh/Flashcards/releases/latest'
+const PROMO_DISMISSED = 'fc_desktop_promo_dismissed'
+
+// Web app on Windows: offers the desktop app. Links straight to the newest installer (falling back to
+// the releases page), and stays hidden once dismissed.
+export function DesktopAppPromo() {
+  const [show, setShow] = useState(false)
+  const [href, setHref] = useState(RELEASES_PAGE)
+
+  useEffect(() => {
+    let dismissed = false
+    try { dismissed = localStorage.getItem(PROMO_DISMISSED) === '1' } catch {}
+    if (dismissed || !/Windows/i.test(navigator.userAgent)) return
+    setShow(true)
+    fetch(LATEST_RELEASE)
+      .then(r => (r.ok ? r.json() : null))
+      .then((release: { assets?: { name: string; browser_download_url: string }[] } | null) => {
+        const exe = release?.assets?.find(a => a.name.endsWith('-setup.exe'))
+        if (exe) setHref(exe.browser_download_url)
+      })
+      .catch(() => {})
+  }, [])
+
+  if (!show) return null
+  return (
+    <div className="relative mx-3 mb-3 rounded-xl border border-indigo-100 dark:border-indigo-900/60 bg-indigo-50 dark:bg-indigo-900/20 p-3">
+      <button
+        onClick={() => { try { localStorage.setItem(PROMO_DISMISSED, '1') } catch {}; setShow(false) }}
+        className="absolute top-1.5 right-1.5 p-1 rounded-md text-indigo-300 hover:text-indigo-600 dark:text-indigo-700 dark:hover:text-indigo-300 transition-colors"
+        aria-label="Dismiss"
+        title="Dismiss"
+      >
+        <X size={14} />
+      </button>
+      <p className="text-sm font-semibold text-indigo-900 dark:text-indigo-200 pr-4">Get the desktop app</p>
+      <p className="text-xs text-indigo-700/80 dark:text-indigo-300/80 mt-0.5 mb-2.5 text-pretty">
+        Study offline with your cards saved in a folder on your PC. No size limits.
+      </p>
+      <a
+        href={href}
+        className="flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 transition-colors"
+      >
+        <Download size={14} /> Download for Windows
+      </a>
     </div>
   )
 }

@@ -12,7 +12,7 @@ import { getCachedCollections, COLLECTIONS_EVENT } from '@/lib/storage'
 import type { Collection } from '@/lib/types'
 import { paths } from '@/lib/paths'
 import { IS_DESKTOP } from '@/lib/platform'
-import { DesktopLibraryFooter, DownloadLibraryButton } from '@/components/LibraryControls'
+import { DesktopAppPromo, DesktopLibraryFooter, DownloadLibraryButton } from '@/components/LibraryControls'
 
 // Pages that get the whole screen: signing in, and studying (focus mode)
 function isBare(pathname: string) {
@@ -126,6 +126,8 @@ function Sidebar() {
           )
         })}
       </div>
+
+      {!IS_DESKTOP && <DesktopAppPromo />}
 
       {IS_DESKTOP ? (
         <DesktopLibraryFooter themeButton={themeButton} />
