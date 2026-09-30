@@ -24,6 +24,7 @@ Mobile-first flashcard PWA with FSRS spaced repetition. Next.js 15 (App Router) 
 - **Icons:** `lib/icons.ts` holds the curated lucide icon map (keys are stored in `sets.icon`/`collections.icon`, so never rename one), the color map, and `suggestIcon(name)`. `ItemIcon` renders the tile; `IconPicker` is the picker sheet. A null icon/color falls back to the set or collection default.
 - **Export:** `lib/cardFormat.ts` writes a set as tab-separated text in the import format (Export button on the set page). Keep it in sync with the importer when card types change.
 - **Card display:** `components/CardPreview.tsx` has `FlipCard` (tap to flip, optional swipe-to-dismiss), used by the Cards-tab preview modal and study View mode. Its `card-enter` animation must only play on mount; re-applying it after a flip causes a double rotation.
+- **Home tabs:** My Sets (client-side search + tag filter over cached sets), Discover (`components/DiscoverTab.tsx`, calls the `discover_sets` RPC), Friends.
 - **View mode:** the set page's View button opens `/sets/[id]/study?mode=view`. It browses every card in set order.
 
 ## Data model (Supabase, `public` schema)

@@ -9,13 +9,15 @@ import { getCachedSets, getCachedCollections } from '@/lib/storage'
 import { loadSetsAndCollections, type SetWithStats } from '@/lib/sets'
 import { SetCard, CollectionCard } from '@/components/SetCard'
 import FriendsTab from '@/components/FriendsTab'
+import DiscoverTab from '@/components/DiscoverTab'
+import { SearchBar } from '@/components/SearchBar'
 import type { Collection } from '@/lib/types'
 
 async function signOut() {
   await supabase.auth.signOut()
 }
 
-type Tab = 'mine' | 'friends'
+type Tab = 'mine' | 'discover' | 'friends'
 
 export default function Home() {
   const currentUser = useUser()
@@ -26,6 +28,7 @@ export default function Home() {
   const [loading,     setLoading]     = useState(true)
   const [showNewMenu, setShowNewMenu] = useState(false)
   const [activeTag,   setActiveTag]   = useState<string | null>(null)
+  const [search,      setSearch]      = useState('')
 
   useEffect(() => {
     const cached = getCachedSets()
@@ -64,15 +67,21 @@ export default function Home() {
   }, [sets])
 
   const collectionIds = new Set(collections.map(c => c.id))
-  // With a tag filter, show every matching set (even ones inside collections); otherwise only ungrouped sets.
-  const visibleCollections = activeTag ? collections.filter(c => c.tags?.includes(activeTag)) : collections
-  const visibleSets = activeTag
-    ? sets.filter(s => s.tags?.includes(activeTag))
+  const q = search.trim().toLowerCase().replace(/^#/, '')
+  const matches = (item: { name: string; description: string | null; tags: string[] | null }) =>
+    (!activeTag || !!item.tags?.includes(activeTag)) &&
+    (!q || item.name.toLowerCase().includes(q) || !!item.description?.toLowerCase().includes(q) || !!item.tags?.some(t => t.includes(q)))
+  // With a tag filter or search, show every matching set (even ones inside collections); otherwise only ungrouped sets.
+  const filtering = !!activeTag || !!q
+  const visibleCollections = filtering ? collections.filter(matches) : collections
+  const visibleSets = filtering
+    ? sets.filter(matches)
     : sets.filter(s => !s.collection_id || !collectionIds.has(s.collection_id))
 
   const TAB_LABELS: Record<Tab, string> = {
-    mine:    'My Sets',
-    friends: 'Friends',
+    mine:     'My Sets',
+    discover: 'Discover',
+    friends:  'Friends',
   }
 
   return (
@@ -163,6 +172,8 @@ export default function Home() {
           </div>
         ) : (
           <>
+            <SearchBar value={search} onChange={setSearch} placeholder="Search your sets and collections" className="mb-3" />
+
             {/* Tag filter */}
             {allTags.length > 0 && (
               <div className="flex gap-1.5 overflow-x-auto pb-1 mb-4 -mx-4 px-4">
@@ -201,7 +212,7 @@ export default function Home() {
 
             {visibleCollections.length > 0 && visibleSets.length > 0 && (
               <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-3">
-                {activeTag ? 'Sets' : 'Ungrouped sets'}
+                {filtering ? 'Sets' : 'Ungrouped sets'}
               </p>
             )}
 
@@ -209,12 +220,17 @@ export default function Home() {
               {visibleSets.map(set => <SetCard key={set.id} set={set} />)}
             </div>
 
-            {activeTag && visibleSets.length === 0 && visibleCollections.length === 0 && (
-              <p className="text-center text-sm text-gray-400 dark:text-gray-500 py-10">Nothing tagged #{activeTag}</p>
+            {filtering && visibleSets.length === 0 && visibleCollections.length === 0 && (
+              <p className="text-center text-sm text-gray-400 dark:text-gray-500 py-10">
+                {q ? <>Nothing matches &ldquo;{search.trim()}&rdquo;{activeTag && <> in #{activeTag}</>}</> : <>Nothing tagged #{activeTag}</>}
+              </p>
             )}
           </>
         )
       )}
+
+      {/* ── Discover ──────────────────────────────────────────────────── */}
+      {tab === 'discover' && <DiscoverTab />}
 
       {/* ── Friends ─────────────────────────────────────────────────────── */}
       {tab === 'friends' && currentUser && (
