@@ -7,6 +7,7 @@ import {
 } from '@dnd-kit/core'
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { restrictToVerticalAxis, restrictToWindowEdges } from '@dnd-kit/modifiers'
 import { GripVertical } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
 import { useLongPress } from '@/lib/useLongPress'
@@ -201,6 +202,8 @@ export function SetOrganizer({
       <DndContext
         sensors={sensors}
         collisionDetection={collision}
+        // Lists only move up and down; without this a dragged card can slide off sideways forever
+        modifiers={[restrictToVerticalAxis, restrictToWindowEdges]}
         onDragStart={() => { suppressClick.current = true }}
         onDragCancel={() => { suppressClick.current = false }}
         onDragEnd={handleDragEnd}

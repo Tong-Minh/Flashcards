@@ -24,6 +24,7 @@ import { SetPickerSheet } from '@/components/SetPickerSheet'
 import { useLongPress } from '@/lib/useLongPress'
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { restrictToVerticalAxis, restrictToWindowEdges } from '@dnd-kit/modifiers'
 import { SortableRow } from '@/components/SortableRow'
 import { Pencil } from 'lucide-react'
 import { exportCards, downloadText } from '@/lib/cardFormat'
@@ -674,6 +675,8 @@ export default function SetDetail() {
         <DndContext
           sensors={cardSensors}
           collisionDetection={closestCenter}
+          // Cards only move up and down, and stay on screen
+          modifiers={[restrictToVerticalAxis, restrictToWindowEdges]}
           onDragStart={() => { cardDragged.current = true }}
           onDragCancel={() => { cardDragged.current = false }}
           onDragEnd={handleCardDragEnd}

@@ -1,9 +1,10 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { InputRule, Mark, Node, mergeAttributes, type Extensions } from '@tiptap/core'
+import { Extension, InputRule, Mark, Node, mergeAttributes, type Extensions } from '@tiptap/core'
 import { NodeViewWrapper, ReactNodeViewRenderer, type ReactNodeViewProps } from '@tiptap/react'
-import { TextSelection, type EditorState } from '@tiptap/pm/state'
+import { Plugin, TextSelection, type EditorState } from '@tiptap/pm/state'
+import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import StarterKit from '@tiptap/starter-kit'
 import Document from '@tiptap/extension-document'
 import { BulletList, OrderedList, ListItem, ListKeymap } from '@tiptap/extension-list'
@@ -31,6 +32,8 @@ function MathView({ node, updateAttributes, deleteNode, editor, getPos, selected
   const latex   = String(node.attrs.latex ?? '')
   const display = node.type.name === 'mathBlock' || !!node.attrs.display
   const ref     = useRef<HTMLSpanElement>(null)
+  // Where the pointer went down, so a drag (selecting) isn't mistaken for a click (editing)
+  const pressAt = useRef<{ x: number; y: number } | null>(null)
   // A freshly inserted empty node opens its editor straight away
   const [anchor, setAnchor] = useState<DOMRect | null>(null)
 
@@ -80,8 +83,16 @@ function MathView({ node, updateAttributes, deleteNode, editor, getPos, selected
     <NodeViewWrapper as={Tag} className={node.type.name === 'mathBlock' ? 'flex justify-center py-2' : display ? 'block text-center py-1' : 'inline'}>
       <span
         ref={ref}
-        onMouseDown={e => e.preventDefault()}
-        onClick={e => { e.stopPropagation(); setAnchor(e.currentTarget.getBoundingClientRect()) }}
+        // Dragging across the equation selects it (to copy the whole thing); a plain click opens the
+        // LaTeX editor, where part of it can be selected
+        onMouseDown={e => { pressAt.current = { x: e.clientX, y: e.clientY } }}
+        onClick={e => {
+          e.stopPropagation()
+          const p = pressAt.current
+          pressAt.current = null
+          if (p && Math.hypot(e.clientX - p.x, e.clientY - p.y) > 4) return
+          setAnchor(e.currentTarget.getBoundingClientRect())
+        }}
         className={`cursor-pointer rounded px-0.5 transition-colors hover:bg-indigo-50 dark:hover:bg-indigo-900/30 ${
           selected || anchor ? 'ring-2 ring-indigo-400 bg-indigo-50 dark:bg-indigo-900/30' : ''
         } ${display ? 'inline-block overflow-x-auto max-w-full' : 'inline-block align-middle'}`}
@@ -98,9 +109,20 @@ function MathView({ node, updateAttributes, deleteNode, editor, getPos, selected
   )
 }
 
+// Explicit data- attributes so copied math pastes back exactly (the default attribute round-trip
+// turns display=false into the string "false", which reads back as true)
+const latexAttr = {
+  default: '',
+  parseHTML: (el: HTMLElement) => el.getAttribute('data-latex') ?? '',
+  renderHTML: (attrs: Record<string, unknown>) => ({ 'data-latex': String(attrs.latex ?? '') }),
+}
 const mathAttrs = {
-  latex:   { default: '' },
-  display: { default: false },
+  latex: latexAttr,
+  display: {
+    default: false,
+    parseHTML: (el: HTMLElement) => el.getAttribute('data-display') === 'true',
+    renderHTML: (attrs: Record<string, unknown>) => ({ 'data-display': attrs.display ? 'true' : 'false' }),
+  },
 }
 
 export const MathInline = Node.create({
@@ -150,7 +172,7 @@ export const MathBlock = Node.create({
   group: 'block',
   atom: true,
   selectable: true,
-  addAttributes() { return { latex: { default: '' } } },
+  addAttributes() { return { latex: latexAttr } },
   parseHTML() { return [{ tag: 'div[data-math-block]' }] },
   renderHTML({ HTMLAttributes }) { return ['div', mergeAttributes(HTMLAttributes, { 'data-math-block': '' })] },
   renderText({ node }) { return `$$${node.attrs.latex}$$` },
@@ -158,6 +180,29 @@ export const MathBlock = Node.create({
 })
 
 // ── Extension sets ────────────────────────────────────────────────────────────
+
+// The browser doesn't paint the selection highlight over rendered math (it isn't editable text), so
+// equations fully inside a text selection get a class that highlights them as one whole block.
+const MathInSelection = Extension.create({
+  name: 'mathInSelection',
+  addProseMirrorPlugins() {
+    return [new Plugin({
+      props: {
+        decorations(state) {
+          const { from, to, empty } = state.selection
+          if (empty) return null
+          const decorations: Decoration[] = []
+          state.doc.nodesBetween(from, to, (node, pos) => {
+            if ((node.type.name === 'mathInline' || node.type.name === 'mathBlock') && pos >= from && pos + node.nodeSize <= to) {
+              decorations.push(Decoration.node(pos, pos + node.nodeSize, { class: 'math-in-selection' }))
+            }
+          })
+          return DecorationSet.create(state.doc, decorations)
+        },
+      },
+    })]
+  },
+})
 
 export function buildExtensions({ singleLine, placeholder }: { singleLine?: boolean; placeholder?: string }): Extensions {
   return [
@@ -192,6 +237,7 @@ export function buildExtensions({ singleLine, placeholder }: { singleLine?: bool
         ]),
     ColorMark,
     MathInline,
+    MathInSelection,
     ...(placeholder ? [Placeholder.configure({ placeholder })] : []),
   ]
 }

@@ -119,3 +119,7 @@ pre[class*="language-"], code[class*="language-"] {
   box-shadow: 0 1px 3px rgb(0 0 0 / 0.25);
 }
 .scrubber:focus-visible { outline: 2px solid #6366f1; outline-offset: 4px; border-radius: 9999px; }
+
+/* Editor: an equation inside a text selection is highlighted as one whole block (see MathInSelection) */
+.tiptap-card-editor .math-in-selection > span,
+.tiptap-card-editor .math-in-selection > span > span { background-color: rgb(99 102 241 / 0.22); border-radius: 0.25rem; }

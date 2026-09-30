@@ -176,17 +176,22 @@ interface RichTextBlockProps {
   onFocused: () => void
   onChange: (content: string) => void
   onInsertBlock: (before: string, after: string) => void
+  // Pasted markup containing code fences: replace this text block with `markup` (split into blocks)
+  onPasteBlocks?: (markup: string) => void
   // Backspace with the cursor at the very start; return true if handled (e.g. a code block above)
   onBackspaceAtStart?: () => boolean
   onOtherKey?: () => void
 }
+
+// Pasted plain text that looks like card markup: $math$, **bold**, [color]…[/color], # heading, list lines
+const MARKUP_HINT = /(?<![\\$])\$[^$\n]+\$|\*\*[^*\n]+\*\*|\[(\w+)\][\s\S]+?\[\/\1\]|^#{1,3} |^\s*(?:[-*]|\d+\.) /m
 
 type SlashState = { from: number; filter: string; top: number; left: number }
 type ToolbarState = { top: number; left: number }
 
 function RichTextBlock({
   content, placeholder, minRows, isFirst, singleLine,
-  focusAt, onFocused, onChange, onInsertBlock, onBackspaceAtStart, onOtherKey,
+  focusAt, onFocused, onChange, onInsertBlock, onPasteBlocks, onBackspaceAtStart, onOtherKey,
 }: RichTextBlockProps) {
   const keyCallbacks = useRef({ onBackspaceAtStart, onOtherKey })
   keyCallbacks.current = { onBackspaceAtStart, onOtherKey }
@@ -197,6 +202,8 @@ function RichTextBlock({
   const onInsertBlockRef = useRef(onInsertBlock)
   onChangeRef.current      = onChange
   onInsertBlockRef.current = onInsertBlock
+  const onPasteBlocksRef = useRef(onPasteBlocks)
+  onPasteBlocksRef.current = onPasteBlocks
   const [slash,   setSlash]   = useState<SlashState | null>(null)
   const [selIdx,  setSelIdx]  = useState(0)
   const [toolbar, setToolbar] = useState<ToolbarState | null>(null)
@@ -263,6 +270,25 @@ function RichTextBlock({
     editorProps: {
       attributes: {
         class: 'tiptap-card-editor focus:outline-none text-gray-900 dark:text-gray-100 leading-relaxed',
+      },
+      // Plain-text markup (a copied code block or equation, or card text from elsewhere) is rebuilt into
+      // real code blocks and math. Rich clipboard HTML, including copies from this editor, pastes normally.
+      handlePaste: (view, event) => {
+        const text = event.clipboardData?.getData('text/plain') ?? ''
+        const html = event.clipboardData?.getData('text/html') ?? ''
+        if (!text || html) return false
+        const hasCode = text.includes('```')
+        if (!hasCode && !MARKUP_HINT.test(text)) return false
+        if (hasCode) {
+          if (singleLine || !onPasteBlocksRef.current) return false
+          const { from, to } = view.state.selection
+          const before = serializeMarkup(view.state.doc.cut(0, from).toJSON()).replace(/\n$/, '')
+          const after  = serializeMarkup(view.state.doc.cut(to).toJSON()).replace(/^\n/, '')
+          onPasteBlocksRef.current([before, text.trim(), after].filter(Boolean).join('\n'))
+          return true
+        }
+        editorRef.current?.chain().focus().insertContent(parseMarkup(text, { singleLine }).content ?? []).run()
+        return true
       },
       handleKeyDown: (view, event) => {
         if (event.key !== 'Backspace') keyCallbacks.current.onOtherKey?.()
@@ -556,6 +582,12 @@ function CodeBlockCard({ block, armed, initialEditing, onChange, onDelete, onDra
             setEditing(true)
           }}
           title="Click to edit · drag across to select all"
+          // Copying the highlighted block copies it as a whole code block (fences + language), so pasting
+          // it into a card recreates the block rather than dropping in bare code
+          onCopy={e => {
+            e.preventDefault()
+            e.clipboardData.setData('text/plain', `\`\`\`${block.lang}\n${block.content}\n\`\`\``)
+          }}
         >
           <code
             className={resolvedLang ? `language-${resolvedLang}` : undefined}
@@ -639,6 +671,14 @@ export function BlockEditor({ value, onChange, rows = 3, placeholder, className,
     if (last) setFocusReq({ id: last.id, at: 'end' })
   }
 
+  // Replace a text block with pasted markup that contains code fences, re-split into text and code blocks
+  function pasteBlocks(id: string, markup: string) {
+    const idx = blocks.findIndex(b => b.id === id)
+    if (idx < 0) return
+    const next = blocks.map((b, i) => (i === idx ? { ...(b as TextBlock), content: markup } : b))
+    commit(parseBlocks(serializeBlocks(next)))
+  }
+
   function insertBlock(afterId: string, before: string, after: string) {
     const idx = blocks.findIndex(b => b.id === afterId)
     if (idx < 0) return
@@ -710,6 +750,7 @@ export function BlockEditor({ value, onChange, rows = 3, placeholder, className,
               onFocused={() => setFocusReq(null)}
               onChange={content => updateBlock(block.id, { content })}
               onInsertBlock={(before, after) => insertBlock(block.id, before, after)}
+              onPasteBlocks={markup => pasteBlocks(block.id, markup)}
               onBackspaceAtStart={() => handleBackspaceAtStart(idx)}
               onOtherKey={() => setArmedCodeId(null)}
             />
