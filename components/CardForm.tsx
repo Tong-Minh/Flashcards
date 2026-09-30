@@ -3,15 +3,9 @@
 import { useRef, useState } from 'react'
 import { BlockEditor } from '@/components/BlockEditor'
 import { TYPE_LABELS, CARD_TYPES } from '@/lib/cardTypes'
-import type { CardType, MatchPair } from '@/lib/types'
+import type { CardDraft, CardType, MatchPair } from '@/lib/types'
 
-export interface CardDraft {
-  type: CardType
-  question: string
-  answer: string
-  options: string[] | null
-  pairs: MatchPair[] | null
-}
+export type { CardDraft } from '@/lib/types'
 
 const MIN_PAIRS = 2
 const MAX_PAIRS = 8

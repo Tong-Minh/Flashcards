@@ -1,68 +1,15 @@
-import { supabase } from './supabase/client'
-import { fetchAllRows } from './fetchAll'
+import { store, type SetWithStats } from './store'
 import { cacheSets, cacheCollections } from './storage'
-import type { Collection, FlashcardSet } from './types'
+import type { Collection } from './types'
 
-export interface SetWithStats extends FlashcardSet {
-  totalCards: number
-  toStudy: number
-  lastStudied: string | null
-  totalSessions: number
-}
+export type { SetWithStats } from './store'
 
 // Loads the user's sets (with card/progress/session stats) and collections, and refreshes the cache.
 export async function loadSetsAndCollections(userId: string): Promise<{
   sets: SetWithStats[]
   collections: Collection[]
 }> {
-  const [setsRes, collectionsRes] = await Promise.all([
-    // Manual order first; sets never reordered (position null) are newest-first on top
-    supabase.from('sets').select('*').eq('user_id', userId)
-      .order('position', { ascending: true, nullsFirst: true }).order('created_at', { ascending: false }),
-    supabase.from('collections').select('*').eq('user_id', userId).order('name', { ascending: true }),
-  ])
-  const rawSets = (setsRes.data ?? []) as FlashcardSet[]
-  const collections = (collectionsRes.data ?? []) as Collection[]
-  const setIds = rawSets.map(s => s.id)
-
-  // Exact counts per set are computed server-side, so they aren't affected by the API row cap.
-  const countFor = async (setId: string) => {
-    const [total, mastered] = await Promise.all([
-      supabase.from('flashcards').select('id', { count: 'exact', head: true }).eq('set_id', setId),
-      supabase.from('card_progress').select('id, flashcards!inner(set_id)', { count: 'exact', head: true })
-        .eq('status', 'mastered').eq('flashcards.set_id', setId),
-    ])
-    if (total.error) throw total.error
-    if (mastered.error) throw mastered.error
-    return [setId, { total: total.count ?? 0, mastered: mastered.count ?? 0 }] as const
-  }
-
-  // One row per set from the set_study_stats view, which also counts rolled-up older sessions
-  const [counts, studyStats] = await Promise.all([
-    Promise.all(setIds.map(countFor)),
-    setIds.length === 0 ? [] : fetchAllRows<{ set_id: string; sessions: number; last_studied_at: string | null }>(() =>
-      supabase.from('set_study_stats').select('set_id, sessions, last_studied_at').eq('user_id', userId).in('set_id', setIds)
-        .order('set_id')),
-  ])
-
-  const lastStudiedBySet: Record<string, string>  = {}
-  const sessionCountBySet: Record<string, number> = {}
-  for (const s of studyStats) {
-    if (s.last_studied_at) lastStudiedBySet[s.set_id] = s.last_studied_at
-    sessionCountBySet[s.set_id] = s.sessions
-  }
-
-  const statsMap: Record<string, { total: number; mastered: number }> = Object.fromEntries(counts)
-
-  const sets = rawSets.map(s => ({
-    ...s,
-    tags:          s.tags ?? [],
-    totalCards:    statsMap[s.id]?.total ?? 0,
-    toStudy:       (statsMap[s.id]?.total ?? 0) - (statsMap[s.id]?.mastered ?? 0),
-    lastStudied:   lastStudiedBySet[s.id]  ?? null,
-    totalSessions: sessionCountBySet[s.id] ?? 0,
-  }))
-
+  const { sets, collections } = await store.loadLibrary(userId)
   cacheSets(sets)
   cacheCollections(collections)
   return { sets, collections }
@@ -73,35 +20,15 @@ export function normalizeTag(tag: string): string {
 }
 
 // ── Bulk edits ────────────────────────────────────────────────────────────────
-// Chunked so the id list in the query string stays well under URL length limits.
 
-async function eachChunk(ids: string[], fn: (chunk: string[]) => PromiseLike<{ error: unknown }>) {
-  for (let i = 0; i < ids.length; i += 200) {
-    const { error } = await fn(ids.slice(i, i + 200))
-    if (error) throw error
-  }
-}
-
-export function moveSets(ids: string[], collectionId: string | null) {
-  return eachChunk(ids, chunk => supabase.from('sets').update({ collection_id: collectionId }).in('id', chunk))
-}
-
-export function setSetsVisibility(ids: string[], isPublic: boolean) {
-  return eachChunk(ids, chunk => supabase.from('sets').update({ is_public: isPublic }).in('id', chunk))
-}
-
-// Cards, progress, and sessions cascade-delete with their set
-export function deleteSets(ids: string[]) {
-  return eachChunk(ids, chunk => supabase.from('sets').delete().in('id', chunk))
-}
-
+export const moveSets         = (ids: string[], collectionId: string | null) => store.moveSets(ids, collectionId)
+export const setSetsVisibility = (ids: string[], isPublic: boolean) => store.setSetsVisibility(ids, isPublic)
+// Cards, progress, and sessions go with their set
+export const deleteSets       = (ids: string[]) => store.deleteSets(ids)
 // Saves the given order (position = index + 1) for the caller's sets
-export async function reorderSets(ids: string[]) {
-  const { error } = await supabase.rpc('reorder_sets', { set_ids: ids })
-  if (error) throw error
-}
+export const reorderSets      = (ids: string[]) => store.reorderSets(ids)
 
-// Same order as loadSetsAndCollections: manual position, unpositioned (new) sets first, then newest first
+// Same order as loadLibrary: manual position, unpositioned (new) sets first, then newest first
 export function sortSets<T extends { position: number | null; created_at: string }>(sets: T[]): T[] {
   return [...sets].sort((a, b) =>
     a.position === b.position ? b.created_at.localeCompare(a.created_at)

@@ -114,3 +114,12 @@ export interface StudySession {
   mastered_count: number
   completed_at: string
 }
+
+// A card's editable content (create/edit forms, imports)
+export interface CardDraft {
+  type: CardType
+  question: string
+  answer: string
+  options: string[] | null
+  pairs: MatchPair[] | null
+}

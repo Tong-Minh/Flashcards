@@ -9,7 +9,7 @@ import { SortableContext, arrayMove, rectSortingStrategy, useSortable, verticalL
 import { CSS } from '@dnd-kit/utilities'
 import { restrictToVerticalAxis, restrictToWindowEdges } from '@dnd-kit/modifiers'
 import { GripVertical } from 'lucide-react'
-import { supabase } from '@/lib/supabase/client'
+import { store } from '@/lib/store'
 import { useLongPress } from '@/lib/useLongPress'
 import { useMediaQuery, DESKTOP_QUERY } from '@/lib/useMediaQuery'
 import {
@@ -160,10 +160,15 @@ export function SetOrganizer({
   }
 
   async function createCollection(name: string) {
-    const { data, error } = await supabase.from('collections').insert({ name }).select().single()
-    if (error || !data) { alert('Could not create the collection.'); return }
-    onCollectionsChange([...collections, data as Collection].sort((a, b) => a.name.localeCompare(b.name)))
-    await move([...selected], data.id, data.name)
+    let created: Collection
+    try {
+      created = await store.createCollection({ name })
+    } catch {
+      alert('Could not create the collection.')
+      return
+    }
+    onCollectionsChange([...collections, created].sort((a, b) => a.name.localeCompare(b.name)))
+    await move([...selected], created.id, created.name)
   }
 
   async function handleDragEnd({ active, over }: DragEndEvent) {
