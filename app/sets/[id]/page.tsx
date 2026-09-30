@@ -19,9 +19,10 @@ import { TagInput, TagList } from '@/components/TagInput'
 import { IconPicker } from '@/components/IconPicker'
 import { ItemIcon } from '@/components/ItemIcon'
 import { ShareButton } from '@/components/ShareButton'
+import { SearchBar } from '@/components/SearchBar'
 import { exportCards, downloadText } from '@/lib/cardFormat'
 import { TYPE_BADGES } from '@/lib/cardTypes'
-import type { Collection, FlashcardSet, FlashcardWithProgress, StudySession } from '@/lib/types'
+import type { CardStatus, Collection, FlashcardSet, FlashcardWithProgress, StudySession } from '@/lib/types'
 
 const PAGE_SIZE = 50
 
@@ -74,6 +75,8 @@ export default function SetDetail() {
   const [page,         setPage]         = useState(0)
   const [previewCard,  setPreviewCard]  = useState<FlashcardWithProgress | null>(null)
   const [collections,  setCollections]  = useState<Collection[]>([])
+  const [cardQuery,    setCardQuery]    = useState('')
+  const [statusFilter, setStatusFilter] = useState<'all' | CardStatus>('all')
   const cardsTopRef = useRef<HTMLDivElement>(null)
 
   // Settings sheet
@@ -263,10 +266,24 @@ export default function SetDetail() {
 
   const setCollection = set?.collection_id ? collections.find(c => c.id === set.collection_id) ?? null : null
   const atCardLimit   = cards.length >= MAX_CARDS_PER_SET
-  const pageCount     = Math.max(1, Math.ceil(cards.length / PAGE_SIZE))
+  const statusCounts  = cards.reduce<Record<string, number>>((acc, c) => {
+    const s = c.progress?.status ?? 'new'
+    acc[s] = (acc[s] ?? 0) + 1
+    return acc
+  }, {})
+  const q             = cardQuery.trim().toLowerCase()
+  const filtering     = !!q || statusFilter !== 'all'
+  // Keep each card's index in the full list: it's the card number and what reorderCard works on
+  const filteredCards = cards
+    .map((card, idx) => ({ card, idx }))
+    .filter(({ card }) =>
+      (statusFilter === 'all' || (card.progress?.status ?? 'new') === statusFilter) &&
+      (!q || [card.question, card.answer, ...(card.options ?? []), ...(card.pairs ?? []).flatMap(p => [p.left, p.right])]
+        .some(t => t?.toLowerCase().includes(q))))
+  const pageCount     = Math.max(1, Math.ceil(filteredCards.length / PAGE_SIZE))
   const safePage      = Math.min(page, pageCount - 1)
   const pageStart     = safePage * PAGE_SIZE
-  const pageCards     = cards.slice(pageStart, pageStart + PAGE_SIZE)
+  const pageCards     = filteredCards.slice(pageStart, pageStart + PAGE_SIZE)
 
   function closePreview() { setPreviewCard(null) }
 
@@ -461,7 +478,7 @@ export default function SetDetail() {
         <>
           <div ref={cardsTopRef} className="flex items-center justify-between mb-3 scroll-mt-4">
             <h2 className="font-semibold text-gray-900 dark:text-gray-100">
-              {cards.length} card{cards.length !== 1 ? 's' : ''}
+              {filtering && `${filteredCards.length} of `}{cards.length} card{cards.length !== 1 ? "s" : ""}
             </h2>
             <div className="flex items-center gap-2">
             {cards.length > 0 && (
@@ -495,15 +512,46 @@ export default function SetDetail() {
             </div>
           </div>
 
+          {cards.length > 0 && (
+            <>
+              <SearchBar
+                value={cardQuery}
+                onChange={v => { setCardQuery(v); setPage(0) }}
+                placeholder="Search questions and answers"
+                className="mb-2"
+              />
+              <div className="flex gap-1.5 overflow-x-auto pb-1 mb-3 -mx-4 px-4">
+                {(['all', 'new', 'learning', 'needs_review', 'mastered'] as const).map(s => {
+                  const count = s === 'all' ? cards.length : statusCounts[s] ?? 0
+                  return (
+                    <button
+                      key={s}
+                      onClick={() => { setStatusFilter(s); setPage(0) }}
+                      disabled={s !== 'all' && count === 0}
+                      className={`flex-shrink-0 text-xs font-medium px-3 py-1.5 rounded-full border transition-colors disabled:opacity-40 ${
+                        statusFilter === s
+                          ? 'bg-indigo-600 border-indigo-600 text-white'
+                          : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700'
+                      }`}
+                    >
+                      {s === 'all' ? 'All' : STATUS_STYLES[s].label} · {count}
+                    </button>
+                  )
+                })}
+              </div>
+            </>
+          )}
+
           {cards.length === 0 ? (
             <div className="text-center text-gray-400 dark:text-gray-500 py-10 bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700">
               <p className="mb-1">No cards yet</p>
               <p className="text-sm">Add cards or import a list</p>
             </div>
+          ) : filteredCards.length === 0 ? (
+            <p className="text-center text-sm text-gray-400 dark:text-gray-500 py-10">No cards match</p>
           ) : (
             <div className="space-y-2">
-              {pageCards.map((card, pageIdx) => {
-                const idx    = pageStart + pageIdx
+              {pageCards.map(({ card, idx }) => {
                 const status = card.progress?.status ?? 'new'
                 const badge  = STATUS_STYLES[status]
                 return (
@@ -547,14 +595,14 @@ export default function SetDetail() {
                           <div className="flex flex-col rounded-lg border border-gray-200 dark:border-gray-600 overflow-hidden w-7">
                             <button
                               onClick={() => reorderCard(idx, 'up')}
-                              disabled={idx === 0}
+                              disabled={filtering || idx === 0}
                               className="flex-1 flex items-center justify-center text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-600 dark:hover:text-gray-300 disabled:opacity-20 transition-colors border-b border-gray-200 dark:border-gray-600"
                             >
                               <svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor"><path d="M4 1L7 6H1L4 1Z"/></svg>
                             </button>
                             <button
                               onClick={() => reorderCard(idx, 'down')}
-                              disabled={idx === cards.length - 1}
+                              disabled={filtering || idx === cards.length - 1}
                               className="flex-1 flex items-center justify-center text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-600 dark:hover:text-gray-300 disabled:opacity-20 transition-colors"
                             >
                               <svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor"><path d="M4 7L1 2H7L4 7Z"/></svg>
@@ -611,7 +659,7 @@ export default function SetDetail() {
               >
                 {Array.from({ length: pageCount }, (_, i) => (
                   <option key={i} value={i}>
-                    {i * PAGE_SIZE + 1}–{Math.min((i + 1) * PAGE_SIZE, cards.length)} of {cards.length}
+                    {i * PAGE_SIZE + 1}–{Math.min((i + 1) * PAGE_SIZE, filteredCards.length)} of {filteredCards.length}
                   </option>
                 ))}
               </select>
