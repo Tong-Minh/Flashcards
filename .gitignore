@@ -20,3 +20,6 @@ npm-debug.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Route files set aside during a desktop build (scripts/desktop.mjs)
+.desktop-swap/

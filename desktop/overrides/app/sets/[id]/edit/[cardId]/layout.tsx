@@ -1,4 +1,4 @@
-// Desktop build only: built once for the placeholder card id "_" (see app/sets/[id]/layout.desktop.tsx)
+// Desktop build only (swapped in by scripts/desktop.mjs): built once for the placeholder card id "_"
 export function generateStaticParams() {
   return [{ cardId: '_' }]
 }
