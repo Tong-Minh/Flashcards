@@ -4,9 +4,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { fsrs, createEmptyCard, Rating, State, type Card as FSRSCard, type RecordLog } from 'ts-fsrs'
-import { supabase } from '@/lib/supabase/client'
 import { haptic, hasTextSelection } from '@/lib/haptic'
-import { fetchAllRows, MAX_CARDS_PER_SET } from '@/lib/fetchAll'
+import { store } from '@/lib/store'
 import { ContentRenderer, previewText } from '@/components/ContentRenderer'
 import { ClozeQuestion, FlipCard } from '@/components/CardPreview'
 import { BottomBar, BottomBarSpacer } from '@/components/BottomBar'
@@ -18,7 +17,7 @@ import {
   saveSessionState, getSavedSession, clearSavedSession,
   getTodayNewCount, incrementTodayNewCount, getSetSettings,
 } from '@/lib/storage'
-import type { FlashcardWithProgress, CardStatus, CardProgress } from '@/lib/types'
+import type { FlashcardWithProgress, CardStatus, CardProgress, FSRSState } from '@/lib/types'
 const f = fsrs()
 
 type SRSRating  = 1 | 2 | 3 | 4
@@ -168,11 +167,10 @@ export default function Study() {
   }, [phase, viewCards.length])
 
   async function syncPending() {
-    if (!navigator.onLine) return
+    if (!store.remote || !navigator.onLine) return
     for (const u of getPendingUpdates().filter(p => p.setId === setId)) {
       try {
-        const { error } = await supabase.from('card_progress').upsert({
-          card_id:        u.cardId,
+        await store.saveProgress(u.cardId, {
           due:            u.due,
           stability:      u.stability,
           difficulty:     u.difficulty,
@@ -181,13 +179,13 @@ export default function Study() {
           reps:           u.reps,
           lapses:         u.lapses,
           learning_steps: u.learningSteps,
-          fsrs_state:     u.fsrsState,
+          fsrs_state:     u.fsrsState as FSRSState,
           last_review:    u.lastReview,
           status:         u.status,
           correct_count:  u.correctCount,
           last_reviewed:  u.lastReviewed,
-        }, { onConflict: 'user_id,card_id' })
-        if (!error) removePendingUpdate(u.cardId)
+        })
+        removePendingUpdate(u.cardId)
       } catch {}
     }
   }
@@ -196,16 +194,9 @@ export default function Study() {
     const cached = getCachedCards(setId)
     let cards: FlashcardWithProgress[] = cached
 
-    if (navigator.onLine) {
+    if (!store.remote || navigator.onLine) {
       try {
-        const data = await fetchAllRows<FlashcardWithProgress>(() => supabase
-          .from('flashcards')
-          .select('*, progress:card_progress(*)')
-          .eq('set_id', setId)
-          .order('position', { ascending: true, nullsFirst: false })
-          .order('created_at', { ascending: true })
-          .order('id', { ascending: true }), MAX_CARDS_PER_SET)
-        cards = data.map(c => ({ ...c, progress: Array.isArray(c.progress) ? (c.progress[0] ?? null) : c.progress }))
+        cards = await store.getCards(setId)
         cacheCards(setId, cards)
       } catch { setIsOffline(true) }
     } else {
@@ -362,15 +353,14 @@ export default function Study() {
 
   async function persistSession() {
     const s = statsRef.current
-    if (s.cardsStudied === 0 || !navigator.onLine) return
+    if (s.cardsStudied === 0 || (store.remote && !navigator.onLine)) return
     const duration = sessionStart.current > 0
       ? Math.round((Date.now() - sessionStart.current) / 1000)
       : null
-    await supabase.from('study_sessions').insert({
-      set_id: setId, cards_studied: s.cardsStudied,
-      correct_count: s.correctCount, mastered_count: s.masteredCount,
-      duration_seconds: duration,
-    })
+    await store.recordSession(setId, {
+      cards_studied: s.cardsStudied, correct_count: s.correctCount,
+      mastered_count: s.masteredCount, duration_seconds: duration,
+    }).catch(() => {})
   }
 
   function triggerFlip() {
@@ -431,25 +421,11 @@ export default function Study() {
     updateCachedProgress(setId, card.id, newProgress)
 
     let synced = false
-    if (navigator.onLine) {
+    if (!store.remote || navigator.onLine) {
       try {
-        const { error } = await supabase.from('card_progress').upsert({
-          card_id:        card.id,
-          correct_count:  newProgress.correct_count,
-          status:         newProgress.status,
-          last_reviewed:  newProgress.last_reviewed,
-          due:            newProgress.due,
-          stability:      newProgress.stability,
-          difficulty:     newProgress.difficulty,
-          elapsed_days:   newProgress.elapsed_days,
-          scheduled_days: newProgress.scheduled_days,
-          reps:           newProgress.reps,
-          lapses:         newProgress.lapses,
-          learning_steps: newProgress.learning_steps,
-          fsrs_state:     newProgress.fsrs_state,
-          last_review:    newProgress.last_review,
-        }, { onConflict: 'user_id,card_id' })
-        synced = !error
+        const { id: _id, card_id: _cardId, ...fields } = newProgress
+        await store.saveProgress(card.id, fields)
+        synced = true
       } catch {}
     }
     if (!synced) {
