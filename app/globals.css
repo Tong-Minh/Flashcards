@@ -44,6 +44,10 @@
 .tiptap-card-editor h3 { @apply text-base font-bold mt-3 mb-0.5; }
 .tiptap-card-editor > :first-child { @apply mt-0; }
 .tiptap-card-editor strong { @apply font-semibold; }
+.tiptap-card-editor ul { @apply list-disc pl-6 my-1; }
+.tiptap-card-editor ol { @apply list-decimal pl-6 my-1; }
+.tiptap-card-editor li { @apply pl-0.5; }
+.tiptap-card-editor li + li { @apply mt-0.5; }
 .tiptap-card-editor code {
   @apply bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-1.5 py-0.5 rounded text-[0.85em] font-mono;
 }

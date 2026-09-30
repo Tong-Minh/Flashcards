@@ -1,5 +1,6 @@
 // Card text markup: **bold**, *italic*, ***both***, `code`, [red]color[/red], $math$, $$display$$,
-// "# " headings, and backslash escapes for literal \ * $ ` [ ] #.
+// "# " headings, "- " / "1. " list lines, a line that is only $$…$$ (centered math block),
+// and backslash escapes for literal \ * $ ` [ ] # - .
 // This module is the single source of truth for tokenizing it (used by the renderer) and for
 // converting it to/from Tiptap documents (used by the editor).
 
@@ -14,7 +15,7 @@ export type InlineToken =
   | { t: 'color';  color: string; children: InlineToken[] }
 
 // Order matters: escape > code > display-math > inline-math > bold+italic > bold > italic > color
-const INLINE_SRC = /\\([*$\[\]`\\#])|`([^`\n]+)`|\$\$([\s\S]+?)\$\$|\$([^$\n]+)\$|\*\*\*((?:\\.|[^*\\\n])+)\*\*\*|\*\*((?:\\.|[^*\\\n])+)\*\*|\*((?:\\.|[^*\\\n])+)\*|\[([a-zA-Z]+)\]([\s\S]+?)\[\/\8\]/g
+const INLINE_SRC = /\\([*$\[\]`\\#.\-])|`([^`\n]+)`|\$\$([\s\S]+?)\$\$|\$([^$\n]+)\$|\*\*\*((?:\\.|[^*\\\n])+)\*\*\*|\*\*((?:\\.|[^*\\\n])+)\*\*|\*((?:\\.|[^*\\\n])+)\*|\[([a-zA-Z]+)\]([\s\S]+?)\[\/\8\]/g
 
 export function tokenizeInline(text: string): InlineToken[] {
   const tokens: InlineToken[] = []
@@ -84,20 +85,47 @@ export function parseMarkup(text: string, opts: { singleLine?: boolean } = {}): 
     const content = inlineToJSON(tokenizeInline(text.replace(/\n/g, ' ')))
     return { type: 'doc', content: [content.length ? { type: 'paragraph', content } : { type: 'paragraph' }] }
   }
-  const content = text.split('\n').map((line): JSONContent => {
+  const paragraph = (s: string): JSONContent => {
+    const inner = inlineToJSON(tokenizeInline(s))
+    return inner.length ? { type: 'paragraph', content: inner } : { type: 'paragraph' }
+  }
+  const content: JSONContent[] = []
+  for (const line of text.split('\n')) {
     const trimmed = line.trimStart()
     const heading = trimmed.match(/^(#{1,3}) (.*)$/)
+    const listLine = matchListLine(line)
     if (heading) {
       const inner = inlineToJSON(tokenizeInline(heading[2]))
-      return { type: 'heading', attrs: { level: heading[1].length }, ...(inner.length ? { content: inner } : {}) }
+      content.push({ type: 'heading', attrs: { level: heading[1].length }, ...(inner.length ? { content: inner } : {}) })
+    } else if (isMathBlockLine(trimmed)) {
+      content.push({ type: 'mathBlock', attrs: { latex: trimmed.slice(2, -2) } })
+    } else if (listLine) {
+      // Consecutive lines of the same list kind form one list
+      const type = listLine.ordered ? 'orderedList' : 'bulletList'
+      const prev = content[content.length - 1]
+      const item = { type: 'listItem', content: [paragraph(listLine.text)] }
+      if (prev?.type === type) prev.content!.push(item)
+      else content.push({ type, ...(listLine.ordered ? { attrs: { start: listLine.start } } : {}), content: [item] })
+    } else {
+      content.push(paragraph(line))
     }
-    if (trimmed.startsWith('$$') && trimmed.endsWith('$$') && trimmed.length > 4) {
-      return { type: 'mathBlock', attrs: { latex: trimmed.slice(2, -2) } }
-    }
-    const inner = inlineToJSON(tokenizeInline(line))
-    return inner.length ? { type: 'paragraph', content: inner } : { type: 'paragraph' }
-  })
+  }
   return { type: 'doc', content }
+}
+
+// ── Line-level helpers (shared with the renderer) ─────────────────────────────
+
+export function isMathBlockLine(trimmed: string): boolean {
+  return trimmed.startsWith('$$') && trimmed.endsWith('$$') && trimmed.length > 4
+}
+
+// "- item" / "* item" (bullet) or "3. item" (numbered). Escaped "\- " / "3\. " are plain text.
+export function matchListLine(line: string): { ordered: boolean; start: number; text: string } | null {
+  const bullet = line.match(/^\s*[-*] (.*)$/)
+  if (bullet) return { ordered: false, start: 1, text: bullet[1] }
+  const num = line.match(/^\s*(\d{1,9})\. (.*)$/)
+  if (num) return { ordered: true, start: Number(num[1]), text: num[2] }
+  return null
 }
 
 // ── Tiptap JSON → Markup ──────────────────────────────────────────────────────
@@ -150,10 +178,18 @@ export function serializeMarkup(doc: JSONContent): string {
         return `${'#'.repeat(Number(block.attrs?.level ?? 1))} ${serializeInline(block.content)}`
       case 'mathBlock':
         return `$$${block.attrs?.latex ?? ''}$$`
+      case 'bulletList':
+        return (block.content ?? []).map(item => `- ${serializeInline(item.content?.[0]?.content)}`).join('\n')
+      case 'orderedList': {
+        const start = Number(block.attrs?.start ?? 1)
+        return (block.content ?? []).map((item, i) => `${start + i}. ${serializeInline(item.content?.[0]?.content)}`).join('\n')
+      }
       default: {
-        const line = serializeInline(block.content)
-        // A paragraph that starts like a heading must not become one when re-parsed
-        return line.replace(/^(\s*)(#{1,3} )/, '$1\\$2')
+        // A paragraph that starts like a heading or list item must not become one when re-parsed
+        return serializeInline(block.content)
+          .replace(/^(\s*)(#{1,3} )/, '$1\\$2')
+          .replace(/^(\s*)- /, '$1\\- ')
+          .replace(/^(\s*)(\d{1,9})\. /, '$1$2\\. ')
       }
     }
   }).join('\n')

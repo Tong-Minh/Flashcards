@@ -3,8 +3,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { InputRule, Mark, Node, mergeAttributes, type Extensions } from '@tiptap/core'
 import { NodeViewWrapper, ReactNodeViewRenderer, type ReactNodeViewProps } from '@tiptap/react'
+import { TextSelection, type EditorState } from '@tiptap/pm/state'
 import StarterKit from '@tiptap/starter-kit'
 import Document from '@tiptap/extension-document'
+import { BulletList, OrderedList, ListItem, ListKeymap } from '@tiptap/extension-list'
 import { Placeholder } from '@tiptap/extensions'
 import { COLOR_CLASSES, renderMath } from '@/components/ContentRenderer'
 import { MathPopup } from './MathPopup'
@@ -39,7 +41,13 @@ function MathView({ node, updateAttributes, deleteNode, editor, getPos, selected
 
   function placeCursorAfter() {
     const pos = typeof getPos === 'function' ? getPos() : undefined
-    if (pos !== undefined) editor.chain().focus().setTextSelection(pos + node.nodeSize).run()
+    if (pos === undefined) return
+    const after = pos + node.nodeSize
+    if (!node.isBlock) { editor.chain().focus().setTextSelection(after).run(); return }
+    // A block has no text position right after it: move into the next paragraph, creating one if needed
+    const next = editor.state.doc.resolve(after).nodeAfter
+    if (next?.isTextblock) editor.chain().focus().setTextSelection(after + 1).run()
+    else editor.chain().focus().insertContentAt(after, { type: 'paragraph' }).setTextSelection(after + 1).run()
   }
 
   function commit(value: string) {
@@ -57,7 +65,8 @@ function MathView({ node, updateAttributes, deleteNode, editor, getPos, selected
 
   const Tag = node.type.name === 'mathBlock' ? 'div' : 'span'
   return (
-    <NodeViewWrapper as={Tag} className={node.type.name === 'mathBlock' ? 'flex justify-center py-2' : 'inline'}>
+    // Display math is centered on its own line, matching how it renders when studying
+    <NodeViewWrapper as={Tag} className={node.type.name === 'mathBlock' ? 'flex justify-center py-2' : display ? 'block text-center py-1' : 'inline'}>
       <span
         ref={ref}
         onMouseDown={e => e.preventDefault()}
@@ -95,12 +104,27 @@ export const MathInline = Node.create({
   addNodeView() { return ReactNodeViewRenderer(MathView) },
   addInputRules() {
     const type = this.type
-    const toMath = (display: boolean) => ({ state, range, match }: { state: import('@tiptap/pm/state').EditorState; range: { from: number; to: number }; match: RegExpMatchArray }) => {
+    type RuleProps = { state: EditorState; range: { from: number; to: number }; match: RegExpMatchArray }
+    const toMath = (display: boolean) => ({ state, range, match }: RuleProps) => {
       state.tr.replaceWith(range.from, range.to, type.create({ latex: match[1], display }))
     }
+    // $$expr$$ typed as the whole line becomes a centered math block; mid-sentence it stays inline
+    const toDisplay = ({ state, range, match }: RuleProps) => {
+      const { tr, schema } = state
+      const $from = tr.doc.resolve(range.from)
+      const blockType = schema.nodes.mathBlock
+      const wholeLine = blockType && $from.parent.type.name === 'paragraph'
+        && range.from === $from.start() && range.to === $from.end()
+      if (!wholeLine) { toMath(true)({ state, range, match }); return }
+      const start = $from.before()
+      const block = blockType.create({ latex: match[1] })
+      tr.replaceWith(start, $from.after(), block)
+      const after = start + block.nodeSize
+      if (!tr.doc.resolve(after).nodeAfter?.isTextblock) tr.insert(after, schema.nodes.paragraph.create())
+      tr.setSelection(TextSelection.create(tr.doc, after + 1))
+    }
     return [
-      // $$expr$$ → display math
-      new InputRule({ find: /\$\$([^$\n]+)\$\$$/, handler: toMath(true) }),
+      new InputRule({ find: /\$\$([^$\n]+)\$\$$/, handler: toDisplay }),
       // $expr$ → inline math. Expression can't start/end with a space (so "$5 and $" stays text),
       // and the opening $ can't be escaped or part of $$.
       new InputRule({ find: /(?<![\\$])\$([^$\s](?:[^$\n]*[^$\s])?)\$$/, handler: toMath(false) }),
@@ -140,9 +164,18 @@ export function buildExtensions({ singleLine, placeholder }: { singleLine?: bool
       hardBreak:      false,
       trailingNode:   false,
       dropcursor:     false,
-      gapcursor:      false,
+      // gapcursor stays on so arrow keys can place the cursor next to a math block
     }),
-    ...(singleLine ? [Document.extend({ content: 'paragraph' })] : [MathBlock]),
+    ...(singleLine
+      ? [Document.extend({ content: 'paragraph' })]
+      : [
+          MathBlock,
+          // One level of "- " / "1. " lists; typing "- " or "1. " at a line start converts it
+          BulletList,
+          OrderedList,
+          ListItem.extend({ content: 'paragraph' }),
+          ListKeymap,
+        ]),
     ColorMark,
     MathInline,
     ...(placeholder ? [Placeholder.configure({ placeholder })] : []),

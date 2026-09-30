@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import type { ReactNode } from 'react'
-import { tokenizeInline, tokensToPlainText, type InlineToken } from '@/lib/markup'
+import { tokenizeInline, tokensToPlainText, isMathBlockLine, matchListLine, type InlineToken } from '@/lib/markup'
 import Prism from 'prismjs'
 import katex from 'katex'
 import 'katex/dist/katex.min.css'
@@ -99,7 +99,8 @@ export function hasFormattedContent(text: string): boolean {
     /^#{1,3} /m.test(text)              ||   // heading
     /\[\w+\][^\[]+\[\/\w+\]/.test(text) ||   // color
     /\$[^$\n]+\$/.test(text)            ||   // math
-    /\\[*$\[\]`\\#]/.test(text)              // escaped literal
+    /^\s*([-*]|\d+\.) /m.test(text)     ||   // list
+    /\\[*$\[\]`\\#.\-]/.test(text)           // escaped literal
   )
 }
 
@@ -170,28 +171,44 @@ function renderTokens(tokens: InlineToken[], onMathClick?: MathClickHandler): Re
 
 function renderTextBlock(text: string, blockKey: number, onMathClick?: MathClickHandler): ReactNode {
   const lines = text.split('\n')
-  return (
-    <div key={blockKey}>
-      {lines.map((line, j) => {
-        const trimmed = line.trimStart()
-        if (trimmed.startsWith('### ')) return <h3 key={j} className="text-base font-bold mt-3 mb-0.5">{renderInline(trimmed.slice(4), onMathClick)}</h3>
-        if (trimmed.startsWith('## '))  return <h2 key={j} className="text-lg  font-bold mt-3 mb-1">{renderInline(trimmed.slice(3), onMathClick)}</h2>
-        if (trimmed.startsWith('# '))   return <h1 key={j} className="text-xl  font-bold mt-3 mb-1">{renderInline(trimmed.slice(2), onMathClick)}</h1>
-        if (line === '')                return <br key={j} />
-        if (trimmed.startsWith('$$') && trimmed.endsWith('$$') && trimmed.length > 4) {
-          const expr = trimmed.slice(2, -2)
-          return (
-            <div key={j}
-              className={`overflow-x-auto py-2 flex justify-center${onMathClick ? ' cursor-pointer hover:opacity-70 transition-opacity' : ''}`}
-              onClick={onMathClick ? (e) => { e.stopPropagation(); onMathClick(expr, true, e.currentTarget.getBoundingClientRect()) } : undefined}
-              dangerouslySetInnerHTML={{ __html: renderMath(expr, true) }}
-            />
-          )
-        }
-        return <p key={j} className="leading-relaxed">{renderInline(line, onMathClick)}</p>
-      })}
-    </div>
-  )
+  const nodes: ReactNode[] = []
+  for (let j = 0; j < lines.length; j++) {
+    const list = matchListLine(lines[j])
+    if (list) {
+      // Gather consecutive lines of the same list kind into one list
+      const items: ReactNode[] = []
+      let k = j
+      for (let m: ReturnType<typeof matchListLine> = list; m && m.ordered === list.ordered; m = matchListLine(lines[++k] ?? '')) {
+        items.push(<li key={k} className="leading-relaxed pl-0.5">{renderInline(m.text, onMathClick)}</li>)
+      }
+      nodes.push(list.ordered
+        ? <ol key={j} start={list.start} className="list-decimal pl-6 my-1 space-y-0.5">{items}</ol>
+        : <ul key={j} className="list-disc pl-6 my-1 space-y-0.5">{items}</ul>)
+      j = k - 1
+      continue
+    }
+    nodes.push(renderLine(lines[j], j, onMathClick))
+  }
+  return <div key={blockKey}>{nodes}</div>
+}
+
+function renderLine(line: string, j: number, onMathClick?: MathClickHandler): ReactNode {
+  const trimmed = line.trimStart()
+  if (trimmed.startsWith('### ')) return <h3 key={j} className="text-base font-bold mt-3 mb-0.5">{renderInline(trimmed.slice(4), onMathClick)}</h3>
+  if (trimmed.startsWith('## '))  return <h2 key={j} className="text-lg  font-bold mt-3 mb-1">{renderInline(trimmed.slice(3), onMathClick)}</h2>
+  if (trimmed.startsWith('# '))   return <h1 key={j} className="text-xl  font-bold mt-3 mb-1">{renderInline(trimmed.slice(2), onMathClick)}</h1>
+  if (line === '')                return <br key={j} />
+  if (isMathBlockLine(trimmed)) {
+    const expr = trimmed.slice(2, -2)
+    return (
+      <div key={j}
+        className={`overflow-x-auto py-2 flex justify-center${onMathClick ? ' cursor-pointer hover:opacity-70 transition-opacity' : ''}`}
+        onClick={onMathClick ? (e) => { e.stopPropagation(); onMathClick(expr, true, e.currentTarget.getBoundingClientRect()) } : undefined}
+        dangerouslySetInnerHTML={{ __html: renderMath(expr, true) }}
+      />
+    )
+  }
+  return <p key={j} className="leading-relaxed">{renderInline(line, onMathClick)}</p>
 }
 
 // ── Syntax highlighting ───────────────────────────────────────────────────────
@@ -328,7 +345,7 @@ export function ContentRenderer({ text, className, readOnly, onCodeLangChange, o
   const anyCode  = segments.some(s => s.type === 'code')
 
   if (!anyCode) {
-    const hasBlocks = /^#{1,3} /m.test(text) || /^\$\$[\s\S]+?\$\$/m.test(text)
+    const hasBlocks = /^#{1,3} /m.test(text) || /^\$\$[\s\S]+?\$\$/m.test(text) || text.split('\n').some(l => matchListLine(l))
     const content   = hasBlocks ? renderTextBlock(text, 0, onInlineMathClick) : renderInline(text, onInlineMathClick)
     if (className) return <div className={className}>{content}</div>
     return <>{content}</>

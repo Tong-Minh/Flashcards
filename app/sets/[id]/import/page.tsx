@@ -25,8 +25,12 @@ function parseCards(text: string): ParsedCard[] {
   // Tab-separated: detect by presence of tab in first non-empty line
   const firstLine = lines.find((l) => l.trim())
   if (firstLine?.includes('\t')) {
-    // Unescape literal \n so AI-generated code blocks survive one-per-line format
-    const unescape = (s: string) => s.replace(/\\n/g, '\n')
+    // Unescape literal \n so AI-generated code blocks, lists and math blocks survive the
+    // one-per-line format — but leave math alone, where \n starts LaTeX commands (\neq, \nu, \nabla).
+    // Code fences are matched first so a $ inside code can't start a math span; \$ is a literal dollar.
+    const unescape = (s: string) =>
+      s.replace(/```[\s\S]*?```|\\\$|\$\$[\s\S]*?\$\$|\$[^$]*\$|\\n/g, m =>
+        m === '\\n' ? '\n' : m.startsWith('```') ? m.replace(/\\n/g, '\n') : m)
     return lines
       .filter((l) => l.trim() && l.includes('\t'))
       .map((line) => {
@@ -100,8 +104,12 @@ For short inline code, use single backticks: What does \`n & (n-1)\` do?[TAB]Cle
 Rich formatting — use naturally where it genuinely aids recall. Do not overuse; plain text is fine for simple facts.
 - Bold key terms: **mitochondria**  Italic for emphasis: *in vivo*
 - Colors to highlight: [red]danger[/red]  [green]correct[/green]  [blue]key concept[/blue]  [yellow]caution[/yellow]  [orange]warning[/orange]  [purple]definition[/purple]
+- Inline code for short identifiers or expressions: \`nums[i]\`
 - Headings only when the answer is structured (start of field): # H1  ## H2  ### H3
-- Inline math: $E = mc^2$   Display math (standalone equation): $$\\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}$$
+- Lists: one item per line, starting with "- " (bullets) or "1. " (numbered). Because each card is one line, separate the items with \\n, e.g.  Steps:\\n1. Sort\\n2. Scan
+- Inline math: $E = mc^2$
+- Centered math block (its own line): $$\\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}$$ — put it alone on a line (use \\n before/after it if there is other text)
+- A literal dollar sign or asterisk that is NOT formatting must be escaped: \\$5, 2 \\* 3
 
 Example output (these use real tab characters — replace [TAB] with an actual tab):
 What is the powerhouse of the cell?	**Mitochondria** — produces ATP via cellular respiration
@@ -112,6 +120,8 @@ What does this function do?	\`\`\`python\\ndef fib(n):\\n    if n <= 1: return n
 What is the quadratic formula?	$$x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$$
 What is Newton's second law?	$F = ma$ — [blue]force[/blue] equals **mass** times **acceleration**
 What is the time complexity of binary search?	$O(\\log n)$ — the search space **halves** each step
+What are the steps of binary search?	1. Set \`lo\` and \`hi\` to the ends\\n2. Check the middle element\\n3. Discard the half that can't contain the target
+Solve $ax^2 + bx + c = 0$.	Use the quadratic formula:\\n$$x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$$
 ___ is the process by which plants convert sunlight into glucose.	Photosynthesis
 Which sorting algorithm has worst-case $O(n^2)$ time complexity?	Bubble sort	Merge sort	Quick sort	Heap sort`
 

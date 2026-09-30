@@ -2,7 +2,7 @@
 
 import { useRef, useState, useEffect } from 'react'
 import { useEditor, EditorContent, type Editor } from '@tiptap/react'
-import { NodeSelection } from '@tiptap/pm/state'
+import { NodeSelection, Selection } from '@tiptap/pm/state'
 import { highlight, LANG_ALIASES, LANGUAGE_OPTIONS } from '@/components/ContentRenderer'
 import { buildExtensions } from '@/components/editor/extensions'
 import { parseMarkup, serializeMarkup } from '@/lib/markup'
@@ -12,6 +12,8 @@ import { parseMarkup, serializeMarkup } from '@/lib/markup'
 type CommandKind =
   | { kind: 'code' }
   | { kind: 'math' }
+  | { kind: 'mathBlock' }
+  | { kind: 'list'; ordered: boolean }
   | { kind: 'heading'; level: 1 | 2 | 3 }
   | { kind: 'mark'; mark: 'bold' | 'italic' | 'code' }
   | { kind: 'color'; color: string }
@@ -22,6 +24,9 @@ type SlashCommand = { id: string; label: string; desc: string; icon: string; ico
 const SLASH_COMMANDS: SlashCommand[] = [
   { id: 'code',   label: 'Code block', desc: 'Syntax-highlighted block', icon: '</>', kind: 'code' },
   { id: 'math',   label: 'Math',       desc: 'Inline LaTeX equation',    icon: '∑',   kind: 'math' },
+  { id: 'mathblock', label: 'Math block', desc: 'Centered equation on its own line', icon: '∑̲', kind: 'mathBlock' },
+  { id: 'bullet', label: 'Bulleted list', desc: 'Simple bullet points',  icon: '•',   kind: 'list', ordered: false },
+  { id: 'numbered', label: 'Numbered list', desc: 'List with numbers',   icon: '1.',  kind: 'list', ordered: true },
   { id: 'h1',     label: 'Heading 1',  desc: 'Large title',              icon: 'H1',  kind: 'heading', level: 1 },
   { id: 'h2',     label: 'Heading 2',  desc: 'Section title',            icon: 'H2',  kind: 'heading', level: 2 },
   { id: 'h3',     label: 'Heading 3',  desc: 'Subsection title',         icon: 'H3',  kind: 'heading', level: 3 },
@@ -56,6 +61,16 @@ function toggleColor(editor: Editor, color: string) {
 function applyCommand(editor: Editor, cmd: SlashCommand) {
   switch (cmd.kind) {
     case 'math':    editor.chain().focus().insertContent({ type: 'mathInline', attrs: { latex: '' } }).run(); break
+    case 'mathBlock': {
+      // On an empty line, replace the line itself so no blank paragraph is left above the equation
+      const { $from } = editor.state.selection
+      const emptyLine = $from.parent.type.name === 'paragraph' && $from.parent.content.size === 0
+      const block = { type: 'mathBlock', attrs: { latex: '' } }
+      if (emptyLine) editor.chain().focus().insertContentAt({ from: $from.before(), to: $from.after() }, block).run()
+      else editor.chain().focus().insertContent(block).run()
+      break
+    }
+    case 'list':    editor.chain().focus()[cmd.ordered ? 'toggleOrderedList' : 'toggleBulletList']().run(); break
     case 'heading': editor.chain().focus().toggleHeading({ level: cmd.level }).run(); break
     case 'mark':    editor.chain().focus().toggleMark(cmd.mark).run(); break
     case 'color':   toggleColor(editor, cmd.color); break
@@ -104,7 +119,18 @@ function parseBlocks(text: string): Block[] {
     if (blocks[i + 1]?.type === 'code' && b.content.endsWith('\n'))   { b.content = b.content.slice(0, -1); b.trail = true }
     if (blocks[i - 1]?.type === 'code' && b.content.startsWith('\n')) { b.content = b.content.slice(1);     b.lead  = true }
   })
-  return blocks
+  return withTextAfterCode(blocks)
+}
+
+// Every code block gets a text block after it (empty if need be) so there is always a place to
+// click below it to keep writing. Empty text blocks serialize to nothing.
+function withTextAfterCode(blocks: Block[]): Block[] {
+  const out: Block[] = []
+  blocks.forEach((b, i) => {
+    out.push(b)
+    if (b.type === 'code' && blocks[i + 1]?.type !== 'text') out.push({ id: uid(), type: 'text', content: '' })
+  })
+  return out
 }
 
 const rawText = (b: TextBlock) => `${b.lead ? '\n' : ''}${b.content}${b.trail ? '\n' : ''}`
@@ -146,10 +172,13 @@ interface RichTextBlockProps {
   minRows: number
   isFirst: boolean
   singleLine?: boolean
-  shouldFocus: boolean
+  focusAt: 'start' | 'end' | null
   onFocused: () => void
   onChange: (content: string) => void
   onInsertBlock: (before: string, after: string) => void
+  // Backspace with the cursor at the very start; return true if handled (e.g. a code block above)
+  onBackspaceAtStart?: () => boolean
+  onOtherKey?: () => void
 }
 
 type SlashState = { from: number; filter: string; top: number; left: number }
@@ -157,8 +186,10 @@ type ToolbarState = { top: number; left: number }
 
 function RichTextBlock({
   content, placeholder, minRows, isFirst, singleLine,
-  shouldFocus, onFocused, onChange, onInsertBlock,
+  focusAt, onFocused, onChange, onInsertBlock, onBackspaceAtStart, onOtherKey,
 }: RichTextBlockProps) {
+  const keyCallbacks = useRef({ onBackspaceAtStart, onOtherKey })
+  keyCallbacks.current = { onBackspaceAtStart, onOtherKey }
   const containerRef = useRef<HTMLDivElement>(null)
   const lastEmitted  = useRef(content)
   // The editor captures its callbacks once; route through refs so the latest props are used
@@ -171,7 +202,14 @@ function RichTextBlock({
   const [toolbar, setToolbar] = useState<ToolbarState | null>(null)
   const [, forceRender] = useState(0)
 
-  const commands = singleLine ? SLASH_COMMANDS.filter(c => c.kind !== 'code' && c.kind !== 'heading') : SLASH_COMMANDS
+  const blockOnly = ['code', 'heading', 'mathBlock', 'list']
+  const commands = singleLine ? SLASH_COMMANDS.filter(c => !blockOnly.includes(c.kind)) : SLASH_COMMANDS
+  const menuListRef = useRef<HTMLDivElement>(null)
+
+  // Keep the keyboard-highlighted command visible in the scrollable menu
+  useEffect(() => {
+    menuListRef.current?.querySelector<HTMLElement>(`[data-idx="${selIdx}"]`)?.scrollIntoView({ block: 'nearest' })
+  }, [selIdx])
   const filtered = !slash?.filter
     ? commands
     : commands.filter(c => c.id.startsWith(slash.filter) || c.label.toLowerCase().startsWith(slash.filter))
@@ -226,7 +264,11 @@ function RichTextBlock({
       attributes: {
         class: 'tiptap-card-editor focus:outline-none text-gray-900 dark:text-gray-100 leading-relaxed',
       },
-      handleKeyDown: (_view, event) => {
+      handleKeyDown: (view, event) => {
+        if (event.key !== 'Backspace') keyCallbacks.current.onOtherKey?.()
+        const sel = view.state.selection
+        if (event.key === 'Backspace' && sel.empty && sel.from === Selection.atStart(view.state.doc).from
+            && keyCallbacks.current.onBackspaceAtStart?.()) return true
         const { slash: s, filtered: f, selIdx: i } = menuRef.current
         if (s && f.length > 0) {
           if (event.key === 'ArrowDown') { setSelIdx(Math.min(i + 1, f.length - 1)); return true }
@@ -262,10 +304,10 @@ function RichTextBlock({
   }, [content, editor, singleLine])
 
   useEffect(() => {
-    if (!shouldFocus || !editor) return
-    editor.commands.focus('start')
+    if (!focusAt || !editor) return
+    editor.commands.focus(focusAt)
     onFocused()
-  }, [shouldFocus, editor])
+  }, [focusAt, editor])
 
   function runSlash(cmd: SlashCommand) {
     const ed = editorRef.current
@@ -307,10 +349,11 @@ function RichTextBlock({
               /{slash.filter}
             </div>
           )}
-          <div className="max-h-64 overflow-y-auto">
+          <div ref={menuListRef} className="max-h-64 overflow-y-auto">
             {filtered.map((cmd, i) => (
               <button
                 key={cmd.id}
+                data-idx={i}
                 type="button"
                 onMouseDown={e => { e.preventDefault(); runSlash(cmd) }}
                 onMouseEnter={() => setSelIdx(i)}
@@ -396,8 +439,9 @@ function ToolbarButton({ active, onClick, label, children }: {
 
 // ── CodeBlockCard ──────────────────────────────────────────────────────────────
 
-function CodeBlockCard({ block, initialEditing, onChange, onDelete, onDragStart, onDragEnd, dragging }: {
+function CodeBlockCard({ block, armed, initialEditing, onChange, onDelete, onDragStart, onDragEnd, dragging }: {
   block: CodeBlock
+  armed: boolean
   initialEditing: boolean
   onChange: (patch: Partial<Omit<CodeBlock, 'id' | 'type'>>) => void
   onDelete: () => void
@@ -429,10 +473,12 @@ function CodeBlockCard({ block, initialEditing, onChange, onDelete, onDragStart,
     // Darker surround marks the code block as its own clickable, editable region
     <div
       ref={cardRef}
-      className={`mx-3 my-1.5 p-1 rounded-xl transition-colors ${
-        editing
-          ? 'bg-indigo-100 dark:bg-indigo-950/60'
-          : 'bg-gray-200/80 hover:bg-gray-300/70 dark:bg-black/40 dark:hover:bg-black/60'
+      className={`relative mx-3 my-1.5 p-1 rounded-xl transition-colors ${
+        armed
+          ? 'bg-red-100 dark:bg-red-950/50 ring-2 ring-red-400'
+          : editing
+            ? 'bg-indigo-100 dark:bg-indigo-950/60'
+            : 'bg-gray-200/80 hover:bg-gray-300/70 dark:bg-black/40 dark:hover:bg-black/60'
       } ${dragging ? 'opacity-40' : ''}`}
       draggable
       onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; onDragStart() }}
@@ -501,6 +547,9 @@ function CodeBlockCard({ block, initialEditing, onChange, onDelete, onDragStart,
         </pre>
       )}
     </div>
+    {armed && (
+      <p className="text-xs text-center text-red-500 dark:text-red-400 pt-1 select-none">Press Backspace again to delete this code block</p>
+    )}
     </div>
   )
 }
@@ -519,8 +568,10 @@ interface Props {
 }
 
 export function BlockEditor({ value, onChange, rows = 3, placeholder, className, hideHint, singleLine }: Props) {
-  const [blocks, setBlocks] = useState(() => parseBlocks(value))
-  const [focusId, setFocusId] = useState<string | null>(null)
+  const [blocks,   setBlocks]   = useState(() => parseBlocks(value))
+  const [focusReq, setFocusReq] = useState<{ id: string; at: 'start' | 'end' } | null>(null)
+  // Code block highlighted by a first Backspace from the line below it; a second Backspace deletes it
+  const [armedCodeId, setArmedCodeId] = useState<string | null>(null)
   const lastSerial = useRef(value)
   const [dragIdx, setDragIdx] = useState<number | null>(null)
   const [dropIdx, setDropIdx] = useState<number | null>(null)
@@ -533,13 +584,15 @@ export function BlockEditor({ value, onChange, rows = 3, placeholder, className,
   }, [value])
 
   function commit(next: Block[]) {
-    const serial = serializeBlocks(next)
+    const normalized = withTextAfterCode(next)
+    const serial = serializeBlocks(normalized)
     lastSerial.current = serial
-    setBlocks(next)
+    setBlocks(normalized)
     onChange(serial)
   }
 
   function updateBlock(id: string, patch: object) {
+    setArmedCodeId(null)
     commit(blocks.map(b => b.id === id ? { ...b, ...patch } : b))
   }
 
@@ -548,6 +601,25 @@ export function BlockEditor({ value, onChange, rows = 3, placeholder, className,
     const merged   = mergeTextBlocks(filtered)
     if (merged.length === 0) merged.push({ id: uid(), type: 'text', content: '' })
     commit(merged)
+  }
+
+  function handleBackspaceAtStart(idx: number): boolean {
+    const code = blocks[idx - 1]
+    if (code?.type !== 'code') return false
+    if (armedCodeId !== code.id) { setArmedCodeId(code.id); return true }
+    // Deleting merges this text into the text block above the code (which keeps its id)
+    const above = blocks[idx - 2]
+    const current = blocks[idx] as TextBlock
+    setArmedCodeId(null)
+    deleteBlock(code.id)
+    if (above?.type === 'text') setFocusReq({ id: above.id, at: 'end' })
+    else setFocusReq({ id: current.id, at: 'start' })
+    return true
+  }
+
+  function focusLastText() {
+    const last = [...blocks].reverse().find(b => b.type === 'text')
+    if (last) setFocusReq({ id: last.id, at: 'end' })
   }
 
   function insertBlock(afterId: string, before: string, after: string) {
@@ -562,11 +634,8 @@ export function BlockEditor({ value, onChange, rows = 3, placeholder, className,
       { id: afterId2, type: 'text' as const, content: after, lead: after !== '' },
       ...blocks.slice(idx + 1),
     ]
-    const serial = serializeBlocks(next)
-    lastSerial.current = serial
-    setBlocks(next)
-    onChange(serial)
-    setFocusId(afterId2)
+    // The new code card focuses its own textarea
+    commit(next)
   }
 
   function handleDrop(targetDropIdx: number) {
@@ -592,7 +661,7 @@ export function BlockEditor({ value, onChange, rows = 3, placeholder, className,
           minRows={1}
           isFirst
           singleLine
-          shouldFocus={false}
+          focusAt={null}
           onFocused={() => {}}
           onChange={serial => { lastSerial.current = serial; onChange(serial) }}
           onInsertBlock={() => {}}
@@ -620,14 +689,17 @@ export function BlockEditor({ value, onChange, rows = 3, placeholder, className,
               placeholder={placeholder}
               minRows={blocks.length === 1 ? rows : 1}
               isFirst={idx === 0}
-              shouldFocus={focusId === block.id}
-              onFocused={() => setFocusId(null)}
+              focusAt={focusReq?.id === block.id ? focusReq.at : null}
+              onFocused={() => setFocusReq(null)}
               onChange={content => updateBlock(block.id, { content })}
               onInsertBlock={(before, after) => insertBlock(block.id, before, after)}
+              onBackspaceAtStart={() => handleBackspaceAtStart(idx)}
+              onOtherKey={() => setArmedCodeId(null)}
             />
           ) : (
             <CodeBlockCard
               block={block}
+              armed={armedCodeId === block.id}
               initialEditing={block.content === ''}
               onChange={patch => updateBlock(block.id, patch)}
               onDelete={() => deleteBlock(block.id)}
@@ -646,7 +718,10 @@ export function BlockEditor({ value, onChange, rows = 3, placeholder, className,
       />
 
       {!hideHint && (
-        <p className="px-4 pb-3 text-xs text-gray-300 dark:text-gray-600 select-none">
+        <p
+          className="px-4 pb-3 text-xs text-gray-300 dark:text-gray-600 select-none cursor-text"
+          onMouseDown={e => { e.preventDefault(); focusLastText() }}
+        >
           Type <span className="font-mono bg-gray-100 dark:bg-gray-700 px-1 rounded">/</span> anywhere to insert a block or formatting
         </p>
       )}

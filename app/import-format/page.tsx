@@ -97,10 +97,29 @@ Mitochondria`}</pre>
             </div>
 
             <div>
+              <p className="font-semibold text-gray-700 mb-1">Lists</p>
+              <pre className="bg-gray-50 rounded-xl p-3 leading-relaxed overflow-x-auto border border-gray-100">{`- bullet point
+- another bullet
+
+1. first step
+2. second step`}</pre>
+              <p className="text-gray-400 mt-1">One item per line. In the tab format, separate items with <span className="font-mono">\n</span>.</p>
+            </div>
+
+            <div>
               <p className="font-semibold text-gray-700 mb-1">Math (LaTeX / KaTeX)</p>
-              <pre className="bg-gray-50 rounded-xl p-3 leading-relaxed overflow-x-auto border border-gray-100">{`Inline: $E = mc^2$
-Display (own line): $$\\frac{a}{b} = c$$
-Fraction: $$\\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}$$`}</pre>
+              <pre className="bg-gray-50 rounded-xl p-3 leading-relaxed overflow-x-auto border border-gray-100">{`Inline: the area is $\\pi r^2$ square units
+
+Centered block (alone on its own line):
+$$\\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}$$`}</pre>
+              <p className="text-gray-400 mt-1">A <span className="font-mono">$$…$$</span> line by itself is shown centered. In the tab format, put <span className="font-mono">\n</span> before and after it.</p>
+            </div>
+
+            <div>
+              <p className="font-semibold text-gray-700 mb-1">Literal symbols</p>
+              <pre className="bg-gray-50 rounded-xl p-3 leading-relaxed overflow-x-auto border border-gray-100">{`It costs \\$5          → It costs $5
+2 \\* 3 = 6           → 2 * 3 = 6`}</pre>
+              <p className="text-gray-400 mt-1">Put a backslash before <span className="font-mono">$ * ` [ ] #</span> when you mean the character itself, not formatting.</p>
             </div>
 
             <div>
@@ -114,7 +133,7 @@ def hello():
 \`\`\``}</pre>
             </div>
 
-            <p className="text-gray-400 pt-1">When importing, use <span className="font-mono">\\n</span> for line breaks inside code blocks (since each card must be one line).</p>
+            <p className="text-gray-400 pt-1">In the tab format, use <span className="font-mono">\\n</span> for any line break (code blocks, lists, math blocks), since each card must be one line.</p>
           </div>
         </section>
 
@@ -126,7 +145,7 @@ def hello():
             <li>• Blank-line format works great for pasting from notes apps</li>
             <li>• Tab format works great for pasting from Google Sheets or Excel</li>
             <li>• The app shows a live preview before you import — check it looks right first</li>
-            <li>• Type <span className="font-mono text-xs">/</span> on a new line when editing a card to get a menu of all formatting options</li>
+            <li>• When editing a card, type <span className="font-mono text-xs">/</span> for a menu of all formatting options, or select text to get a formatting toolbar</li>
           </ul>
         </section>
 
