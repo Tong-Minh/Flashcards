@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { supabase } from '@/lib/supabase/client'
+import { store } from '@/lib/store'
 import { getCachedSets, getCachedCollections, cacheCollections } from '@/lib/storage'
 import type { Collection } from '@/lib/types'
 import { TagInput } from '@/components/TagInput'
@@ -32,20 +32,17 @@ export default function NewCollection() {
     if (!name.trim()) return setError('Please enter a collection name.')
     setSaving(true)
 
-    const { data, error: err } = await supabase
-      .from('collections')
-      .insert({ name: name.trim(), description: description.trim() || null, tags, icon, color })
-      .select()
-      .single()
-
-    if (err || !data) {
+    let created: Collection
+    try {
+      created = await store.createCollection({ name: name.trim(), description: description.trim() || null, tags, icon, color })
+    } catch {
       setError('Failed to create collection. Please try again.')
       setSaving(false)
       return
     }
 
-    cacheCollections([...getCachedCollections(), data as Collection].sort((a, b) => a.name.localeCompare(b.name)))
-    router.push(`/collections/${data.id}`)
+    cacheCollections([...getCachedCollections(), created].sort((a, b) => a.name.localeCompare(b.name)))
+    router.push(`/collections/${created.id}`)
   }
 
   return (

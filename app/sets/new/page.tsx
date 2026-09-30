@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { supabase } from '@/lib/supabase/client'
+import { store } from '@/lib/store'
 import { useUser } from '@/components/AuthGuard'
 import { getCachedCollections, getCachedSets } from '@/lib/storage'
 import { TagInput } from '@/components/TagInput'
@@ -34,10 +34,7 @@ export default function NewSet() {
     const pre = new URLSearchParams(window.location.search).get('collection')
     if (pre) setCollectionId(pre)
     if (!currentUser) return
-    // Own collections only: RLS also returns other people's shared ones
-    supabase.from('collections').select('*').eq('user_id', currentUser.id).order('name').then(({ data }) => {
-      if (data) setCollections(data)
-    })
+    store.listCollections(currentUser.id).then(setCollections, () => {})
   }, [])
 
   async function handleSubmit(e: React.FormEvent) {
@@ -45,9 +42,9 @@ export default function NewSet() {
     if (!name.trim()) return setError('Please enter a set name.')
     setSaving(true)
 
-    const { data, error: err } = await supabase
-      .from('sets')
-      .insert({
+    let created
+    try {
+      created = await store.createSet({
         name: name.trim(),
         description: description.trim() || null,
         is_public: isPublic,
@@ -56,16 +53,13 @@ export default function NewSet() {
         icon,
         color,
       })
-      .select()
-      .single()
-
-    if (err || !data) {
+    } catch {
       setError('Failed to create set. Please try again.')
       setSaving(false)
       return
     }
 
-    router.push(`/sets/${data.id}`)
+    router.push(`/sets/${created.id}`)
   }
 
   return (
