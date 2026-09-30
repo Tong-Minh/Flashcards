@@ -9,6 +9,10 @@ import { getCachedSets, getCachedCollections, cacheSets, cacheCollections } from
 import { loadSetsAndCollections, type SetWithStats } from '@/lib/sets'
 import { SetCard } from '@/components/SetCard'
 import { TagInput, TagList } from '@/components/TagInput'
+import { ItemIcon } from '@/components/ItemIcon'
+import { IconPicker } from '@/components/IconPicker'
+import { ShareButton } from '@/components/ShareButton'
+import { PublicSetCard, type PublicSet } from '@/components/PublicSetCard'
 import type { Collection } from '@/lib/types'
 
 export default function CollectionDetail() {
@@ -27,6 +31,12 @@ export default function CollectionDetail() {
   const [nameInput,    setNameInput]    = useState('')
   const [descInput,    setDescInput]    = useState('')
   const [tagsInput,    setTagsInput]    = useState<string[]>([])
+  const [iconInput,    setIconInput]    = useState<{ icon: string | null; color: string | null }>({ icon: null, color: null })
+  const [isPublicInput, setIsPublicInput] = useState(false)
+
+  // Someone else's shared collection: read-only list of its public sets
+  const [publicSets,   setPublicSets]   = useState<PublicSet[] | null>(null)
+  const [ownerName,    setOwnerName]    = useState<string | null>(null)
 
   useEffect(() => { load() }, [id])
 
@@ -38,6 +48,8 @@ export default function CollectionDetail() {
       setNameInput(c.name)
       setDescInput(c.description ?? '')
       setTagsInput(c.tags ?? [])
+      setIconInput({ icon: c.icon ?? null, color: c.color ?? null })
+      setIsPublicInput(c.is_public ?? false)
     }
     return c
   }
@@ -47,8 +59,28 @@ export default function CollectionDetail() {
     if (apply(cachedSets, getCachedCollections())) setLoading(false)
     if (!navigator.onLine || !currentUser) { setLoading(false); return }
     const fresh = await loadSetsAndCollections(currentUser.id)
-    if (!apply(fresh.sets, fresh.collections)) { router.push('/'); return }
+    if (!apply(fresh.sets, fresh.collections) && !(await loadShared())) { router.push('/'); return }
     setLoading(false)
+  }
+
+  // A collection shared by someone else. RLS only returns it (and its sets) if they're public.
+  async function loadShared(): Promise<boolean> {
+    const { data: c } = await supabase.from('collections').select('*').eq('id', id).maybeSingle()
+    if (!c) return false
+    const [setsRes, ownerRes] = await Promise.all([
+      supabase.from('sets').select('id, name, description, tags, icon, color, flashcards(count)')
+        .eq('collection_id', id).eq('is_public', true).order('position', { ascending: true, nullsFirst: true }).order('created_at', { ascending: false }),
+      c.user_id ? supabase.from('profiles').select('display_name, avatar_url').eq('id', c.user_id).maybeSingle() : Promise.resolve({ data: null }),
+    ])
+    const owner = ownerRes.data as { display_name: string | null; avatar_url: string | null } | null
+    setCollection(c as Collection)
+    setOwnerName(owner?.display_name ?? null)
+    setPublicSets((setsRes.data ?? []).map(s => ({
+      id: s.id, name: s.name, description: s.description, tags: s.tags ?? [], icon: s.icon, color: s.color,
+      card_count: (s.flashcards as unknown as { count: number }[])?.[0]?.count ?? 0,
+      owner_name: owner?.display_name ?? null, owner_avatar: owner?.avatar_url ?? null,
+    })))
+    return true
   }
 
   async function toggleMembership(set: SetWithStats) {
@@ -65,7 +97,7 @@ export default function CollectionDetail() {
   async function saveInfo() {
     const name = nameInput.trim()
     if (!name || !collection) return
-    const patch = { name, description: descInput.trim() || null, tags: tagsInput }
+    const patch = { name, description: descInput.trim() || null, tags: tagsInput, icon: iconInput.icon, color: iconInput.color, is_public: isPublicInput }
     const { error } = await supabase.from('collections').update(patch).eq('id', id)
     if (error) return
     const updated = { ...collection, ...patch }
@@ -86,6 +118,42 @@ export default function CollectionDetail() {
     return <div className="max-w-lg mx-auto px-4 py-6 text-center text-gray-400 dark:text-gray-500 py-16">Loading…</div>
   }
 
+  if (publicSets && collection) {
+    return (
+      <div className="max-w-lg mx-auto px-4 py-6">
+        <div className="flex items-center gap-3 mb-2">
+          <Link href="/" className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 text-xl transition-colors flex-shrink-0">←</Link>
+          <p className="flex-1 text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wide">
+            Collection{ownerName ? ` · by ${ownerName}` : ''}
+          </p>
+          <ShareButton kind="collection" id={id} name={collection.name} isPublic isOwner={false} />
+        </div>
+        <div className="flex items-center gap-2">
+          <ItemIcon icon={collection.icon} color={collection.color} kind="collection" />
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 leading-tight">{collection.name}</h1>
+        </div>
+        {collection.description && (
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{collection.description}</p>
+        )}
+        <TagList tags={collection.tags} className="mt-2" />
+
+        <h2 className="font-semibold text-gray-900 dark:text-gray-100 mt-6 mb-3">
+          {publicSets.length} set{publicSets.length !== 1 ? 's' : ''}
+        </h2>
+        {publicSets.length === 0 ? (
+          <div className="text-center text-gray-400 dark:text-gray-500 py-10 bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700">
+            No public sets in this collection yet
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {publicSets.map(s => <PublicSetCard key={s.id} set={s} />)}
+          </div>
+        )}
+        <p className="text-xs text-center text-gray-400 dark:text-gray-500 mt-4">Open a set to study it or save your own copy</p>
+      </div>
+    )
+  }
+
   const sets       = allSets.filter(s => s.collection_id === id)
   const totalCards = sets.reduce((n, s) => n + s.totalCards, 0)
   const toStudy    = sets.reduce((n, s) => n + s.toStudy, 0)
@@ -94,19 +162,29 @@ export default function CollectionDetail() {
   return (
     <div className="max-w-lg mx-auto px-4 py-6">
       {/* Header */}
-      <div className="flex items-start gap-3 mb-4">
-        <Link href="/" className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 text-xl transition-colors flex-shrink-0 mt-1">←</Link>
-        <div className="flex-1 min-w-0">
-          <p className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wide">Collection</p>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 leading-tight">{collection?.name}</h1>
-          {collection?.description && (
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{collection.description}</p>
-          )}
-          <TagList tags={collection?.tags} className="mt-2" />
-        </div>
+      <div className="mb-4">
+      <div className="flex items-center gap-3 mb-2">
+        <Link href="/" className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 text-xl transition-colors flex-shrink-0">←</Link>
+        <p className="flex-1 text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wide">Collection</p>
+        {collection && (
+          <ShareButton
+            kind="collection"
+            id={id}
+            name={collection.name}
+            isPublic={collection.is_public}
+            isOwner
+            privateSetCount={sets.filter(s => !s.is_public).length}
+            onMadePublic={() => {
+              const updated = { ...collection, is_public: true }
+              setCollection(updated)
+              setIsPublicInput(true)
+              cacheCollections(getCachedCollections().map(c => (c.id === id ? updated : c)))
+            }}
+          />
+        )}
         <button
           onClick={() => setShowSettings(true)}
-          className="flex-shrink-0 text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300 transition-colors p-1 mt-0.5"
+          className="flex-shrink-0 text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300 transition-colors p-1"
           aria-label="Settings"
         >
           <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
@@ -114,6 +192,18 @@ export default function CollectionDetail() {
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
           </svg>
         </button>
+      </div>
+      <div className="flex items-center gap-2 flex-wrap">
+        {collection && <ItemIcon icon={collection.icon} color={collection.color} kind="collection" />}
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 leading-tight">{collection?.name}</h1>
+        {collection?.is_public && (
+          <span className="text-xs font-medium text-indigo-600 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/40 px-2 py-0.5 rounded-full">Shared</span>
+        )}
+      </div>
+      {collection?.description && (
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{collection.description}</p>
+      )}
+      <TagList tags={collection?.tags} className="mt-2" />
       </div>
 
       {/* Stats */}
@@ -233,11 +323,14 @@ export default function CollectionDetail() {
                 <div className="mb-5 space-y-3">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Name</label>
-                    <input
-                      value={nameInput}
-                      onChange={e => setNameInput(e.target.value)}
-                      className="w-full border border-gray-300 dark:border-gray-600 rounded-xl px-3 py-2 text-sm text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-700 outline-none focus:border-indigo-500"
-                    />
+                    <div className="flex items-center gap-3">
+                      <IconPicker icon={iconInput.icon} color={iconInput.color} kind="collection" onChange={setIconInput} />
+                      <input
+                        value={nameInput}
+                        onChange={e => setNameInput(e.target.value)}
+                        className="flex-1 min-w-0 border border-gray-300 dark:border-gray-600 rounded-xl px-3 py-2 text-sm text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-700 outline-none focus:border-indigo-500"
+                      />
+                    </div>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Description</label>
@@ -253,6 +346,21 @@ export default function CollectionDetail() {
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Tags</label>
                     <TagInput value={tagsInput} onChange={setTagsInput} suggestions={tagSuggestions} />
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsPublicInput(v => !v)}
+                    className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600/50 transition-colors"
+                  >
+                    <div className="text-left">
+                      <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{isPublicInput ? 'Shared' : 'Private'}</p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500">
+                        {isPublicInput ? 'Anyone with the link can see its public sets' : 'Only visible to you'}
+                      </p>
+                    </div>
+                    <div className={`w-10 h-5 rounded-full transition-colors relative flex-shrink-0 ${isPublicInput ? 'bg-indigo-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
+                      <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${isPublicInput ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                    </div>
+                  </button>
                 </div>
 
                 <button

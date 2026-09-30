@@ -41,17 +41,17 @@ export const ICONS: Record<string, LucideIcon> = {
   lock: Lock, clock: Clock, calendar: Calendar,
 }
 
-// Full literal class strings so Tailwind keeps them.
-export const ICON_COLORS: Record<string, { tile: string; swatch: string }> = {
-  indigo:  { tile: 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-300',    swatch: 'bg-indigo-500' },
-  blue:    { tile: 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300',            swatch: 'bg-blue-500' },
-  teal:    { tile: 'bg-teal-100 text-teal-600 dark:bg-teal-900/40 dark:text-teal-300',            swatch: 'bg-teal-500' },
-  emerald: { tile: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-300', swatch: 'bg-emerald-500' },
-  amber:   { tile: 'bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-400',        swatch: 'bg-amber-500' },
-  orange:  { tile: 'bg-orange-100 text-orange-600 dark:bg-orange-900/40 dark:text-orange-300',    swatch: 'bg-orange-500' },
-  rose:    { tile: 'bg-rose-100 text-rose-600 dark:bg-rose-900/40 dark:text-rose-300',            swatch: 'bg-rose-500' },
-  purple:  { tile: 'bg-purple-100 text-purple-600 dark:bg-purple-900/40 dark:text-purple-300',    swatch: 'bg-purple-500' },
-  gray:    { tile: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300',               swatch: 'bg-gray-500' },
+// Full literal class strings so Tailwind keeps them. hex/bgHex are for the server-rendered link-preview image.
+export const ICON_COLORS: Record<string, { tile: string; swatch: string; hex: string; bgHex: string }> = {
+  indigo:  { tile: 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-300',    swatch: 'bg-indigo-500',  hex: '#4f46e5', bgHex: '#e0e7ff' },
+  blue:    { tile: 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300',            swatch: 'bg-blue-500',    hex: '#2563eb', bgHex: '#dbeafe' },
+  teal:    { tile: 'bg-teal-100 text-teal-600 dark:bg-teal-900/40 dark:text-teal-300',            swatch: 'bg-teal-500',    hex: '#0d9488', bgHex: '#ccfbf1' },
+  emerald: { tile: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-300', swatch: 'bg-emerald-500', hex: '#059669', bgHex: '#d1fae5' },
+  amber:   { tile: 'bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-400',        swatch: 'bg-amber-500',   hex: '#d97706', bgHex: '#fef3c7' },
+  orange:  { tile: 'bg-orange-100 text-orange-600 dark:bg-orange-900/40 dark:text-orange-300',    swatch: 'bg-orange-500',  hex: '#ea580c', bgHex: '#ffedd5' },
+  rose:    { tile: 'bg-rose-100 text-rose-600 dark:bg-rose-900/40 dark:text-rose-300',            swatch: 'bg-rose-500',    hex: '#e11d48', bgHex: '#ffe4e6' },
+  purple:  { tile: 'bg-purple-100 text-purple-600 dark:bg-purple-900/40 dark:text-purple-300',    swatch: 'bg-purple-500',  hex: '#9333ea', bgHex: '#f3e8ff' },
+  gray:    { tile: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300',               swatch: 'bg-gray-500',    hex: '#4b5563', bgHex: '#f3f4f6' },
 }
 
 export const DEFAULT_SET_ICON        = { icon: 'layers', color: 'indigo' }

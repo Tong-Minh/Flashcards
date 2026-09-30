@@ -9,7 +9,7 @@ Mobile-first flashcard PWA with FSRS spaced repetition. Next.js 15 (App Router) 
 
 ## Architecture
 
-- **Client-only app.** Every page is `'use client'` and talks to Supabase directly via `lib/supabase/client.ts`. There are no API routes or server components doing data work. Access control is enforced entirely by Postgres RLS.
+- **Client-only app.** Every page is `'use client'` and talks to Supabase directly via `lib/supabase/client.ts`. There are no API routes or server components doing data work, except link previews: `app/sets/[id]/layout.tsx` and `app/collections/[id]/layout.tsx` render Open Graph metadata and `opengraph-image.tsx` renders the preview image, via the `share_preview` RPC (callable logged out, public items only). Code for them is in `lib/sharePreview.ts` and `lib/shareImage.tsx`. Next.js blocks `react-dom/server` there, so the image builds icon SVGs from the vanilla `lucide` package. Access control is enforced entirely by Postgres RLS.
 - **Auth:** `components/AuthGuard.tsx` wraps the app, exposes `useUser()`, and redirects to `/login`. DB triggers fill in `user_id` on insert for `sets`, `card_progress`, `study_sessions`, and `collections`.
 - **Offline-first caching:** `lib/storage.ts` caches sets, cards (with progress), and sessions in localStorage. Pages render from the cache first, then refresh from Supabase. FSRS progress updates made offline are queued (`queueProgressUpdate`) and synced on the next study-page load.
 - **FSRS:** `ts-fsrs` runs client-side in `app/sets/[id]/study/page.tsx`. Progress is upserted to `card_progress` on `(user_id, card_id)`. `status` is derived from FSRS state (`mastered` = Review with interval ≥ 21 days).
@@ -24,12 +24,13 @@ Mobile-first flashcard PWA with FSRS spaced repetition. Next.js 15 (App Router) 
 - **Icons:** `lib/icons.ts` holds the curated lucide icon map (keys are stored in `sets.icon`/`collections.icon`, so never rename one), the color map, and `suggestIcon(name)`. `ItemIcon` renders the tile; `IconPicker` is the picker sheet. A null icon/color falls back to the set or collection default.
 - **Export:** `lib/cardFormat.ts` writes a set as tab-separated text in the import format (Export button on the set page). Keep it in sync with the importer when card types change.
 - **Card display:** `components/CardPreview.tsx` has `FlipCard` (tap to flip, optional swipe-to-dismiss), used by the Cards-tab preview modal and study View mode. Its `card-enter` animation must only play on mount; re-applying it after a flip causes a double rotation.
+- **Sharing:** `ShareButton` (set and collection headers) makes a private item public after confirming, then opens the native share sheet or copies the link. `AuthGuard` stores the requested path in sessionStorage before redirecting to `/login`, and returns there after sign-in.
 - **Home tabs:** My Sets (client-side search + tag filter over cached sets), Discover (`components/DiscoverTab.tsx`, calls the `discover_sets` RPC), Friends.
 - **View mode:** the set page's View button opens `/sets/[id]/study?mode=view`. It browses every card in set order.
 
 ## Data model (Supabase, `public` schema)
 
-- `collections` — folders that group sets (`name`, `description`, `tags text[]`, `icon`, `color`, `user_id`)
+- `collections` — folders that group sets (`name`, `description`, `tags text[]`, `icon`, `color`, `is_public`, `user_id`). A public collection shows only its public sets to others. RLS returns other people's public collections too, so filter by `user_id` when listing your own.
 - `sets` — `name`, `description`, `is_public`, `tags text[]`, `icon`, `color`, `position` (manual home-screen order; set in bulk by the `reorder_sets(ids)` RPC), `collection_id` (nullable, `on delete set null`)
 - `flashcards` — `set_id`, `question`, `answer`, `type` (`open_ended` | `multiple_choice` | `fill_blank` | `typed` | `true_false` | `matching`), `options text[]` (MC choices; extra accepted answers for `typed`), `pairs jsonb` (`[{left, right}]`, matching only), `position`. Type labels and badges live in `lib/cardTypes.ts`.
 - `card_progress` — per-user FSRS state per card
@@ -49,6 +50,6 @@ Schema changes go through Supabase migrations (the Supabase MCP server is config
 
 ## Conventions
 
-- Tailwind only, with a `dark:` variant on every color. Palette: indigo primary, gray neutrals, rounded-xl/2xl cards.
+- Tailwind only (its `content` includes `lib/` because `lib/icons.ts` defines color classes), with a `dark:` variant on every color. Palette: indigo primary, gray neutrals, rounded-xl/2xl cards.
 - Layout is `max-w-lg mx-auto px-4 py-6` per page. Modals use a `fixed inset-0 bg-black/50` backdrop.
 - Imports use the `@/` alias. Column-aligned `useState` declarations are the house style.

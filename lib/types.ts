@@ -25,6 +25,7 @@ export interface Collection {
   created_at: string
   icon: string | null
   color: string | null
+  is_public: boolean
 }
 
 export interface Profile {

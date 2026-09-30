@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase/client'
+import { useUser } from '@/components/AuthGuard'
 import { getCachedCollections, getCachedSets } from '@/lib/storage'
 import { TagInput } from '@/components/TagInput'
 import { IconPicker } from '@/components/IconPicker'
@@ -12,6 +13,7 @@ import type { Collection } from '@/lib/types'
 
 export default function NewSet() {
   const router = useRouter()
+  const currentUser = useUser()
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [isPublic, setIsPublic] = useState(true)
@@ -31,7 +33,9 @@ export default function NewSet() {
     setCollections(getCachedCollections())
     const pre = new URLSearchParams(window.location.search).get('collection')
     if (pre) setCollectionId(pre)
-    supabase.from('collections').select('*').order('name').then(({ data }) => {
+    if (!currentUser) return
+    // Own collections only: RLS also returns other people's shared ones
+    supabase.from('collections').select('*').eq('user_id', currentUser.id).order('name').then(({ data }) => {
       if (data) setCollections(data)
     })
   }, [])

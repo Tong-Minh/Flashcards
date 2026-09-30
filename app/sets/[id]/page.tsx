@@ -18,6 +18,7 @@ import { CardPreviewModal } from '@/components/CardPreview'
 import { TagInput, TagList } from '@/components/TagInput'
 import { IconPicker } from '@/components/IconPicker'
 import { ItemIcon } from '@/components/ItemIcon'
+import { ShareButton } from '@/components/ShareButton'
 import { exportCards, downloadText } from '@/lib/cardFormat'
 import { TYPE_BADGES } from '@/lib/cardTypes'
 import type { Collection, FlashcardSet, FlashcardWithProgress, StudySession } from '@/lib/types'
@@ -131,7 +132,8 @@ export default function SetDetail() {
         .select('*')
         .eq('set_id', id)
         .order('completed_at', { ascending: false }),
-      supabase.from('collections').select('*').order('name'),
+      // Own collections only: RLS also returns other people's shared ones
+      supabase.from('collections').select('*').eq('user_id', currentUser?.id ?? '00000000-0000-0000-0000-000000000000').order('name'),
     ])
 
     if (!setRes.data) { router.push('/'); return }
@@ -296,6 +298,20 @@ export default function SetDetail() {
             </Link>
           )}
         </div>
+        {set && (isOwner || set.is_public) && (
+          <ShareButton
+            kind="set"
+            id={id}
+            name={set.name}
+            isPublic={set.is_public}
+            isOwner={isOwner}
+            onMadePublic={() => {
+              setSet(s => s ? { ...s, is_public: true } : s)
+              setIsPublicInput(true)
+              cacheSets(getCachedSets().map(s => (s.id === id ? { ...s, is_public: true } : s)))
+            }}
+          />
+        )}
         {isOwner && (
           <button
             onClick={() => setShowSettings(true)}

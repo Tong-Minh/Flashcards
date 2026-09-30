@@ -6,6 +6,9 @@ import { supabase } from '@/lib/supabase/client'
 import type { User } from '@supabase/supabase-js'
 
 const UserContext = createContext<User | null>(null)
+
+// Where to go after logging in, so a shared link opened while logged out lands on the shared page
+const RETURN_KEY = 'fc_return_to'
 export const useUser = () => useContext(UserContext)
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
@@ -28,7 +31,10 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
         if (event === 'SIGNED_IN' && currentUser && !claimed.current) {
           claimed.current = true
           await supabase.rpc('claim_unclaimed_sets')
-          if (pathname === '/login') router.replace('/')
+          let returnTo: string | null = null
+          try { returnTo = sessionStorage.getItem(RETURN_KEY); sessionStorage.removeItem(RETURN_KEY) } catch {}
+          if (returnTo) router.replace(returnTo)
+          else if (pathname === '/login') router.replace('/')
         }
 
         if (event === 'SIGNED_OUT') {
@@ -59,6 +65,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   }
 
   if (!user && pathname !== '/login') {
+    try { if (pathname !== '/') sessionStorage.setItem(RETURN_KEY, pathname) } catch {}
     router.replace('/login')
     return null
   }
