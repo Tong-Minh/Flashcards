@@ -20,6 +20,8 @@ import { IconPicker } from '@/components/IconPicker'
 import { ShareButton } from '@/components/ShareButton'
 import { DetailHeader, SettingsButton } from '@/components/DetailHeader'
 import { SearchBar } from '@/components/SearchBar'
+import { SetPickerSheet } from '@/components/SetPickerSheet'
+import { useLongPress } from '@/lib/useLongPress'
 import { exportCards, downloadText } from '@/lib/cardFormat'
 import { TYPE_BADGES } from '@/lib/cardTypes'
 import type { CardStatus, Collection, FlashcardSet, FlashcardWithProgress, StudySession } from '@/lib/types'
@@ -77,6 +79,20 @@ export default function SetDetail() {
   const [collections,  setCollections]  = useState<Collection[]>([])
   const [cardQuery,    setCardQuery]    = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | CardStatus>('all')
+  const [showTransferMenu, setShowTransferMenu] = useState(false)
+
+  // Card selection (owner only): long-press a card or tap Select, then move / reset / delete in bulk
+  const [selecting,     setSelecting]     = useState(false)
+  const [selectedCards, setSelectedCards] = useState<Set<string>>(new Set())
+  const [showSetPicker, setShowSetPicker] = useState(false)
+  const [cardBusy,      setCardBusy]      = useState(false)
+  const pressedCardId = useRef<string | null>(null)
+  const cardLongPress = useLongPress(() => {
+    const cardId = pressedCardId.current
+    if (!cardId) return
+    setSelecting(true)
+    toggleCard(cardId)
+  })
   const cardsTopRef = useRef<HTMLDivElement>(null)
 
   // Settings sheet
@@ -192,6 +208,97 @@ export default function SetDetail() {
     }
   }
 
+  function toggleCard(cardId: string) {
+    setSelectedCards(prev => {
+      const next = new Set(prev)
+      if (next.has(cardId)) next.delete(cardId)
+      else next.add(cardId)
+      return next
+    })
+  }
+
+  function exitCardSelect() {
+    setSelecting(false)
+    setSelectedCards(new Set())
+  }
+
+  // Applies to the selected cards, in chunks so id lists stay well under URL length limits
+  async function forSelected(fn: (chunk: string[]) => PromiseLike<{ error: unknown }>) {
+    const ids = [...selectedCards]
+    for (let i = 0; i < ids.length; i += 200) {
+      const { error } = await fn(ids.slice(i, i + 200))
+      if (error) throw error
+    }
+  }
+
+  function adjustCachedCount(setId: string, delta: number) {
+    cacheSets(getCachedSets().map(s => (s.id === setId ? { ...s, totalCards: Math.max(0, (s.totalCards ?? 0) + delta) } : s)))
+  }
+
+  async function deleteSelectedCards() {
+    const n = selectedCards.size
+    if (!confirm(`Delete ${n} card${n !== 1 ? 's' : ''}? This can't be undone.`)) return
+    setCardBusy(true)
+    try {
+      // card_progress rows cascade-delete with their cards
+      await forSelected(chunk => supabase.from('flashcards').delete().in('id', chunk))
+      const remaining = cards.filter(c => !selectedCards.has(c.id))
+      setCards(remaining)
+      cacheCards(id, remaining)
+      adjustCachedCount(id, -n)
+      exitCardSelect()
+    } catch {
+      alert('Could not delete the cards. Please try again.')
+    } finally {
+      setCardBusy(false)
+    }
+  }
+
+  async function resetSelectedCards() {
+    const n = selectedCards.size
+    if (!confirm(`Reset progress on ${n} card${n !== 1 ? 's' : ''}? They go back to New.`)) return
+    setCardBusy(true)
+    try {
+      await forSelected(chunk => supabase.from('card_progress').delete().in('card_id', chunk))
+      const reset = cards.map(c => (selectedCards.has(c.id) ? { ...c, progress: null } : c))
+      setCards(reset)
+      cacheCards(id, reset)
+      exitCardSelect()
+    } catch {
+      alert('Could not reset the cards. Please try again.')
+    } finally {
+      setCardBusy(false)
+    }
+  }
+
+  async function moveSelectedCards(destId: string) {
+    const moving = cards.filter(c => selectedCards.has(c.id))
+    const dest = getCachedSets().find(s => s.id === destId)
+    setShowSetPicker(false)
+    setCardBusy(true)
+    try {
+      const { count } = await supabase.from('flashcards').select('id', { count: 'exact', head: true }).eq('set_id', destId)
+      if ((count ?? 0) + moving.length > MAX_CARDS_PER_SET) {
+        alert(`"${dest?.name ?? 'That set'}" can only take ${Math.max(0, MAX_CARDS_PER_SET - (count ?? 0))} more cards.`)
+        return
+      }
+      // Moved cards go to the end of the other set; their study progress comes with them
+      await forSelected(chunk => supabase.from('flashcards').update({ set_id: destId, position: null }).in('id', chunk))
+      const remaining = cards.filter(c => !selectedCards.has(c.id))
+      setCards(remaining)
+      cacheCards(id, remaining)
+      const destCached = getCachedCards(destId)
+      if (destCached.length > 0) cacheCards(destId, [...destCached, ...moving.map(c => ({ ...c, set_id: destId, position: null }))])
+      adjustCachedCount(id, -moving.length)
+      adjustCachedCount(destId, moving.length)
+      exitCardSelect()
+    } catch {
+      alert('Could not move the cards. Please try again.')
+    } finally {
+      setCardBusy(false)
+    }
+  }
+
   function exportSet() {
     const filename = `${(set?.name ?? 'flashcards').replace(/[\\/:*?"<>|]+/g, '').trim() || 'flashcards'}.txt`
     downloadText(filename, exportCards(cards))
@@ -273,13 +380,19 @@ export default function SetDetail() {
   }, {})
   const q             = cardQuery.trim().toLowerCase()
   const filtering     = !!q || statusFilter !== 'all'
+  // "#12" finds card 12 only; a bare "12" finds card 12 plus any card whose text contains 12
+  const numberQuery   = q.match(/^#?(\d+)$/)
+  const cardNumber    = numberQuery ? Number(numberQuery[1]) : null
+  const textQuery     = q.startsWith('#') && numberQuery ? '' : q
   // Keep each card's index in the full list: it's the card number and what reorderCard works on
   const filteredCards = cards
     .map((card, idx) => ({ card, idx }))
-    .filter(({ card }) =>
+    .filter(({ card, idx }) =>
       (statusFilter === 'all' || (card.progress?.status ?? 'new') === statusFilter) &&
-      (!q || [card.question, card.answer, ...(card.options ?? []), ...(card.pairs ?? []).flatMap(p => [p.left, p.right])]
-        .some(t => t?.toLowerCase().includes(q))))
+      (!q || idx + 1 === cardNumber ||
+        (!!textQuery && [card.question, card.answer, ...(card.options ?? []), ...(card.pairs ?? []).flatMap(p => [p.left, p.right])]
+          .some(t => t?.toLowerCase().includes(textQuery)))))
+  const allFilteredSelected = filteredCards.length > 0 && filteredCards.every(f => selectedCards.has(f.card.id))
   const pageCount     = Math.max(1, Math.ceil(filteredCards.length / PAGE_SIZE))
   const safePage      = Math.min(page, pageCount - 1)
   const pageStart     = safePage * PAGE_SIZE
@@ -455,39 +568,79 @@ export default function SetDetail() {
       {tab === 'cards' && (
         <>
           <div ref={cardsTopRef} className="flex items-center justify-between mb-3 scroll-mt-4">
-            <h2 className="font-semibold text-gray-900 dark:text-gray-100">
-              {filtering && `${filteredCards.length} of `}{cards.length} card{cards.length !== 1 ? 's' : ''}
-            </h2>
-            <div className="flex items-center gap-2">
-            {cards.length > 0 && (
-              <button
-                onClick={exportSet}
-                title="Download these cards as a .txt file in the import format"
-                className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 font-medium px-2 py-1.5"
-              >
-                Export
-              </button>
+            {selecting ? (
+              <>
+                <h2 className="font-semibold text-gray-900 dark:text-gray-100">{selectedCards.size} selected</h2>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setSelectedCards(allFilteredSelected ? new Set() : new Set(filteredCards.map(f => f.card.id)))}
+                    className="text-sm font-medium text-indigo-600 dark:text-indigo-400"
+                  >
+                    {allFilteredSelected ? 'Select none' : filtering ? `Select all ${filteredCards.length}` : 'Select all'}
+                  </button>
+                  <button onClick={exitCardSelect} className="text-sm font-semibold text-gray-600 dark:text-gray-300">Done</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h2 className="font-semibold text-gray-900 dark:text-gray-100">
+                  {filtering && `${filteredCards.length} of `}{cards.length} card{cards.length !== 1 ? 's' : ''}
+                </h2>
+                <div className="flex items-center gap-1">
+                  {isOwner && cards.length > 0 && (
+                    <button
+                      onClick={() => setSelecting(true)}
+                      className="text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 px-2 py-1.5"
+                    >
+                      Select
+                    </button>
+                  )}
+                  {(cards.length > 0 || (isOwner && !atCardLimit)) && (
+                    <div className="relative">
+                      <button
+                        onClick={() => setShowTransferMenu(v => !v)}
+                        className="text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 px-2 py-1.5"
+                      >
+                        {isOwner && !atCardLimit ? 'Import/Export' : 'Export'} ▾
+                      </button>
+                      {showTransferMenu && (
+                        <>
+                          <div className="fixed inset-0 z-10" onClick={() => setShowTransferMenu(false)} />
+                          <div className="absolute right-0 top-full mt-1 z-20 w-60 bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-100 dark:border-gray-700 py-1 overflow-hidden">
+                            {isOwner && !atCardLimit && (
+                              <Link href={`/sets/${id}/import`} className="block px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Import cards</p>
+                                <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Paste text or generate with AI</p>
+                              </Link>
+                            )}
+                            {cards.length > 0 && (
+                              <button
+                                onClick={() => { setShowTransferMenu(false); exportSet() }}
+                                className="w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                              >
+                                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Export as .txt</p>
+                                <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">In the import format, to re-import or share</p>
+                              </button>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                  {isOwner && atCardLimit && (
+                    <span className="text-xs text-gray-400 dark:text-gray-500 ml-1">Limit of {MAX_CARDS_PER_SET.toLocaleString()} reached</span>
+                  )}
+                  {isOwner && !atCardLimit && (
+                    <Link
+                      href={`/sets/${id}/create`}
+                      className="ml-1 text-sm bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 font-medium transition-colors"
+                    >
+                      + Add
+                    </Link>
+                  )}
+                </div>
+              </>
             )}
-            {isOwner && atCardLimit && (
-              <span className="text-xs text-gray-400 dark:text-gray-500">Limit of {MAX_CARDS_PER_SET.toLocaleString()} reached</span>
-            )}
-            {isOwner && !atCardLimit && (
-              <div className="flex items-center gap-2">
-                <Link
-                  href={`/sets/${id}/import`}
-                  className="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-medium px-3 py-1.5"
-                >
-                  Import
-                </Link>
-                <Link
-                  href={`/sets/${id}/create`}
-                  className="text-sm bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 font-medium transition-colors"
-                >
-                  + Add
-                </Link>
-              </div>
-            )}
-            </div>
           </div>
 
           {cards.length > 0 && (
@@ -495,7 +648,7 @@ export default function SetDetail() {
               <SearchBar
                 value={cardQuery}
                 onChange={v => { setCardQuery(v); setPage(0) }}
-                placeholder="Search questions and answers"
+                placeholder="Search questions, answers, or #card number"
                 className="mb-2"
               />
               <div className="flex gap-1.5 overflow-x-auto pb-1 mb-3 -mx-4 px-4">
@@ -532,17 +685,32 @@ export default function SetDetail() {
               {pageCards.map(({ card, idx }) => {
                 const status = card.progress?.status ?? 'new'
                 const badge  = STATUS_STYLES[status]
+                const isSelected = selectedCards.has(card.id)
                 return (
                   <div
                     key={card.id}
+                    {...(isOwner ? cardLongPress : {})}
+                    onPointerDown={isOwner ? e => { pressedCardId.current = card.id; cardLongPress.onPointerDown(e) } : undefined}
                     onClick={e => {
+                      if (selecting) { toggleCard(card.id); return }
                       // Edit / reorder controls and links inside content keep their own behavior
                       if ((e.target as HTMLElement).closest('a, button')) return
                       setPreviewCard(card)
                     }}
-                    className="bg-white dark:bg-gray-800 rounded-xl p-3.5 shadow-sm border border-gray-100 dark:border-gray-700 cursor-pointer hover:border-indigo-200 dark:hover:border-indigo-800 transition-colors"
+                    className={`bg-white dark:bg-gray-800 rounded-xl p-3.5 shadow-sm border cursor-pointer transition-colors [-webkit-touch-callout:none] ${
+                      isSelected
+                        ? 'border-indigo-500 ring-2 ring-indigo-500/40'
+                        : 'border-gray-100 dark:border-gray-700 hover:border-indigo-200 dark:hover:border-indigo-800'
+                    } ${selecting ? 'select-none' : ''}`}
                   >
                     <div className="flex items-start gap-3">
+                      {selecting && (
+                        <span className={`mt-0.5 w-5 h-5 flex-shrink-0 rounded-full border-2 flex items-center justify-center text-[10px] font-bold ${
+                          isSelected ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-gray-300 dark:border-gray-600'
+                        }`}>
+                          {isSelected && '✓'}
+                        </span>
+                      )}
                       <div className="flex-1 min-w-0">
                         {/* Number in its own column so formatted (block-level) questions start on the same line as plain ones */}
                         <div className="flex gap-1 text-sm font-medium text-gray-900 dark:text-gray-100">
@@ -562,7 +730,7 @@ export default function SetDetail() {
                           </span>
                         </div>
                       </div>
-                      {isOwner && (
+                      {isOwner && !selecting && (
                         <div className="flex items-stretch gap-3 flex-shrink-0">
                           <Link
                             href={`/sets/${id}/edit/${card.id}`}
@@ -662,6 +830,39 @@ export default function SetDetail() {
       )}
 
       {previewCard && <CardPreviewModal card={previewCard} onClose={closePreview} />}
+
+      {selecting && tab === 'cards' && (
+        <>
+          <div className="h-20" />
+          <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-gray-800/95 backdrop-blur border-t border-gray-200 dark:border-gray-700 pb-[env(safe-area-inset-bottom)]">
+            <div className="max-w-lg mx-auto px-4 py-3 flex items-center gap-2">
+              {[
+                { label: 'Move',  onClick: () => setShowSetPicker(true), cls: 'bg-indigo-600 text-white hover:bg-indigo-700' },
+                { label: 'Reset', onClick: resetSelectedCards,          cls: 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600' },
+                { label: 'Delete', onClick: deleteSelectedCards,        cls: 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40' },
+              ].map(b => (
+                <button
+                  key={b.label}
+                  onClick={b.onClick}
+                  disabled={selectedCards.size === 0 || cardBusy}
+                  className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-colors disabled:opacity-40 ${b.cls}`}
+                >
+                  {b.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+
+      {showSetPicker && (
+        <SetPickerSheet
+          title={`Move ${selectedCards.size} card${selectedCards.size !== 1 ? 's' : ''} to…`}
+          sets={getCachedSets().filter(s => s.id !== id)}
+          onPick={moveSelectedCards}
+          onClose={() => setShowSetPicker(false)}
+        />
+      )}
 
       {/* ── History tab ───────────────────────────────────────────────────── */}
       {tab === 'history' && (
