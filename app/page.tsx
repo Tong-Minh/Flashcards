@@ -27,7 +27,7 @@ export default function Home() {
   const [collections, setCollections] = useState<Collection[]>([])
   const [loading,     setLoading]     = useState(true)
   const [showNewMenu, setShowNewMenu] = useState(false)
-  const [activeTag,   setActiveTag]   = useState<string | null>(null)
+  const [kind,        setKind]        = useState<'all' | 'collections' | 'sets'>('all')
   const [search,      setSearch]      = useState('')
 
   useEffect(() => {
@@ -53,13 +53,6 @@ export default function Home() {
     }
   }
 
-  const allTags = useMemo(() => {
-    const tags = new Set<string>()
-    for (const s of sets) for (const t of s.tags ?? []) tags.add(t)
-    for (const c of collections) for (const t of c.tags ?? []) tags.add(t)
-    return [...tags].sort()
-  }, [sets, collections])
-
   const setsByCollection = useMemo(() => {
     const map: Record<string, SetWithStats[]> = {}
     for (const s of sets) if (s.collection_id) (map[s.collection_id] ??= []).push(s)
@@ -67,15 +60,20 @@ export default function Home() {
   }, [sets])
 
   const collectionIds = new Set(collections.map(c => c.id))
-  const q = search.trim().toLowerCase().replace(/^#/, '')
+  // "#bio" searches tags only (by prefix); anything else matches name, description, or tags
+  const raw      = search.trim().toLowerCase()
+  const tagQuery = raw.startsWith('#') ? raw.slice(1) : null
   const matches = (item: { name: string; description: string | null; tags: string[] | null }) =>
-    (!activeTag || !!item.tags?.includes(activeTag)) &&
-    (!q || item.name.toLowerCase().includes(q) || !!item.description?.toLowerCase().includes(q) || !!item.tags?.some(t => t.includes(q)))
-  // With a tag filter or search, show every matching set (even ones inside collections); otherwise only ungrouped sets.
-  const filtering = !!activeTag || !!q
-  const visibleCollections = filtering ? collections.filter(matches) : collections
-  const visibleSets = filtering
-    ? sets.filter(matches)
+    tagQuery !== null
+      ? !!item.tags?.some(t => t.startsWith(tagQuery))
+      : !raw || item.name.toLowerCase().includes(raw) || !!item.description?.toLowerCase().includes(raw) || !!item.tags?.some(t => t.includes(raw))
+  // Searching, or the Sets filter, lists every matching set flat (even ones inside collections);
+  // otherwise collections come first and only ungrouped sets are listed below them.
+  const searching = !!raw && raw !== '#'
+  const flat      = searching || kind === 'sets'
+  const visibleCollections = kind === 'sets' ? [] : searching ? collections.filter(matches) : collections
+  const visibleSets = kind === 'collections' ? []
+    : flat ? sets.filter(matches)
     : sets.filter(s => !s.collection_id || !collectionIds.has(s.collection_id))
 
   const TAB_LABELS: Record<Tab, string> = {
@@ -172,26 +170,23 @@ export default function Home() {
           </div>
         ) : (
           <>
-            <SearchBar value={search} onChange={setSearch} placeholder="Search your sets and collections" className="mb-3" />
+            <SearchBar value={search} onChange={setSearch} placeholder="Search sets and collections, or #tag" className="mb-3" />
 
-            {/* Tag filter */}
-            {allTags.length > 0 && (
-              <div className="flex gap-1.5 overflow-x-auto pb-1 mb-4 -mx-4 px-4">
-                {[null, ...allTags].map(t => (
-                  <button
-                    key={t ?? '__all'}
-                    onClick={() => setActiveTag(t)}
-                    className={`flex-shrink-0 text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${
-                      activeTag === t
-                        ? 'bg-indigo-600 border-indigo-600 text-white'
-                        : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700'
-                    }`}
-                  >
-                    {t === null ? 'All' : `#${t}`}
-                  </button>
-                ))}
-              </div>
-            )}
+            <div className="flex gap-1.5 mb-4">
+              {(['all', 'collections', 'sets'] as const).map(k => (
+                <button
+                  key={k}
+                  onClick={() => setKind(k)}
+                  className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${
+                    kind === k
+                      ? 'bg-indigo-600 border-indigo-600 text-white'
+                      : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  {k === 'all' ? 'All' : k === 'collections' ? `Collections · ${collections.length}` : `Sets · ${sets.length}`}
+                </button>
+              ))}
+            </div>
 
             <SetOrganizer
               allSets={sets}
@@ -201,13 +196,15 @@ export default function Home() {
               listSets={visibleSets}
               dropCollections={visibleCollections}
               setsByCollection={setsByCollection}
-              sortable={!filtering}
-              label={filtering ? 'Sets' : visibleCollections.length > 0 ? 'Ungrouped sets' : 'Sets'}
+              sortable={!flat}
+              label={flat ? 'Sets' : visibleCollections.length > 0 ? 'Ungrouped sets' : 'Sets'}
             />
 
-            {filtering && visibleSets.length === 0 && visibleCollections.length === 0 && (
+            {visibleSets.length === 0 && visibleCollections.length === 0 && (
               <p className="text-center text-sm text-gray-400 dark:text-gray-500 py-10">
-                {q ? <>Nothing matches &ldquo;{search.trim()}&rdquo;{activeTag && <> in #{activeTag}</>}</> : <>Nothing tagged #{activeTag}</>}
+                {searching
+                  ? tagQuery !== null ? <>Nothing tagged #{tagQuery}</> : <>Nothing matches &ldquo;{search.trim()}&rdquo;</>
+                  : kind === 'collections' ? 'No collections yet' : 'No sets yet'}
               </p>
             )}
           </>
