@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase/client'
+import { store } from '@/lib/store'
 import { useUser } from '@/components/AuthGuard'
 import { getCachedSets, getCachedCollections, cacheSets, cacheCollections } from '@/lib/storage'
 import { loadSetsAndCollections, type SetWithStats } from '@/lib/sets'
@@ -88,9 +89,13 @@ export default function CollectionDetail() {
   async function toggleMembership(set: SetWithStats) {
     const next = set.collection_id === id ? null : id
     setBusySetId(set.id)
-    const { error } = await supabase.from('sets').update({ collection_id: next }).eq('id', set.id)
-    setBusySetId(null)
-    if (error) return
+    try {
+      await store.updateSet(set.id, { collection_id: next })
+    } catch {
+      return
+    } finally {
+      setBusySetId(null)
+    }
     const updated = allSets.map(s => (s.id === set.id ? { ...s, collection_id: next } : s))
     setAllSets(updated)
     cacheSets(updated)
@@ -100,8 +105,7 @@ export default function CollectionDetail() {
     const name = nameInput.trim()
     if (!name || !collection) return
     const patch = { name, description: descInput.trim() || null, tags: tagsInput, icon: iconInput.icon, color: iconInput.color, is_public: isPublicInput }
-    const { error } = await supabase.from('collections').update(patch).eq('id', id)
-    if (error) return
+    try { await store.updateCollection(id, patch) } catch { return }
     const updated = { ...collection, ...patch }
     setCollection(updated)
     cacheCollections(getCachedCollections().map(c => (c.id === id ? updated : c)))
@@ -110,7 +114,7 @@ export default function CollectionDetail() {
 
   async function deleteCollection() {
     if (!confirm(`Delete the collection "${collection?.name}"? The sets inside it will be kept and moved out.`)) return
-    await supabase.from('collections').delete().eq('id', id)
+    await store.deleteCollection(id).catch(() => {})
     cacheCollections(getCachedCollections().filter(c => c.id !== id))
     cacheSets(allSets.map(s => (s.collection_id === id ? { ...s, collection_id: null } : s)))
     router.push('/')
