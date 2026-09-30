@@ -195,7 +195,7 @@ export function SetOrganizer({
 
   return (
     <div
-      className={selecting ? 'pb-24' : ''}
+      className={selecting ? 'pb-28' : ''}
       onClickCapture={e => { if (suppressClick.current) { e.preventDefault(); e.stopPropagation() } }}
     >
       <DndContext
@@ -259,7 +259,7 @@ export function SetOrganizer({
       </DndContext>
 
       {selecting && (
-        <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-gray-800/95 backdrop-blur border-t border-gray-200 dark:border-gray-700 pb-[env(safe-area-inset-bottom)]">
+        <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-gray-800/95 backdrop-blur border-t border-gray-200 dark:border-gray-700 pb-[max(env(safe-area-inset-bottom),0.75rem)]">
           <div className="max-w-lg mx-auto px-4 py-3 flex items-center gap-2">
             <BarButton onClick={() => setShowMove(true)} disabled={selected.size === 0 || busy} primary>Move</BarButton>
             <BarButton onClick={() => setVisibility(!allPublic)} disabled={selected.size === 0 || busy}>

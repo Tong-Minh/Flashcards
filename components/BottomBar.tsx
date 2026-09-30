@@ -6,7 +6,7 @@ import type { ReactNode } from 'react'
 export function BottomBar({ children }: { children?: ReactNode }) {
   if (!children) return null
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-30 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur border-t border-gray-200 dark:border-gray-800 pb-[env(safe-area-inset-bottom)]">
+    <div className="fixed bottom-0 left-0 right-0 z-30 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur border-t border-gray-200 dark:border-gray-800 pb-[max(env(safe-area-inset-bottom),0.75rem)]">
       <div className="max-w-lg mx-auto px-4 py-3">{children}</div>
     </div>
   )
@@ -14,5 +14,5 @@ export function BottomBar({ children }: { children?: ReactNode }) {
 
 // Always rendered at a fixed height, even when the bar is empty, so the page never shifts
 export function BottomBarSpacer() {
-  return <div className="h-24" aria-hidden />
+  return <div className="h-28" aria-hidden />
 }

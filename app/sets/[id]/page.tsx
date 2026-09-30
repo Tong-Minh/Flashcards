@@ -22,6 +22,9 @@ import { DetailHeader, SettingsButton } from '@/components/DetailHeader'
 import { SearchBar } from '@/components/SearchBar'
 import { SetPickerSheet } from '@/components/SetPickerSheet'
 import { useLongPress } from '@/lib/useLongPress'
+import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
+import { SortableContext, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { SortableRow } from '@/components/SortableRow'
 import { exportCards, downloadText } from '@/lib/cardFormat'
 import { TYPE_BADGES } from '@/lib/cardTypes'
 import type { CardStatus, Collection, FlashcardSet, FlashcardWithProgress, StudySession } from '@/lib/types'
@@ -343,6 +346,31 @@ export default function SetDetail() {
     router.push('/')
   }
 
+  // Drag to reorder (owner, unfiltered list). Mouse drags from anywhere on a card; touch uses the
+  // grip shown in selection mode, like sets on the home screen.
+  const cardSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
+  // The click that ends a drag must not open the card preview
+  const cardDragged = useRef(false)
+
+  async function handleCardDragEnd({ active, over }: DragEndEvent) {
+    setTimeout(() => { cardDragged.current = false }, 0)
+    if (!over || active.id === over.id) return
+    const from = cards.findIndex(c => c.id === active.id)
+    const to   = cards.findIndex(c => c.id === over.id)
+    if (from < 0 || to < 0) return
+    const before  = cards
+    const moved   = arrayMove(cards, from, to)
+    const changed = moved.flatMap((c, i) => (c.position !== i ? [{ id: c.id, position: i }] : []))
+    const next    = moved.map((c, i) => ({ ...c, position: i }))
+    setCards(next)
+    cacheCards(id, next)
+    const { error } = await supabase.rpc('reorder_cards', {
+      card_ids: changed.map(c => c.id),
+      positions: changed.map(c => c.position),
+    })
+    if (error) { setCards(before); cacheCards(id, before) }
+  }
+
   async function reorderCard(index: number, dir: 'up' | 'down') {
     const other = dir === 'up' ? index - 1 : index + 1
     if (other < 0 || other >= cards.length) return
@@ -392,6 +420,7 @@ export default function SetDetail() {
       (!q || idx + 1 === cardNumber ||
         (!!textQuery && [card.question, card.answer, ...(card.options ?? []), ...(card.pairs ?? []).flatMap(p => [p.left, p.right])]
           .some(t => t?.toLowerCase().includes(textQuery)))))
+  const canReorderCards = isOwner && !filtering
   const allFilteredSelected = filteredCards.length > 0 && filteredCards.every(f => selectedCards.has(f.card.id))
   const pageCount     = Math.max(1, Math.ceil(filteredCards.length / PAGE_SIZE))
   const safePage      = Math.min(page, pageCount - 1)
@@ -681,17 +710,31 @@ export default function SetDetail() {
           ) : filteredCards.length === 0 ? (
             <p className="text-center text-sm text-gray-400 dark:text-gray-500 py-10">No cards match</p>
           ) : (
+            <DndContext
+              sensors={cardSensors}
+              collisionDetection={closestCenter}
+              onDragStart={() => { cardDragged.current = true }}
+              onDragCancel={() => { cardDragged.current = false }}
+              onDragEnd={handleCardDragEnd}
+            >
+            <SortableContext items={pageCards.map(p => p.card.id)} strategy={verticalListSortingStrategy}>
             <div className="space-y-2">
               {pageCards.map(({ card, idx }) => {
                 const status = card.progress?.status ?? 'new'
                 const badge  = STATUS_STYLES[status]
                 const isSelected = selectedCards.has(card.id)
                 return (
+                  <SortableRow key={card.id} id={card.id} disabled={!canReorderCards}>
+                  {({ listeners, handle }) => (
                   <div
-                    key={card.id}
                     {...(isOwner ? cardLongPress : {})}
-                    onPointerDown={isOwner ? e => { pressedCardId.current = card.id; cardLongPress.onPointerDown(e) } : undefined}
+                    onPointerDown={isOwner ? e => {
+                      pressedCardId.current = card.id
+                      cardLongPress.onPointerDown(e)
+                      if (!selecting && canReorderCards) listeners?.onPointerDown?.(e)
+                    } : undefined}
                     onClick={e => {
+                      if (cardDragged.current) return
                       if (selecting) { toggleCard(card.id); return }
                       // Edit / reorder controls and links inside content keep their own behavior
                       if ((e.target as HTMLElement).closest('a, button')) return
@@ -704,13 +747,6 @@ export default function SetDetail() {
                     } ${selecting ? 'select-none' : ''}`}
                   >
                     <div className="flex items-start gap-3">
-                      {selecting && (
-                        <span className={`mt-0.5 w-5 h-5 flex-shrink-0 rounded-full border-2 flex items-center justify-center text-[10px] font-bold ${
-                          isSelected ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-gray-300 dark:border-gray-600'
-                        }`}>
-                          {isSelected && '✓'}
-                        </span>
-                      )}
                       <div className="flex-1 min-w-0">
                         {/* Number in its own column so formatted (block-level) questions start on the same line as plain ones */}
                         <div className="flex gap-1 text-sm font-medium text-gray-900 dark:text-gray-100">
@@ -730,6 +766,16 @@ export default function SetDetail() {
                           </span>
                         </div>
                       </div>
+                      {selecting && (
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          {canReorderCards && handle}
+                          <span className={`w-6 h-6 rounded-full border-2 flex items-center justify-center text-xs font-bold ${
+                            isSelected ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-gray-300 dark:border-gray-600'
+                          }`}>
+                            {isSelected && '✓'}
+                          </span>
+                        </div>
+                      )}
                       {isOwner && !selecting && (
                         <div className="flex items-stretch gap-3 flex-shrink-0">
                           <Link
@@ -791,9 +837,13 @@ export default function SetDetail() {
                       )}
                     </div>
                   </div>
+                  )}
+                  </SortableRow>
                 )
               })}
             </div>
+            </SortableContext>
+            </DndContext>
           )}
 
           {pageCount > 1 && (
@@ -833,8 +883,8 @@ export default function SetDetail() {
 
       {selecting && tab === 'cards' && (
         <>
-          <div className="h-20" />
-          <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-gray-800/95 backdrop-blur border-t border-gray-200 dark:border-gray-700 pb-[env(safe-area-inset-bottom)]">
+          <div className="h-28" />
+          <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-gray-800/95 backdrop-blur border-t border-gray-200 dark:border-gray-700 pb-[max(env(safe-area-inset-bottom),0.75rem)]">
             <div className="max-w-lg mx-auto px-4 py-3 flex items-center gap-2">
               {[
                 { label: 'Move',  onClick: () => setShowSetPicker(true), cls: 'bg-indigo-600 text-white hover:bg-indigo-700' },
