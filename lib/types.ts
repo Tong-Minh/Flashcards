@@ -96,6 +96,16 @@ export interface FlashcardWithProgress extends Flashcard {
   progress: CardProgress | null
 }
 
+// One row of the set_study_stats view: a user's totals for a set across recent sessions and
+// rolled-up older history
+export interface SetStudyStats {
+  sessions: number
+  cards_studied: number
+  correct_count: number
+  mastered_count: number
+  last_studied_at: string | null
+}
+
 export interface StudySession {
   id: string
   set_id: string

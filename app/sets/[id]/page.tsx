@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabase/client'
 import { useUser } from '@/components/AuthGuard'
 import {
   cacheCards, getCachedCards, getCachedSets,
-  cacheSessions, getCachedSessions,
+  cacheSetStats, getCachedSetStats,
   getSetSettings, saveSetSettings,
   resetTodayNewCount, clearSavedSession,
   getCachedCollections, cacheSets,
@@ -28,7 +28,7 @@ import { SortableRow } from '@/components/SortableRow'
 import { Pencil } from 'lucide-react'
 import { exportCards, downloadText } from '@/lib/cardFormat'
 import { TYPE_BADGES } from '@/lib/cardTypes'
-import type { CardStatus, Collection, FlashcardSet, FlashcardWithProgress, StudySession } from '@/lib/types'
+import type { CardStatus, Collection, FlashcardSet, FlashcardWithProgress, SetStudyStats } from '@/lib/types'
 
 const PAGE_SIZE = 50
 
@@ -73,9 +73,9 @@ export default function SetDetail() {
 
   const [set,      setSet]      = useState<FlashcardSet | null>(null)
   const [cards,    setCards]    = useState<FlashcardWithProgress[]>([])
-  const [sessions, setSessions] = useState<StudySession[]>([])
+  // Your totals for this set (recent sessions + rolled-up older history, via the set_study_stats view)
+  const [stats,    setStats]    = useState<SetStudyStats | null>(null)
   const [loading,  setLoading]  = useState(true)
-  const [tab,      setTab]      = useState<'cards' | 'history'>('cards')
   const [forking,     setForking]     = useState(false)
   const [showMoreMenu, setShowMoreMenu] = useState(false)
   const [page,         setPage]         = useState(0)
@@ -118,7 +118,7 @@ export default function SetDetail() {
     const cachedCards = getCachedCards(id)
     const cachedSets  = getCachedSets()
     const cachedSet   = cachedSets.find(s => s.id === id) ?? null
-    const cachedSess  = getCachedSessions(id)
+    const cachedStats = getCachedSetStats(id)
 
     if (cachedSet || cachedCards.length > 0) {
       if (cachedSet) {
@@ -131,7 +131,7 @@ export default function SetDetail() {
         setIconInput({ icon: cachedSet.icon ?? null, color: cachedSet.color ?? null })
       }
       if (cachedCards.length > 0) setCards(cachedCards)
-      if (cachedSess.length  > 0) setSessions(cachedSess)
+      if (cachedStats) setStats(cachedStats)
       setLoading(false)
     }
 
@@ -141,7 +141,7 @@ export default function SetDetail() {
 
     if (!navigator.onLine) { setLoading(false); return }
 
-    const [setRes, rawCards, sessionsRes, collectionsRes] = await Promise.all([
+    const [setRes, rawCards, statsRes, collectionsRes] = await Promise.all([
       supabase.from('sets').select('*').eq('id', id).single(),
       fetchAllRows<FlashcardWithProgress>(() => supabase
         .from('flashcards')
@@ -150,11 +150,7 @@ export default function SetDetail() {
         .order('position', { ascending: true, nullsFirst: false })
         .order('created_at', { ascending: true })
         .order('id', { ascending: true }), MAX_CARDS_PER_SET),
-      supabase
-        .from('study_sessions')
-        .select('*')
-        .eq('set_id', id)
-        .order('completed_at', { ascending: false }),
+      supabase.from('set_study_stats').select('sessions, cards_studied, correct_count, mastered_count, last_studied_at').eq('set_id', id).maybeSingle(),
       // Own collections only: RLS also returns other people's shared ones
       supabase.from('collections').select('*').eq('user_id', currentUser?.id ?? '00000000-0000-0000-0000-000000000000').order('name'),
     ])
@@ -165,7 +161,7 @@ export default function SetDetail() {
       ...c,
       progress: Array.isArray(c.progress) ? (c.progress[0] ?? null) : c.progress,
     }))
-    const freshSessions = sessionsRes.data ?? []
+    const freshStats = (statsRes.data as SetStudyStats | null) ?? null
 
     setSet(setRes.data)
     setNameInput(setRes.data.name)
@@ -176,9 +172,9 @@ export default function SetDetail() {
     setIconInput({ icon: setRes.data.icon ?? null, color: setRes.data.color ?? null })
     if (collectionsRes.data) setCollections(collectionsRes.data)
     setCards(freshCards)
-    setSessions(freshSessions)
+    setStats(freshStats)
     cacheCards(id, freshCards)
-    cacheSessions(id, freshSessions)
+    cacheSetStats(id, freshStats)
     setLoading(false)
   }
 
@@ -420,15 +416,11 @@ export default function SetDetail() {
     cardsTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
-  const lastStudied  = sessions[0]?.completed_at ?? null
-  const totalSessions = sessions.length
-  const avgCorrect   =
-    sessions.length > 0
-      ? Math.round(
-          (sessions.reduce((s, x) => s + x.correct_count, 0) /
-            sessions.reduce((s, x) => s + Math.max(x.cards_studied, 1), 0)) * 100
-        )
-      : null
+  const lastStudied   = stats?.last_studied_at ?? null
+  const totalSessions = stats?.sessions ?? 0
+  const avgCorrect    = stats && stats.cards_studied > 0
+    ? Math.round((stats.correct_count / stats.cards_studied) * 100)
+    : null
 
   return (
     <div className="max-w-lg mx-auto px-4 py-6">
@@ -562,298 +554,277 @@ export default function SetDetail() {
         </div>
       )}
 
-      {/* Tabs */}
-      <div className="flex border-b border-gray-200 dark:border-gray-700 mb-4">
-        {(['cards', 'history'] as const).map(t => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`flex-1 py-2.5 text-sm font-semibold transition-colors capitalize ${
-              tab === t
-                ? 'text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400'
-                : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400'
-            }`}
-          >
-            {t === 'history' ? `History${sessions.length > 0 ? ` (${sessions.length})` : ''}` : 'Cards'}
-          </button>
-        ))}
+      {/* ── Cards ─────────────────────────────────────────────────────────── */}
+      <div ref={cardsTopRef} className="flex items-center justify-between mb-3 scroll-mt-4">
+        {selecting ? (
+          <>
+            <h2 className="font-semibold text-gray-900 dark:text-gray-100">{selectedCards.size} selected</h2>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setSelectedCards(allFilteredSelected ? new Set() : new Set(filteredCards.map(f => f.card.id)))}
+                className="text-sm font-medium text-indigo-600 dark:text-indigo-400"
+              >
+                {allFilteredSelected ? 'Select none' : filtering ? `Select all ${filteredCards.length}` : 'Select all'}
+              </button>
+              <button onClick={exitCardSelect} className="text-sm font-semibold text-gray-600 dark:text-gray-300">
+                {selectedCards.size === 0 ? 'Cancel' : 'Done'}
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <h2 className="font-semibold text-gray-900 dark:text-gray-100">
+              {filtering && `${filteredCards.length} of `}{cards.length} card{cards.length !== 1 ? 's' : ''}
+            </h2>
+            <div className="flex items-center gap-1">
+              {isOwner && cards.length > 0 && (
+                <button
+                  onClick={() => setSelecting(true)}
+                  className="text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 px-2 py-1.5"
+                >
+                  Select
+                </button>
+              )}
+              {(cards.length > 0 || (isOwner && !atCardLimit)) && (
+                <div className="relative">
+                  <button
+                    onClick={() => setShowTransferMenu(v => !v)}
+                    className="text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 px-2 py-1.5"
+                  >
+                    {isOwner && !atCardLimit ? 'Import/Export' : 'Export'} ▾
+                  </button>
+                  {showTransferMenu && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setShowTransferMenu(false)} />
+                      <div className="absolute right-0 top-full mt-1 z-20 w-60 bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-100 dark:border-gray-700 py-1 overflow-hidden">
+                        {isOwner && !atCardLimit && (
+                          <Link href={`/sets/${id}/import`} className="block px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                            <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Import cards</p>
+                            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Paste text or generate with AI</p>
+                          </Link>
+                        )}
+                        {cards.length > 0 && (
+                          <button
+                            onClick={() => { setShowTransferMenu(false); exportSet() }}
+                            className="w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                          >
+                            <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Export as .txt</p>
+                            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">In the import format, to re-import or share</p>
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+              {isOwner && atCardLimit && (
+                <span className="text-xs text-gray-400 dark:text-gray-500 ml-1">Limit of {MAX_CARDS_PER_SET.toLocaleString()} reached</span>
+              )}
+              {isOwner && !atCardLimit && (
+                <Link
+                  href={`/sets/${id}/create`}
+                  className="ml-1 text-sm bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 font-medium transition-colors"
+                >
+                  + Add
+                </Link>
+              )}
+            </div>
+          </>
+        )}
       </div>
 
-      {/* ── Cards tab ─────────────────────────────────────────────────────── */}
-      {tab === 'cards' && (
+      {cards.length > 0 && (
         <>
-          <div ref={cardsTopRef} className="flex items-center justify-between mb-3 scroll-mt-4">
-            {selecting ? (
-              <>
-                <h2 className="font-semibold text-gray-900 dark:text-gray-100">{selectedCards.size} selected</h2>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => setSelectedCards(allFilteredSelected ? new Set() : new Set(filteredCards.map(f => f.card.id)))}
-                    className="text-sm font-medium text-indigo-600 dark:text-indigo-400"
-                  >
-                    {allFilteredSelected ? 'Select none' : filtering ? `Select all ${filteredCards.length}` : 'Select all'}
-                  </button>
-                  <button onClick={exitCardSelect} className="text-sm font-semibold text-gray-600 dark:text-gray-300">
-                    {selectedCards.size === 0 ? 'Cancel' : 'Done'}
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <h2 className="font-semibold text-gray-900 dark:text-gray-100">
-                  {filtering && `${filteredCards.length} of `}{cards.length} card{cards.length !== 1 ? 's' : ''}
-                </h2>
-                <div className="flex items-center gap-1">
-                  {isOwner && cards.length > 0 && (
-                    <button
-                      onClick={() => setSelecting(true)}
-                      className="text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 px-2 py-1.5"
-                    >
-                      Select
-                    </button>
-                  )}
-                  {(cards.length > 0 || (isOwner && !atCardLimit)) && (
-                    <div className="relative">
-                      <button
-                        onClick={() => setShowTransferMenu(v => !v)}
-                        className="text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 px-2 py-1.5"
-                      >
-                        {isOwner && !atCardLimit ? 'Import/Export' : 'Export'} ▾
-                      </button>
-                      {showTransferMenu && (
-                        <>
-                          <div className="fixed inset-0 z-10" onClick={() => setShowTransferMenu(false)} />
-                          <div className="absolute right-0 top-full mt-1 z-20 w-60 bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-100 dark:border-gray-700 py-1 overflow-hidden">
-                            {isOwner && !atCardLimit && (
-                              <Link href={`/sets/${id}/import`} className="block px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
-                                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Import cards</p>
-                                <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Paste text or generate with AI</p>
-                              </Link>
-                            )}
-                            {cards.length > 0 && (
-                              <button
-                                onClick={() => { setShowTransferMenu(false); exportSet() }}
-                                className="w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
-                              >
-                                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Export as .txt</p>
-                                <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">In the import format, to re-import or share</p>
-                              </button>
-                            )}
-                          </div>
-                        </>
-                      )}
+          <SearchBar
+            value={cardQuery}
+            onChange={v => { setCardQuery(v); setPage(0) }}
+            placeholder="Search questions, answers, or #card number"
+            className="mb-2"
+          />
+          <div className="flex gap-1.5 overflow-x-auto pb-1 mb-3 -mx-4 px-4">
+            {(['all', 'new', 'learning', 'needs_review', 'mastered'] as const).map(s => {
+              const count = s === 'all' ? cards.length : statusCounts[s] ?? 0
+              return (
+                <button
+                  key={s}
+                  onClick={() => { setStatusFilter(s); setPage(0) }}
+                  disabled={s !== 'all' && count === 0}
+                  className={`flex-shrink-0 text-xs font-medium px-3 py-1.5 rounded-full border transition-colors disabled:opacity-40 ${
+                    statusFilter === s
+                      ? 'bg-indigo-600 border-indigo-600 text-white'
+                      : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  {s === 'all' ? 'All' : STATUS_STYLES[s].label} · {count}
+                </button>
+              )
+            })}
+          </div>
+        </>
+      )}
+
+      {cards.length === 0 ? (
+        <div className="text-center text-gray-400 dark:text-gray-500 py-10 bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700">
+          <p className="mb-1">No cards yet</p>
+          <p className="text-sm">Add cards or import a list</p>
+        </div>
+      ) : filteredCards.length === 0 ? (
+        <p className="text-center text-sm text-gray-400 dark:text-gray-500 py-10">No cards match</p>
+      ) : (
+        <DndContext
+          sensors={cardSensors}
+          collisionDetection={closestCenter}
+          onDragStart={() => { cardDragged.current = true }}
+          onDragCancel={() => { cardDragged.current = false }}
+          onDragEnd={handleCardDragEnd}
+        >
+        <SortableContext items={pageCards.map(p => p.card.id)} strategy={verticalListSortingStrategy}>
+        <div className="space-y-2">
+          {pageCards.map(({ card, idx }) => {
+            const status = card.progress?.status ?? 'new'
+            const badge  = STATUS_STYLES[status]
+            const isSelected = selectedCards.has(card.id)
+            return (
+              <SortableRow key={card.id} id={card.id} disabled={!canReorderCards}>
+              {({ listeners, handle }) => (
+              <div
+                {...(isOwner ? cardLongPress : {})}
+                onPointerDown={isOwner ? e => {
+                  pressedCardId.current = card.id
+                  cardLongPress.onPointerDown(e)
+                  if (!selecting && canReorderCards) listeners?.onPointerDown?.(e)
+                } : undefined}
+                onClick={e => {
+                  if (cardDragged.current) return
+                  if (selecting) { toggleCard(card.id); return }
+                  // Edit / reorder controls and links inside content keep their own behavior
+                  if ((e.target as HTMLElement).closest('a, button')) return
+                  setPreviewCard(card)
+                }}
+                className={`bg-white dark:bg-gray-800 rounded-xl p-3.5 shadow-sm border cursor-pointer transition-colors [-webkit-touch-callout:none] ${
+                  isSelected
+                    ? 'border-indigo-500 ring-2 ring-indigo-500/40'
+                    : 'border-gray-100 dark:border-gray-700 hover:border-indigo-200 dark:hover:border-indigo-800'
+                } ${selecting ? 'select-none' : ''}`}
+              >
+                <div className="flex items-start gap-3">
+                  <div className="flex-1 min-w-0">
+                    {/* Number in its own column so formatted (block-level) questions start on the same line as plain ones */}
+                    <div className="flex gap-1 text-sm font-medium text-gray-900 dark:text-gray-100">
+                      <span className="flex-shrink-0 text-gray-400 dark:text-gray-500">{idx + 1}.</span>
+                      <div className="flex-1 min-w-0 [&_:is(h1,h2,h3):first-child]:mt-0">
+                        {hasFormattedContent(card.question)
+                          ? <ContentRenderer text={card.question} readOnly className="text-sm font-medium text-gray-900 dark:text-gray-100" />
+                          : previewText(card.question) || (card.type === 'matching' ? 'Match the pairs' : '')}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 mt-1.5">
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${badge.className}`}>
+                        {badge.label}
+                      </span>
+                      <span className="text-xs text-gray-400 dark:text-gray-500">
+                        {TYPE_BADGES[card.type]}
+                      </span>
+                    </div>
+                  </div>
+                  {selecting && (
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      {canReorderCards && handle}
+                      <span className={`w-6 h-6 rounded-full border-2 flex items-center justify-center text-xs font-bold ${
+                        isSelected ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-gray-300 dark:border-gray-600'
+                      }`}>
+                        {isSelected && '✓'}
+                      </span>
                     </div>
                   )}
-                  {isOwner && atCardLimit && (
-                    <span className="text-xs text-gray-400 dark:text-gray-500 ml-1">Limit of {MAX_CARDS_PER_SET.toLocaleString()} reached</span>
-                  )}
-                  {isOwner && !atCardLimit && (
+                  {isOwner && !selecting && (
                     <Link
-                      href={`/sets/${id}/create`}
-                      className="ml-1 text-sm bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 font-medium transition-colors"
+                      href={`/sets/${id}/edit/${card.id}`}
+                      className="flex-shrink-0 p-1.5 -m-1 rounded-lg text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                      aria-label="Edit card"
+                      title="Edit card"
                     >
-                      + Add
+                      <Pencil size={16} />
                     </Link>
                   )}
                 </div>
-              </>
-            )}
-          </div>
-
-          {cards.length > 0 && (
-            <>
-              <SearchBar
-                value={cardQuery}
-                onChange={v => { setCardQuery(v); setPage(0) }}
-                placeholder="Search questions, answers, or #card number"
-                className="mb-2"
-              />
-              <div className="flex gap-1.5 overflow-x-auto pb-1 mb-3 -mx-4 px-4">
-                {(['all', 'new', 'learning', 'needs_review', 'mastered'] as const).map(s => {
-                  const count = s === 'all' ? cards.length : statusCounts[s] ?? 0
-                  return (
-                    <button
-                      key={s}
-                      onClick={() => { setStatusFilter(s); setPage(0) }}
-                      disabled={s !== 'all' && count === 0}
-                      className={`flex-shrink-0 text-xs font-medium px-3 py-1.5 rounded-full border transition-colors disabled:opacity-40 ${
-                        statusFilter === s
-                          ? 'bg-indigo-600 border-indigo-600 text-white'
-                          : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700'
-                      }`}
-                    >
-                      {s === 'all' ? 'All' : STATUS_STYLES[s].label} · {count}
-                    </button>
-                  )
-                })}
-              </div>
-            </>
-          )}
-
-          {cards.length === 0 ? (
-            <div className="text-center text-gray-400 dark:text-gray-500 py-10 bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700">
-              <p className="mb-1">No cards yet</p>
-              <p className="text-sm">Add cards or import a list</p>
-            </div>
-          ) : filteredCards.length === 0 ? (
-            <p className="text-center text-sm text-gray-400 dark:text-gray-500 py-10">No cards match</p>
-          ) : (
-            <DndContext
-              sensors={cardSensors}
-              collisionDetection={closestCenter}
-              onDragStart={() => { cardDragged.current = true }}
-              onDragCancel={() => { cardDragged.current = false }}
-              onDragEnd={handleCardDragEnd}
-            >
-            <SortableContext items={pageCards.map(p => p.card.id)} strategy={verticalListSortingStrategy}>
-            <div className="space-y-2">
-              {pageCards.map(({ card, idx }) => {
-                const status = card.progress?.status ?? 'new'
-                const badge  = STATUS_STYLES[status]
-                const isSelected = selectedCards.has(card.id)
-                return (
-                  <SortableRow key={card.id} id={card.id} disabled={!canReorderCards}>
-                  {({ listeners, handle }) => (
-                  <div
-                    {...(isOwner ? cardLongPress : {})}
-                    onPointerDown={isOwner ? e => {
-                      pressedCardId.current = card.id
-                      cardLongPress.onPointerDown(e)
-                      if (!selecting && canReorderCards) listeners?.onPointerDown?.(e)
-                    } : undefined}
-                    onClick={e => {
-                      if (cardDragged.current) return
-                      if (selecting) { toggleCard(card.id); return }
-                      // Edit / reorder controls and links inside content keep their own behavior
-                      if ((e.target as HTMLElement).closest('a, button')) return
-                      setPreviewCard(card)
-                    }}
-                    className={`bg-white dark:bg-gray-800 rounded-xl p-3.5 shadow-sm border cursor-pointer transition-colors [-webkit-touch-callout:none] ${
-                      isSelected
-                        ? 'border-indigo-500 ring-2 ring-indigo-500/40'
-                        : 'border-gray-100 dark:border-gray-700 hover:border-indigo-200 dark:hover:border-indigo-800'
-                    } ${selecting ? 'select-none' : ''}`}
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className="flex-1 min-w-0">
-                        {/* Number in its own column so formatted (block-level) questions start on the same line as plain ones */}
-                        <div className="flex gap-1 text-sm font-medium text-gray-900 dark:text-gray-100">
-                          <span className="flex-shrink-0 text-gray-400 dark:text-gray-500">{idx + 1}.</span>
-                          <div className="flex-1 min-w-0 [&_:is(h1,h2,h3):first-child]:mt-0">
-                            {hasFormattedContent(card.question)
-                              ? <ContentRenderer text={card.question} readOnly className="text-sm font-medium text-gray-900 dark:text-gray-100" />
-                              : previewText(card.question) || (card.type === 'matching' ? 'Match the pairs' : '')}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 mt-1.5">
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${badge.className}`}>
-                            {badge.label}
-                          </span>
-                          <span className="text-xs text-gray-400 dark:text-gray-500">
-                            {TYPE_BADGES[card.type]}
-                          </span>
-                        </div>
-                      </div>
-                      {selecting && (
-                        <div className="flex items-center gap-1 flex-shrink-0">
-                          {canReorderCards && handle}
-                          <span className={`w-6 h-6 rounded-full border-2 flex items-center justify-center text-xs font-bold ${
-                            isSelected ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-gray-300 dark:border-gray-600'
-                          }`}>
-                            {isSelected && '✓'}
-                          </span>
-                        </div>
-                      )}
-                      {isOwner && !selecting && (
-                        <Link
-                          href={`/sets/${id}/edit/${card.id}`}
-                          className="flex-shrink-0 p-1.5 -m-1 rounded-lg text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
-                          aria-label="Edit card"
-                          title="Edit card"
+                <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-700">
+                  {card.type === 'matching' && card.pairs ? (
+                    <ul className="space-y-0.5">
+                      {card.pairs.map((p, i) => (
+                        <li key={i} className="text-xs text-gray-600 dark:text-gray-400">
+                          {previewText(p.left)} <span className="text-gray-300 dark:text-gray-600">↔</span> {previewText(p.right)}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : card.type === 'multiple_choice' && card.options ? (
+                    <ul className="space-y-1">
+                      {card.options.map(opt => (
+                        <li
+                          key={opt}
+                          className={`text-xs px-2 py-1 rounded-lg ${
+                            opt === card.answer
+                              ? 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-medium'
+                              : 'text-gray-500 dark:text-gray-400'
+                          }`}
                         >
-                          <Pencil size={16} />
-                        </Link>
-                      )}
-                    </div>
-                    <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-700">
-                      {card.type === 'matching' && card.pairs ? (
-                        <ul className="space-y-0.5">
-                          {card.pairs.map((p, i) => (
-                            <li key={i} className="text-xs text-gray-600 dark:text-gray-400">
-                              {previewText(p.left)} <span className="text-gray-300 dark:text-gray-600">↔</span> {previewText(p.right)}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : card.type === 'multiple_choice' && card.options ? (
-                        <ul className="space-y-1">
-                          {card.options.map(opt => (
-                            <li
-                              key={opt}
-                              className={`text-xs px-2 py-1 rounded-lg ${
-                                opt === card.answer
-                                  ? 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-medium'
-                                  : 'text-gray-500 dark:text-gray-400'
-                              }`}
-                            >
-                              {opt === card.answer ? '✓ ' : ''}
-                              {hasFormattedContent(opt)
-                                ? <ContentRenderer text={opt} readOnly className="inline-block text-xs" />
-                                : opt}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        hasFormattedContent(card.answer)
-                          ? <div className="text-xs text-gray-600 dark:text-gray-400"><ContentRenderer text={card.answer} readOnly /></div>
-                          : <p className="text-xs text-gray-600 dark:text-gray-400">{previewText(card.answer)}</p>
-                      )}
-                    </div>
-                  </div>
+                          {opt === card.answer ? '✓ ' : ''}
+                          {hasFormattedContent(opt)
+                            ? <ContentRenderer text={opt} readOnly className="inline-block text-xs" />
+                            : opt}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    hasFormattedContent(card.answer)
+                      ? <div className="text-xs text-gray-600 dark:text-gray-400"><ContentRenderer text={card.answer} readOnly /></div>
+                      : <p className="text-xs text-gray-600 dark:text-gray-400">{previewText(card.answer)}</p>
                   )}
-                  </SortableRow>
-                )
-              })}
-            </div>
-            </SortableContext>
-            </DndContext>
-          )}
+                </div>
+              </div>
+              )}
+              </SortableRow>
+            )
+          })}
+        </div>
+        </SortableContext>
+        </DndContext>
+      )}
 
-          {pageCount > 1 && (
-            <div className="flex items-center justify-between gap-3 mt-4">
-              <button
-                onClick={() => goToPage(safePage - 1)}
-                disabled={safePage === 0}
-                className="px-4 py-2 text-sm font-medium rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-              >
-                ← Prev
-              </button>
-              <select
-                value={safePage}
-                onChange={e => goToPage(Number(e.target.value))}
-                className="text-sm text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 outline-none"
-                aria-label="Page"
-              >
-                {Array.from({ length: pageCount }, (_, i) => (
-                  <option key={i} value={i}>
-                    {i * PAGE_SIZE + 1}–{Math.min((i + 1) * PAGE_SIZE, filteredCards.length)} of {filteredCards.length}
-                  </option>
-                ))}
-              </select>
-              <button
-                onClick={() => goToPage(safePage + 1)}
-                disabled={safePage >= pageCount - 1}
-                className="px-4 py-2 text-sm font-medium rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-              >
-                Next →
-              </button>
-            </div>
-          )}
-        </>
+      {pageCount > 1 && (
+        <div className="flex items-center justify-between gap-3 mt-4">
+          <button
+            onClick={() => goToPage(safePage - 1)}
+            disabled={safePage === 0}
+            className="px-4 py-2 text-sm font-medium rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          >
+            ← Prev
+          </button>
+          <select
+            value={safePage}
+            onChange={e => goToPage(Number(e.target.value))}
+            className="text-sm text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 outline-none"
+            aria-label="Page"
+          >
+            {Array.from({ length: pageCount }, (_, i) => (
+              <option key={i} value={i}>
+                {i * PAGE_SIZE + 1}–{Math.min((i + 1) * PAGE_SIZE, filteredCards.length)} of {filteredCards.length}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={() => goToPage(safePage + 1)}
+            disabled={safePage >= pageCount - 1}
+            className="px-4 py-2 text-sm font-medium rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          >
+            Next →
+          </button>
+        </div>
       )}
 
       {previewCard && <CardPreviewModal card={previewCard} onClose={closePreview} />}
 
-      {selecting && tab === 'cards' && (
+      {selecting && (
         <>
           <div className="h-28" />
           <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-gray-800/95 backdrop-blur border-t border-gray-200 dark:border-gray-700 pb-[max(env(safe-area-inset-bottom),0.75rem)]">
@@ -892,49 +863,6 @@ export default function SetDetail() {
           onPick={moveSelectedCards}
           onClose={() => setShowSetPicker(false)}
         />
-      )}
-
-      {/* ── History tab ───────────────────────────────────────────────────── */}
-      {tab === 'history' && (
-        <>
-          {sessions.length === 0 ? (
-            <div className="text-center text-gray-400 dark:text-gray-500 py-10 bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700">
-              <p>No sessions yet</p>
-              <p className="text-sm mt-1">Complete a study session to see history</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {sessions.map(session => (
-                <div
-                  key={session.id}
-                  className="bg-white dark:bg-gray-800 rounded-xl px-4 py-3 shadow-sm border border-gray-100 dark:border-gray-700 flex items-center justify-between"
-                >
-                  <div>
-                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                      {session.cards_studied} card{session.cards_studied !== 1 ? 's' : ''} studied
-                    </p>
-                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                      {new Date(session.completed_at).toLocaleDateString(undefined, {
-                        month: 'short', day: 'numeric', year: 'numeric',
-                      })}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-                      {session.cards_studied > 0
-                        ? Math.round((session.correct_count / session.cards_studied) * 100)
-                        : 0}%
-                    </p>
-                    <p className="text-xs text-gray-400 dark:text-gray-500">correct</p>
-                    {session.mastered_count > 0 && (
-                      <p className="text-xs text-green-600 dark:text-green-400 font-medium">+{session.mastered_count} matured</p>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </>
       )}
 
       {/* ── Settings modal ────────────────────────────────────────────────── */}

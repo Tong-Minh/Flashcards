@@ -37,18 +37,19 @@ export async function loadSetsAndCollections(userId: string): Promise<{
     return [setId, { total: total.count ?? 0, mastered: mastered.count ?? 0 }] as const
   }
 
-  const [counts, sessions] = await Promise.all([
+  // One row per set from the set_study_stats view, which also counts rolled-up older sessions
+  const [counts, studyStats] = await Promise.all([
     Promise.all(setIds.map(countFor)),
-    setIds.length === 0 ? [] : fetchAllRows<{ set_id: string; completed_at: string }>(() =>
-      supabase.from('study_sessions').select('set_id, completed_at').in('set_id', setIds)
-        .order('completed_at', { ascending: false }).order('id')),
+    setIds.length === 0 ? [] : fetchAllRows<{ set_id: string; sessions: number; last_studied_at: string | null }>(() =>
+      supabase.from('set_study_stats').select('set_id, sessions, last_studied_at').eq('user_id', userId).in('set_id', setIds)
+        .order('set_id')),
   ])
 
   const lastStudiedBySet: Record<string, string>  = {}
   const sessionCountBySet: Record<string, number> = {}
-  for (const s of sessions) {
-    if (!lastStudiedBySet[s.set_id]) lastStudiedBySet[s.set_id] = s.completed_at
-    sessionCountBySet[s.set_id] = (sessionCountBySet[s.set_id] ?? 0) + 1
+  for (const s of studyStats) {
+    if (s.last_studied_at) lastStudiedBySet[s.set_id] = s.last_studied_at
+    sessionCountBySet[s.set_id] = s.sessions
   }
 
   const statsMap: Record<string, { total: number; mastered: number }> = Object.fromEntries(counts)

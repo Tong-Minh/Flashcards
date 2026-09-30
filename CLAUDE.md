@@ -39,7 +39,7 @@ Mobile-first flashcard PWA with FSRS spaced repetition. Next.js 15 (App Router) 
 - `sets` — `name`, `description`, `is_public`, `tags text[]`, `icon`, `color`, `position` (manual home-screen order; set in bulk by the `reorder_sets(ids)` RPC), `collection_id` (nullable, `on delete set null`)
 - `flashcards` — `set_id`, `question`, `answer`, `type` (`open_ended` | `multiple_choice` | `fill_blank` | `typed` | `true_false` | `matching`), `options text[]` (MC choices; extra accepted answers for `typed`), `pairs jsonb` (`[{left, right}]`, matching only), `position`. Type labels and badges live in `lib/cardTypes.ts`.
 - `card_progress` — per-user FSRS state per card
-- `study_sessions` — one row per completed/exited study session (drives stats, history, leaderboard)
+- `study_sessions` — one row per completed/exited study session. A nightly pg_cron job (`rollup-old-study-sessions`, 03:17 UTC) runs `rollup_old_sessions()`, which moves sessions older than 90 days into `study_rollups` (one row per user, set and UTC day). Read totals from the `set_study_stats` view (security_invoker; sums both tables per user and set), never from `study_sessions` alone, or older history goes missing. The home cards, set page stats, and `get_friends_leaderboard()` all use it. There is no per-session History UI.
 - `profiles`, `friend_requests` — social features; `get_friends_leaderboard()` and `fork_set()` RPCs. `fork_set` copies icon, color, tags, and `pairs`, so update it when adding set or card columns.
 - `discover_sets(q, lim, off)` RPC — other users' public sets matching a name/description/tag search, with owner name and card count.
 

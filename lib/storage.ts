@@ -1,10 +1,10 @@
-import type { FlashcardWithProgress, CardProgress, CardStatus, FlashcardSet, StudySession, Collection } from './types'
+import type { FlashcardWithProgress, CardProgress, CardStatus, FlashcardSet, SetStudyStats, Collection } from './types'
 
 const K = {
   cards:    (setId: string) => `fc_cards_${setId}`,
   sets:     'fc_sets_v2',   // bumped so old stat-less cache is ignored
   collections: 'fc_collections_v1',
-  sessions: (setId: string) => `fc_sessions_${setId}`,
+  stats:    (setId: string) => `fc_stats_${setId}`,
   pending:  'fc_pending_v1',
   session:  (setId: string) => `fc_session_${setId}`,
   settings: (setId: string) => `fc_settings_${setId}`,
@@ -47,14 +47,14 @@ export function updateCachedProgress(setId: string, cardId: string, progress: Ca
   cacheCards(setId, cards.map(c => (c.id === cardId ? { ...c, progress } : c)))
 }
 
-// ── Sessions cache (per set) ──────────────────────────────────────────────────
+// ── Study stats cache (per set) ───────────────────────────────────────────────
 
-export function cacheSessions(setId: string, sessions: StudySession[]) {
-  try { localStorage.setItem(K.sessions(setId), JSON.stringify(sessions)) } catch {}
+export function cacheSetStats(setId: string, stats: SetStudyStats | null) {
+  try { localStorage.setItem(K.stats(setId), JSON.stringify(stats)) } catch {}
 }
 
-export function getCachedSessions(setId: string): StudySession[] {
-  try { return JSON.parse(localStorage.getItem(K.sessions(setId)) ?? '[]') } catch { return [] }
+export function getCachedSetStats(setId: string): SetStudyStats | null {
+  try { return JSON.parse(localStorage.getItem(K.stats(setId)) ?? 'null') } catch { return null }
 }
 
 // ── Per-set settings ──────────────────────────────────────────────────────────
