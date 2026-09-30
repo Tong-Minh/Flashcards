@@ -25,6 +25,7 @@ Mobile-first flashcard PWA with FSRS spaced repetition. Next.js 15 (App Router) 
 - **Export:** `lib/cardFormat.ts` writes a set as tab-separated text in the import format (Export button on the set page). Keep it in sync with the importer when card types change.
 - **Card display:** `components/CardPreview.tsx` has `FlipCard` (tap to flip, optional swipe-to-dismiss), used by the Cards-tab preview modal and study View mode. Its `card-enter` animation must only play on mount; re-applying it after a flip causes a double rotation.
 - **Sharing:** `ShareButton` (set and collection headers) makes a private item public after confirming, then opens the native share sheet or copies the link. `AuthGuard` stores the requested path in sessionStorage before redirecting to `/login`, and returns there after sign-in.
+- **Organizing sets:** `components/SetOrganizer.tsx` (home and collection pages). Long-press or Select enters selection mode (bulk Move / Public-Private / Delete, Undo toast). Drag uses dnd-kit: mouse drags from anywhere on a card, touch only from the handle shown in selection mode, so a finger on a card still scrolls. Dropping on a collection card moves the set. Reordering writes `sets.position` via `reorder_sets`; `sortSets()` in `lib/sets.ts` mirrors the DB order.
 - **Home tabs:** My Sets (client-side search + tag filter over cached sets), Discover (`components/DiscoverTab.tsx`, calls the `discover_sets` RPC), Friends.
 - **View mode:** the set page's View button opens `/sets/[id]/study?mode=view`. It browses every card in set order.
 

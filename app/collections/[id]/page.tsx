@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabase/client'
 import { useUser } from '@/components/AuthGuard'
 import { getCachedSets, getCachedCollections, cacheSets, cacheCollections } from '@/lib/storage'
 import { loadSetsAndCollections, type SetWithStats } from '@/lib/sets'
-import { SetCard } from '@/components/SetCard'
+import { SetOrganizer } from '@/components/SetOrganizer'
 import { TagInput } from '@/components/TagInput'
 import { IconPicker } from '@/components/IconPicker'
 import { ShareButton } from '@/components/ShareButton'
@@ -22,6 +22,7 @@ export default function CollectionDetail() {
 
   const [collection,  setCollection]  = useState<Collection | null>(null)
   const [allSets,     setAllSets]     = useState<SetWithStats[]>([])
+  const [ownCollections, setOwnCollections] = useState<Collection[]>([])
   const [loading,     setLoading]     = useState(true)
   const [showPicker,  setShowPicker]  = useState(false)
   const [busySetId,   setBusySetId]   = useState<string | null>(null)
@@ -43,6 +44,7 @@ export default function CollectionDetail() {
   function apply(sets: SetWithStats[], collections: Collection[]) {
     const c = collections.find(c => c.id === id) ?? null
     setAllSets(sets)
+    setOwnCollections(collections)
     setCollection(c)
     if (c) {
       setNameInput(c.name)
@@ -221,16 +223,21 @@ export default function CollectionDetail() {
         </div>
       </div>
 
-      {sets.length === 0 ? (
-        <div className="text-center text-gray-400 dark:text-gray-500 py-10 bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700">
-          <p className="mb-1">No sets in this collection</p>
-          <p className="text-sm">Create a new set or add existing ones</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {sets.map(set => <SetCard key={set.id} set={set} />)}
-        </div>
-      )}
+      <SetOrganizer
+        allSets={allSets}
+        onSetsChange={next => { setAllSets(next); cacheSets(next) }}
+        collections={ownCollections}
+        onCollectionsChange={next => { setOwnCollections(next); cacheCollections(next) }}
+        listSets={sets}
+        sortable
+        currentCollectionId={id}
+        empty={
+          <div className="text-center text-gray-400 dark:text-gray-500 py-10 bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700">
+            <p className="mb-1">No sets in this collection</p>
+            <p className="text-sm">Create a new set or add existing ones</p>
+          </div>
+        }
+      />
 
       {/* ── Set picker ────────────────────────────────────────────────────── */}
       {showPicker && (

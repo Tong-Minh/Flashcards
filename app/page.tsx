@@ -5,9 +5,9 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase/client'
 import { useUser } from '@/components/AuthGuard'
 import { useDarkMode } from '@/components/ThemeProvider'
-import { getCachedSets, getCachedCollections } from '@/lib/storage'
+import { getCachedSets, getCachedCollections, cacheSets, cacheCollections } from '@/lib/storage'
 import { loadSetsAndCollections, type SetWithStats } from '@/lib/sets'
-import { SetCard, CollectionCard } from '@/components/SetCard'
+import { SetOrganizer } from '@/components/SetOrganizer'
 import FriendsTab from '@/components/FriendsTab'
 import DiscoverTab from '@/components/DiscoverTab'
 import { SearchBar } from '@/components/SearchBar'
@@ -193,32 +193,17 @@ export default function Home() {
               </div>
             )}
 
-            {visibleCollections.length > 0 && (
-              <div className="space-y-3 mb-5">
-                {visibleCollections.map(c => (
-                  <CollectionCard
-                    key={c.id}
-                    id={c.id}
-                    name={c.name}
-                    description={c.description}
-                    tags={c.tags ?? []}
-                    icon={c.icon}
-                    color={c.color}
-                    sets={setsByCollection[c.id] ?? []}
-                  />
-                ))}
-              </div>
-            )}
-
-            {visibleCollections.length > 0 && visibleSets.length > 0 && (
-              <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-3">
-                {filtering ? 'Sets' : 'Ungrouped sets'}
-              </p>
-            )}
-
-            <div className="space-y-3">
-              {visibleSets.map(set => <SetCard key={set.id} set={set} />)}
-            </div>
+            <SetOrganizer
+              allSets={sets}
+              onSetsChange={next => { setSets(next); cacheSets(next) }}
+              collections={collections}
+              onCollectionsChange={next => { setCollections(next); cacheCollections(next) }}
+              listSets={visibleSets}
+              dropCollections={visibleCollections}
+              setsByCollection={setsByCollection}
+              sortable={!filtering}
+              label={filtering ? 'Sets' : visibleCollections.length > 0 ? 'Ungrouped sets' : 'Sets'}
+            />
 
             {filtering && visibleSets.length === 0 && visibleCollections.length === 0 && (
               <p className="text-center text-sm text-gray-400 dark:text-gray-500 py-10">

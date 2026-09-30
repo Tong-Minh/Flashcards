@@ -99,3 +99,12 @@ export async function reorderSets(ids: string[]) {
   const { error } = await supabase.rpc('reorder_sets', { set_ids: ids })
   if (error) throw error
 }
+
+// Same order as loadSetsAndCollections: manual position, unpositioned (new) sets first, then newest first
+export function sortSets<T extends { position: number | null; created_at: string }>(sets: T[]): T[] {
+  return [...sets].sort((a, b) =>
+    a.position === b.position ? b.created_at.localeCompare(a.created_at)
+    : a.position === null ? -1
+    : b.position === null ? 1
+    : a.position - b.position)
+}
