@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import type { ReactNode } from 'react'
 import { TagList } from '@/components/TagInput'
 import { ItemIcon } from '@/components/ItemIcon'
 import type { SetWithStats } from '@/lib/sets'
@@ -20,9 +21,22 @@ export function timeAgo(iso: string | null): string {
   return `${Math.floor(days / 30)}mo ago`
 }
 
-export function SetCard({ set }: { set: SetWithStats }) {
+export function SetCard({ set, selecting, selected, onToggle, handle }: {
+  set: SetWithStats
+  // Selection mode: tapping anywhere toggles the card instead of opening it
+  selecting?: boolean
+  selected?: boolean
+  onToggle?: () => void
+  // Drag handle shown in selection mode (touch devices drag by this)
+  handle?: ReactNode
+}) {
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+    <div
+      onClickCapture={selecting ? e => { e.preventDefault(); e.stopPropagation(); onToggle?.() } : undefined}
+      className={`bg-white dark:bg-gray-800 rounded-2xl shadow-sm border overflow-hidden transition-colors ${
+        selected ? 'border-indigo-500 ring-2 ring-indigo-500/40' : 'border-gray-100 dark:border-gray-700'
+      } ${selecting ? 'cursor-pointer select-none' : ''}`}
+    >
       <Link href={`/sets/${set.id}`} className="block p-4">
         <div className="flex items-start justify-between gap-2 mb-3">
           <ItemIcon icon={set.icon} color={set.color} />
@@ -38,12 +52,20 @@ export function SetCard({ set }: { set: SetWithStats }) {
             )}
             <TagList tags={set.tags} className="mt-1.5" />
           </div>
-          {set.toStudy > 0 && (
+          {selecting ? (
+            <div className="flex items-center gap-1 flex-shrink-0">
+              {handle}
+              <span className={`w-6 h-6 rounded-full border-2 flex items-center justify-center text-xs font-bold ${
+                selected ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-gray-300 dark:border-gray-600'
+              }`}>
+                {selected && '✓'}
+              </span>
+            </div>
+          ) : set.toStudy > 0 ? (
             <span className="flex-shrink-0 bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 text-xs font-semibold px-2.5 py-1 rounded-full">
               {set.toStudy} to study
             </span>
-          )}
-          {set.toStudy === 0 && set.totalCards > 0 && (
+          ) : set.totalCards > 0 && (
             <span className="flex-shrink-0 bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 text-xs font-semibold px-2.5 py-1 rounded-full">
               Mastered
             </span>
@@ -84,8 +106,10 @@ export function SetCard({ set }: { set: SetWithStats }) {
   )
 }
 
-export function CollectionCard({ id, name, description, tags, icon, color, sets }: {
+export function CollectionCard({ id, name, description, tags, icon, color, sets, dropActive }: {
   id: string
+  // A set is being dragged over this collection
+  dropActive?: boolean
   icon: string | null
   color: string | null
   name: string
@@ -98,7 +122,11 @@ export function CollectionCard({ id, name, description, tags, icon, color, sets 
   return (
     <Link
       href={`/collections/${id}`}
-      className="flex items-start gap-3 bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-4 hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors"
+      className={`flex items-start gap-3 rounded-2xl shadow-sm border p-4 transition-colors ${
+        dropActive
+          ? 'border-indigo-500 ring-2 ring-indigo-500/40 bg-indigo-50 dark:bg-indigo-900/30'
+          : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/40'
+      }`}
     >
       <ItemIcon icon={icon} color={color} kind="collection" />
       <div className="flex-1 min-w-0">

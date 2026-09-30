@@ -16,7 +16,9 @@ export async function loadSetsAndCollections(userId: string): Promise<{
   collections: Collection[]
 }> {
   const [setsRes, collectionsRes] = await Promise.all([
-    supabase.from('sets').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
+    // Manual order first; sets never reordered (position null) are newest-first on top
+    supabase.from('sets').select('*').eq('user_id', userId)
+      .order('position', { ascending: true, nullsFirst: true }).order('created_at', { ascending: false }),
     supabase.from('collections').select('*').eq('user_id', userId).order('name', { ascending: true }),
   ])
   const rawSets = (setsRes.data ?? []) as FlashcardSet[]
@@ -67,4 +69,33 @@ export async function loadSetsAndCollections(userId: string): Promise<{
 
 export function normalizeTag(tag: string): string {
   return tag.trim().replace(/^#/, '').replace(/\s+/g, ' ').toLowerCase().slice(0, 30)
+}
+
+// ── Bulk edits ────────────────────────────────────────────────────────────────
+// Chunked so the id list in the query string stays well under URL length limits.
+
+async function eachChunk(ids: string[], fn: (chunk: string[]) => PromiseLike<{ error: unknown }>) {
+  for (let i = 0; i < ids.length; i += 200) {
+    const { error } = await fn(ids.slice(i, i + 200))
+    if (error) throw error
+  }
+}
+
+export function moveSets(ids: string[], collectionId: string | null) {
+  return eachChunk(ids, chunk => supabase.from('sets').update({ collection_id: collectionId }).in('id', chunk))
+}
+
+export function setSetsVisibility(ids: string[], isPublic: boolean) {
+  return eachChunk(ids, chunk => supabase.from('sets').update({ is_public: isPublic }).in('id', chunk))
+}
+
+// Cards, progress, and sessions cascade-delete with their set
+export function deleteSets(ids: string[]) {
+  return eachChunk(ids, chunk => supabase.from('sets').delete().in('id', chunk))
+}
+
+// Saves the given order (position = index + 1) for the caller's sets
+export async function reorderSets(ids: string[]) {
+  const { error } = await supabase.rpc('reorder_sets', { set_ids: ids })
+  if (error) throw error
 }

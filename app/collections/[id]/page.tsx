@@ -8,10 +8,10 @@ import { useUser } from '@/components/AuthGuard'
 import { getCachedSets, getCachedCollections, cacheSets, cacheCollections } from '@/lib/storage'
 import { loadSetsAndCollections, type SetWithStats } from '@/lib/sets'
 import { SetCard } from '@/components/SetCard'
-import { TagInput, TagList } from '@/components/TagInput'
-import { ItemIcon } from '@/components/ItemIcon'
+import { TagInput } from '@/components/TagInput'
 import { IconPicker } from '@/components/IconPicker'
 import { ShareButton } from '@/components/ShareButton'
+import { DetailHeader, SettingsButton } from '@/components/DetailHeader'
 import { PublicSetCard, type PublicSet } from '@/components/PublicSetCard'
 import type { Collection } from '@/lib/types'
 
@@ -121,23 +121,19 @@ export default function CollectionDetail() {
   if (publicSets && collection) {
     return (
       <div className="max-w-lg mx-auto px-4 py-6">
-        <div className="flex items-center gap-3 mb-2">
-          <Link href="/" className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 text-xl transition-colors flex-shrink-0">←</Link>
-          <p className="flex-1 text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wide">
-            Collection{ownerName ? ` · by ${ownerName}` : ''}
-          </p>
-          <ShareButton kind="collection" id={id} name={collection.name} isPublic isOwner={false} />
-        </div>
-        <div className="flex items-center gap-2">
-          <ItemIcon icon={collection.icon} color={collection.color} kind="collection" />
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 leading-tight">{collection.name}</h1>
-        </div>
-        {collection.description && (
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{collection.description}</p>
-        )}
-        <TagList tags={collection.tags} className="mt-2" />
+        <DetailHeader
+          kind="collection"
+          backHref="/"
+          owner={ownerName}
+          icon={collection.icon}
+          color={collection.color}
+          name={collection.name}
+          description={collection.description}
+          tags={collection.tags}
+          actions={<ShareButton kind="collection" id={id} name={collection.name} isPublic isOwner={false} />}
+        />
 
-        <h2 className="font-semibold text-gray-900 dark:text-gray-100 mt-6 mb-3">
+        <h2 className="font-semibold text-gray-900 dark:text-gray-100 mb-3">
           {publicSets.length} set{publicSets.length !== 1 ? 's' : ''}
         </h2>
         {publicSets.length === 0 ? (
@@ -161,50 +157,37 @@ export default function CollectionDetail() {
 
   return (
     <div className="max-w-lg mx-auto px-4 py-6">
-      {/* Header */}
-      <div className="mb-4">
-      <div className="flex items-center gap-3 mb-2">
-        <Link href="/" className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 text-xl transition-colors flex-shrink-0">←</Link>
-        <p className="flex-1 text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wide">Collection</p>
-        {collection && (
-          <ShareButton
-            kind="collection"
-            id={id}
-            name={collection.name}
-            isPublic={collection.is_public}
-            isOwner
-            privateSetCount={sets.filter(s => !s.is_public).length}
-            onMadePublic={() => {
-              const updated = { ...collection, is_public: true }
-              setCollection(updated)
-              setIsPublicInput(true)
-              cacheCollections(getCachedCollections().map(c => (c.id === id ? updated : c)))
-            }}
-          />
-        )}
-        <button
-          onClick={() => setShowSettings(true)}
-          className="flex-shrink-0 text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300 transition-colors p-1"
-          aria-label="Settings"
-        >
-          <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-          </svg>
-        </button>
-      </div>
-      <div className="flex items-center gap-2 flex-wrap">
-        {collection && <ItemIcon icon={collection.icon} color={collection.color} kind="collection" />}
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 leading-tight">{collection?.name}</h1>
-        {collection?.is_public && (
+      <DetailHeader
+        kind="collection"
+        backHref="/"
+        icon={collection?.icon}
+        color={collection?.color}
+        name={collection?.name}
+        description={collection?.description}
+        tags={collection?.tags}
+        badge={collection?.is_public && (
           <span className="text-xs font-medium text-indigo-600 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/40 px-2 py-0.5 rounded-full">Shared</span>
         )}
-      </div>
-      {collection?.description && (
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{collection.description}</p>
-      )}
-      <TagList tags={collection?.tags} className="mt-2" />
-      </div>
+        actions={<>
+          {collection && (
+            <ShareButton
+              kind="collection"
+              id={id}
+              name={collection.name}
+              isPublic={collection.is_public}
+              isOwner
+              privateSetCount={sets.filter(s => !s.is_public).length}
+              onMadePublic={() => {
+                const updated = { ...collection, is_public: true }
+                setCollection(updated)
+                setIsPublicInput(true)
+                cacheCollections(getCachedCollections().map(c => (c.id === id ? updated : c)))
+              }}
+            />
+          )}
+          <SettingsButton onClick={() => setShowSettings(true)} />
+        </>}
+      />
 
       {/* Stats */}
       <div className="grid grid-cols-3 gap-2 mb-5">
