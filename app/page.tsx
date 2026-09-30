@@ -191,6 +191,8 @@ export default function Home() {
                     name={c.name}
                     description={c.description}
                     tags={c.tags ?? []}
+                    icon={c.icon}
+                    color={c.color}
                     sets={setsByCollection[c.id] ?? []}
                   />
                 ))}

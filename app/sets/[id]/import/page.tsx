@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase/client'
 import { MAX_CARDS_PER_SET } from '@/lib/fetchAll'
+import { TYPE_BADGES } from '@/lib/cardTypes'
 import type { CardType } from '@/lib/types'
 
 const INSERT_CHUNK = 500
@@ -268,7 +269,7 @@ export default function ImportCards() {
                 <div key={i} className="bg-white dark:bg-gray-800 rounded-lg px-3 py-2.5 border border-gray-100 dark:border-gray-700 text-sm">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-xs text-gray-400 dark:text-gray-500 font-medium">
-                      {card.type === 'multiple_choice' ? 'MC' : card.type === 'fill_blank' ? 'FB' : 'OE'}
+                      {TYPE_BADGES[card.type]}
                     </span>
                     <span className="text-gray-900 dark:text-gray-100 font-medium line-clamp-1">{card.question}</span>
                   </div>

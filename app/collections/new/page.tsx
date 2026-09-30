@@ -6,6 +6,8 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase/client'
 import { getCachedSets, getCachedCollections } from '@/lib/storage'
 import { TagInput } from '@/components/TagInput'
+import { IconPicker } from '@/components/IconPicker'
+import { suggestIcon } from '@/lib/icons'
 
 export default function NewCollection() {
   const router = useRouter()
@@ -14,6 +16,10 @@ export default function NewCollection() {
   const [tags,        setTags]        = useState<string[]>([])
   const [saving,      setSaving]      = useState(false)
   const [error,       setError]       = useState('')
+  const [icon,        setIcon]        = useState<string | null>(null)
+  const [color,       setColor]       = useState<string | null>(null)
+  // Until the user picks an icon themselves, it follows the name
+  const [iconPicked,  setIconPicked]  = useState(false)
 
   const tagSuggestions = Array.from(new Set([
     ...getCachedSets().flatMap(s => s.tags ?? []),
@@ -27,7 +33,7 @@ export default function NewCollection() {
 
     const { data, error: err } = await supabase
       .from('collections')
-      .insert({ name: name.trim(), description: description.trim() || null, tags })
+      .insert({ name: name.trim(), description: description.trim() || null, tags, icon, color })
       .select()
       .single()
 
@@ -52,14 +58,25 @@ export default function NewCollection() {
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Collection name</label>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Biology 101"
-            autoFocus
-            className="w-full border border-gray-300 dark:border-gray-600 rounded-xl px-4 py-3 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-          />
+          <div className="flex items-center gap-3">
+            <IconPicker
+              icon={icon}
+              color={color}
+              kind="collection"
+              onChange={next => { setIcon(next.icon); setColor(next.color); setIconPicked(true) }}
+            />
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value)
+                if (!iconPicked) setIcon(suggestIcon(e.target.value))
+              }}
+              placeholder="e.g. Biology 101"
+              autoFocus
+              className="flex-1 min-w-0 border border-gray-300 dark:border-gray-600 rounded-xl px-4 py-3 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+            />
+          </div>
         </div>
 
         <div>

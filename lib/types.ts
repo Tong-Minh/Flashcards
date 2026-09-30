@@ -1,4 +1,4 @@
-export type CardType   = 'multiple_choice' | 'open_ended' | 'fill_blank'
+export type CardType   = 'multiple_choice' | 'open_ended' | 'fill_blank' | 'typed' | 'true_false' | 'matching'
 export type CardStatus = 'new' | 'learning' | 'mastered' | 'needs_review'
 export type FSRSState  = 0 | 1 | 2 | 3 // New | Learning | Review | Relearning
 
@@ -11,6 +11,9 @@ export interface FlashcardSet {
   is_public: boolean
   tags: string[]
   collection_id: string | null
+  icon: string | null
+  color: string | null
+  position: number | null
 }
 
 export interface Collection {
@@ -20,6 +23,8 @@ export interface Collection {
   tags: string[]
   user_id: string | null
   created_at: string
+  icon: string | null
+  color: string | null
 }
 
 export interface Profile {
@@ -48,13 +53,21 @@ export interface LeaderboardEntry {
   last_studied_at: string | null
 }
 
+export interface MatchPair {
+  left: string
+  right: string
+}
+
 export interface Flashcard {
   id: string
   set_id: string
   question: string
   type: CardType
   answer: string
+  // Multiple choice: the choices. Typed: extra accepted answers.
   options: string[] | null
+  // Matching only
+  pairs: MatchPair[] | null
   position: number | null
   created_at: string
 }

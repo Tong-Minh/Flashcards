@@ -16,6 +16,10 @@ import { fetchAllRows, MAX_CARDS_PER_SET } from '@/lib/fetchAll'
 import { previewText, ContentRenderer, hasFormattedContent } from '@/components/ContentRenderer'
 import { CardPreviewModal } from '@/components/CardPreview'
 import { TagInput, TagList } from '@/components/TagInput'
+import { IconPicker } from '@/components/IconPicker'
+import { ItemIcon } from '@/components/ItemIcon'
+import { exportCards, downloadText } from '@/lib/cardFormat'
+import { TYPE_BADGES } from '@/lib/cardTypes'
 import type { Collection, FlashcardSet, FlashcardWithProgress, StudySession } from '@/lib/types'
 
 const PAGE_SIZE = 50
@@ -79,6 +83,7 @@ export default function SetDetail() {
   const [dailyLimitInput,   setDailyLimitInput]   = useState(20)
   const [tagsInput,         setTagsInput]         = useState<string[]>([])
   const [collectionInput,   setCollectionInput]   = useState('')
+  const [iconInput,         setIconInput]         = useState<{ icon: string | null; color: string | null }>({ icon: null, color: null })
   const nameRef = useRef<HTMLInputElement>(null)
 
   const isOwner = !!currentUser && !!set && set.user_id === currentUser.id
@@ -99,6 +104,7 @@ export default function SetDetail() {
         setIsPublicInput(cachedSet.is_public ?? false)
         setTagsInput(cachedSet.tags ?? [])
         setCollectionInput(cachedSet.collection_id ?? '')
+        setIconInput({ icon: cachedSet.icon ?? null, color: cachedSet.color ?? null })
       }
       if (cachedCards.length > 0) setCards(cachedCards)
       if (cachedSess.length  > 0) setSessions(cachedSess)
@@ -142,6 +148,7 @@ export default function SetDetail() {
     setIsPublicInput(setRes.data.is_public ?? false)
     setTagsInput(setRes.data.tags ?? [])
     setCollectionInput(setRes.data.collection_id ?? '')
+    setIconInput({ icon: setRes.data.icon ?? null, color: setRes.data.color ?? null })
     if (collectionsRes.data) setCollections(collectionsRes.data)
     setCards(freshCards)
     setSessions(freshSessions)
@@ -160,6 +167,8 @@ export default function SetDetail() {
       is_public: isPublicInput,
       tags: tagsInput,
       collection_id: collectionInput || null,
+      icon: iconInput.icon,
+      color: iconInput.color,
     }
     const { error } = await supabase.from('sets').update(patch).eq('id', id)
     if (error) return
@@ -176,6 +185,11 @@ export default function SetDetail() {
     } finally {
       setForking(false)
     }
+  }
+
+  function exportSet() {
+    const filename = `${(set?.name ?? 'flashcards').replace(/[\\/:*?"<>|]+/g, '').trim() || 'flashcards'}.txt`
+    downloadText(filename, exportCards(cards))
   }
 
   function saveDailyLimit(val: number) {
@@ -272,31 +286,20 @@ export default function SetDetail() {
   return (
     <div className="max-w-lg mx-auto px-4 py-6">
       {/* Header */}
-      <div className="flex items-start gap-3 mb-4">
-        <Link href={setCollection ? `/collections/${setCollection.id}` : '/'} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 text-xl transition-colors flex-shrink-0 mt-1">←</Link>
-        <div className="flex-1 min-w-0">
+      <div className="mb-4">
+      <div className="flex items-center gap-3 mb-2">
+        <Link href={setCollection ? `/collections/${setCollection.id}` : '/'} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 text-xl transition-colors flex-shrink-0">←</Link>
+        <div className="flex-1 min-w-0 truncate">
           {setCollection && (
             <Link href={`/collections/${setCollection.id}`} className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wide hover:underline">
               {setCollection.name}
             </Link>
           )}
-          <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 leading-tight">{set?.name}</h1>
-            {set && !set.is_public && (
-              <span className="text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-full">
-                Private
-              </span>
-            )}
-          </div>
-          {set?.description && (
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{set.description}</p>
-          )}
-          <TagList tags={set?.tags} className="mt-2" />
         </div>
         {isOwner && (
           <button
             onClick={() => setShowSettings(true)}
-            className="flex-shrink-0 text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300 transition-colors p-1 mt-0.5"
+            className="flex-shrink-0 text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300 transition-colors p-1"
             aria-label="Settings"
           >
             <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
@@ -305,6 +308,20 @@ export default function SetDetail() {
             </svg>
           </button>
         )}
+      </div>
+      <div className="flex items-center gap-2 flex-wrap">
+        {set && <ItemIcon icon={set.icon} color={set.color} size="md" />}
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 leading-tight">{set?.name}</h1>
+        {set && !set.is_public && (
+          <span className="text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-full">
+            Private
+          </span>
+        )}
+      </div>
+      {set?.description && (
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{set.description}</p>
+      )}
+      <TagList tags={set?.tags} className="mt-2" />
       </div>
 
       {/* Stats */}
@@ -430,6 +447,16 @@ export default function SetDetail() {
             <h2 className="font-semibold text-gray-900 dark:text-gray-100">
               {cards.length} card{cards.length !== 1 ? 's' : ''}
             </h2>
+            <div className="flex items-center gap-2">
+            {cards.length > 0 && (
+              <button
+                onClick={exportSet}
+                title="Download these cards as a .txt file in the import format"
+                className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 font-medium px-2 py-1.5"
+              >
+                Export
+              </button>
+            )}
             {isOwner && atCardLimit && (
               <span className="text-xs text-gray-400 dark:text-gray-500">Limit of {MAX_CARDS_PER_SET.toLocaleString()} reached</span>
             )}
@@ -449,6 +476,7 @@ export default function SetDetail() {
                 </Link>
               </div>
             )}
+            </div>
           </div>
 
           {cards.length === 0 ? (
@@ -488,7 +516,7 @@ export default function SetDetail() {
                             {badge.label}
                           </span>
                           <span className="text-xs text-gray-400 dark:text-gray-500">
-                            {card.type === 'multiple_choice' ? 'MC' : card.type === 'fill_blank' ? 'FB' : 'OE'}
+                            {TYPE_BADGES[card.type]}
                           </span>
                         </div>
                       </div>
@@ -652,13 +680,20 @@ export default function SetDetail() {
               <div className="mb-5 space-y-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Set name</label>
+                  <div className="flex items-center gap-3">
+                  <IconPicker
+                    icon={iconInput.icon}
+                    color={iconInput.color}
+                    onChange={setIconInput}
+                  />
                   <input
                     ref={nameRef}
                     value={nameInput}
                     onChange={e => setNameInput(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && saveInfo()}
-                    className="w-full border border-gray-300 dark:border-gray-600 rounded-xl px-3 py-2 text-sm text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-700 outline-none focus:border-indigo-500"
+                    className="flex-1 min-w-0 border border-gray-300 dark:border-gray-600 rounded-xl px-3 py-2 text-sm text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-700 outline-none focus:border-indigo-500"
                   />
+                  </div>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Description</label>

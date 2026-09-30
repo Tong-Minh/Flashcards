@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { TagList } from '@/components/TagInput'
+import { ItemIcon } from '@/components/ItemIcon'
 import type { SetWithStats } from '@/lib/sets'
 
 export function timeAgo(iso: string | null): string {
@@ -24,7 +25,8 @@ export function SetCard({ set }: { set: SetWithStats }) {
     <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
       <Link href={`/sets/${set.id}`} className="block p-4">
         <div className="flex items-start justify-between gap-2 mb-3">
-          <div>
+          <ItemIcon icon={set.icon} color={set.color} />
+          <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <h2 className="font-semibold text-gray-900 dark:text-gray-100 text-base leading-snug">{set.name}</h2>
               {!set.is_public && (
@@ -82,8 +84,10 @@ export function SetCard({ set }: { set: SetWithStats }) {
   )
 }
 
-export function CollectionCard({ id, name, description, tags, sets }: {
+export function CollectionCard({ id, name, description, tags, icon, color, sets }: {
   id: string
+  icon: string | null
+  color: string | null
   name: string
   description: string | null
   tags: string[]
@@ -96,11 +100,7 @@ export function CollectionCard({ id, name, description, tags, sets }: {
       href={`/collections/${id}`}
       className="flex items-start gap-3 bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-4 hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors"
     >
-      <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 flex items-center justify-center">
-        <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
-        </svg>
-      </div>
+      <ItemIcon icon={icon} color={color} kind="collection" />
       <div className="flex-1 min-w-0">
         <div className="flex items-start justify-between gap-2">
           <h2 className="font-semibold text-gray-900 dark:text-gray-100 text-base leading-snug">{name}</h2>

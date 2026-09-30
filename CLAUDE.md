@@ -21,17 +21,20 @@ Mobile-first flashcard PWA with FSRS spaced repetition. Next.js 15 (App Router) 
   - Every code block in the editor is followed by a text block (possibly empty), so there's always somewhere to click below it. Backspace at the start of that text highlights the code block, and a second Backspace deletes it.
   - The AI prompt (`app/sets/[id]/import/page.tsx`) and `/import-format` document the markup. Update them when the format changes. The tab-format importer converts `\n` into newlines everywhere except inside `$…$` math.
   - A single newline touching a code fence is a separator, not a blank line. The editor stores it as `lead`/`trail` flags on text blocks, and the renderer strips it. Both must keep treating it that way, or gaps appear around code blocks.
+- **Icons:** `lib/icons.ts` holds the curated lucide icon map (keys are stored in `sets.icon`/`collections.icon`, so never rename one), the color map, and `suggestIcon(name)`. `ItemIcon` renders the tile; `IconPicker` is the picker sheet. A null icon/color falls back to the set or collection default.
+- **Export:** `lib/cardFormat.ts` writes a set as tab-separated text in the import format (Export button on the set page). Keep it in sync with the importer when card types change.
 - **Card display:** `components/CardPreview.tsx` has `FlipCard` (tap to flip, optional swipe-to-dismiss), used by the Cards-tab preview modal and study View mode. Its `card-enter` animation must only play on mount; re-applying it after a flip causes a double rotation.
 - **View mode:** the set page's View button opens `/sets/[id]/study?mode=view`. It browses every card in set order.
 
 ## Data model (Supabase, `public` schema)
 
-- `collections` — folders that group sets (`name`, `description`, `tags text[]`, `user_id`)
-- `sets` — `name`, `description`, `is_public`, `tags text[]`, `collection_id` (nullable, `on delete set null`)
-- `flashcards` — `set_id`, `question`, `answer`, `type` (`open_ended` | `multiple_choice` | `fill_blank`), `options text[]`, `position`
+- `collections` — folders that group sets (`name`, `description`, `tags text[]`, `icon`, `color`, `user_id`)
+- `sets` — `name`, `description`, `is_public`, `tags text[]`, `icon`, `color`, `position` (manual home-screen order; set in bulk by the `reorder_sets(ids)` RPC), `collection_id` (nullable, `on delete set null`)
+- `flashcards` — `set_id`, `question`, `answer`, `type` (`open_ended` | `multiple_choice` | `fill_blank` | `typed` | `true_false` | `matching`), `options text[]` (MC choices; extra accepted answers for `typed`), `pairs jsonb` (`[{left, right}]`, matching only), `position`. Type labels and badges live in `lib/cardTypes.ts`.
 - `card_progress` — per-user FSRS state per card
 - `study_sessions` — one row per completed/exited study session (drives stats, history, leaderboard)
-- `profiles`, `friend_requests` — social features; `get_friends_leaderboard()` and `fork_set()` RPCs
+- `profiles`, `friend_requests` — social features; `get_friends_leaderboard()` and `fork_set()` RPCs. `fork_set` copies icon, color, tags, and `pairs`, so update it when adding set or card columns.
+- `discover_sets(q, lim, off)` RPC — other users' public sets matching a name/description/tag search, with owner name and card count.
 
 Schema changes go through Supabase migrations (the Supabase MCP server is configured in `.mcp.json`). Keep `lib/types.ts` in sync.
 

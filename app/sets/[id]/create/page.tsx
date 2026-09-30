@@ -7,12 +7,7 @@ import { supabase } from '@/lib/supabase/client'
 import { BlockEditor } from '@/components/BlockEditor'
 import { MAX_CARDS_PER_SET } from '@/lib/fetchAll'
 import type { CardType } from '@/lib/types'
-
-const TYPE_LABELS: Record<CardType, string> = {
-  open_ended:      'Open Ended',
-  multiple_choice: 'Multiple Choice',
-  fill_blank:      'Fill in Blank',
-}
+import { TYPE_LABELS } from '@/lib/cardTypes'
 
 export default function CreateCard() {
   const { id: setId } = useParams<{ id: string }>()

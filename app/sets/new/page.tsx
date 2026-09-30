@@ -6,6 +6,8 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase/client'
 import { getCachedCollections, getCachedSets } from '@/lib/storage'
 import { TagInput } from '@/components/TagInput'
+import { IconPicker } from '@/components/IconPicker'
+import { suggestIcon } from '@/lib/icons'
 import type { Collection } from '@/lib/types'
 
 export default function NewSet() {
@@ -18,6 +20,10 @@ export default function NewSet() {
   const [tags, setTags] = useState<string[]>([])
   const [collectionId, setCollectionId] = useState('')
   const [collections, setCollections] = useState<Collection[]>([])
+  const [icon, setIcon] = useState<string | null>(null)
+  const [color, setColor] = useState<string | null>(null)
+  // Until the user picks an icon themselves, it follows the name
+  const [iconPicked, setIconPicked] = useState(false)
 
   const tagSuggestions = Array.from(new Set(getCachedSets().flatMap(s => s.tags ?? []))).sort()
 
@@ -43,6 +49,8 @@ export default function NewSet() {
         is_public: isPublic,
         tags,
         collection_id: collectionId || null,
+        icon,
+        color,
       })
       .select()
       .single()
@@ -68,14 +76,24 @@ export default function NewSet() {
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Set name</label>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Spanish Vocabulary"
-            autoFocus
-            className="w-full border border-gray-300 dark:border-gray-600 rounded-xl px-4 py-3 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-          />
+          <div className="flex items-center gap-3">
+            <IconPicker
+              icon={icon}
+              color={color}
+              onChange={next => { setIcon(next.icon); setColor(next.color); setIconPicked(true) }}
+            />
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value)
+                if (!iconPicked) setIcon(suggestIcon(e.target.value))
+              }}
+              placeholder="e.g. Spanish Vocabulary"
+              autoFocus
+              className="flex-1 min-w-0 border border-gray-300 dark:border-gray-600 rounded-xl px-4 py-3 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+            />
+          </div>
         </div>
 
         <div>
