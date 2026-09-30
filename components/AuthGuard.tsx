@@ -5,7 +5,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
 import type { User } from '@supabase/supabase-js'
 import { IS_DESKTOP } from '@/lib/platform'
-import { openLibrary, pickLibraryFolder } from '@/lib/store/desktop'
+import { libraryNeedingAccess, openLibrary, pickLibraryFolder } from '@/lib/store/desktop'
 import { LOCAL_USER_ID } from '@/lib/store/localStore'
 
 const UserContext = createContext<User | null>(null)
@@ -27,9 +27,11 @@ const LOCAL_USER = { id: LOCAL_USER_ID, email: '', user_metadata: { full_name: '
 function LibraryGate({ children }: { children: React.ReactNode }) {
   const [ready,   setReady]   = useState(false)
   const [checked, setChecked] = useState(false)
+  const [again,   setAgain]   = useState<string | null>(null)
 
   useEffect(() => {
     setReady(openLibrary())
+    setAgain(libraryNeedingAccess())
     setChecked(true)
   }, [])
 
@@ -45,10 +47,13 @@ function LibraryGate({ children }: { children: React.ReactNode }) {
         <div className="w-full max-w-md text-center">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/icon.svg" alt="" className="w-16 h-16 mx-auto mb-5" />
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Welcome to Flashcards</h1>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{again ? 'Choose your library again' : 'Welcome to Flashcards'}</h1>
           <p className="text-gray-500 dark:text-gray-400 mt-2 mb-6 text-pretty">
-            Choose a folder to keep your cards in. Pick an empty folder to start a new library, or a folder
-            that already has one.
+            {again ? (
+              <>This update needs access to your library&apos;s subfolders. Choose the same folder again: <span className="font-medium text-gray-700 dark:text-gray-300 break-all">{again}</span></>
+            ) : (
+              <>Choose a folder to keep your cards in. Pick an empty folder to start a new library, or a folder that already has one.</>
+            )}
           </p>
           <button
             onClick={choose}

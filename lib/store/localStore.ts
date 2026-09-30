@@ -138,7 +138,16 @@ export function createLocalStore(files: Files): Store {
     return groups
   }
 
-  return {
+  // After a failed write, memory may be ahead of the disk: forget it all so the next call re-reads the
+  // folder, and the app never shows something that isn't saved
+  function reset() {
+    loading = null
+    library = { version: LIBRARY_VERSION, collections: [] }
+    sets.clear()
+    cardSet.clear()
+  }
+
+  const api: Store = {
     remote: false,
     maxCardsPerSet: 100_000,
 
@@ -366,4 +375,18 @@ export function createLocalStore(files: Files): Store {
       return d ? stats(d) : null
     },
   }
+
+  for (const key of Object.keys(api) as (keyof Store)[]) {
+    const fn = api[key]
+    if (typeof fn !== 'function') continue
+    ;(api as unknown as Record<string, unknown>)[key] = async (...args: unknown[]) => {
+      try {
+        return await (fn as (...a: unknown[]) => Promise<unknown>).apply(api, args)
+      } catch (err) {
+        reset()
+        throw err
+      }
+    }
+  }
+  return api
 }

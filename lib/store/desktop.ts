@@ -7,12 +7,26 @@ import type { Store } from './types'
 // Tauri window (`next dev` in a browser) it's a localStorage library, for development.
 
 const ROOT_KEY = 'fc_library_root'
+// The folder whose subfolders the app has been granted access to. Versions before 0.1.1 asked for the
+// top level only, so their saved folder must be chosen again once.
+const ACCESS_KEY = 'fc_library_access'
 let current: Store | null = null
 let currentFiles: Files | null = null
 
 export function libraryRoot(): string | null {
   if (!inTauri()) return 'Browser storage (development)'
-  try { return localStorage.getItem(ROOT_KEY) } catch { return null }
+  try {
+    const root = localStorage.getItem(ROOT_KEY)
+    return root && localStorage.getItem(ACCESS_KEY) === root ? root : null
+  } catch {
+    return null
+  }
+}
+
+// A folder remembered without full access (from 0.1.0), which needs choosing again
+export function libraryNeedingAccess(): string | null {
+  if (!inTauri()) return null
+  try { return libraryRoot() ? null : localStorage.getItem(ROOT_KEY) } catch { return null }
 }
 
 // Opens the library at `root` (or the remembered one). Returns false if there's none yet.
@@ -34,12 +48,15 @@ export function openLibrary(root = libraryRoot()): boolean {
 // Asks for a folder. Picking one also grants the app access to it (kept across launches).
 export async function pickLibraryFolder(): Promise<string | null> {
   const { open } = await import('@tauri-apps/plugin-dialog')
-  const picked = await open({ directory: true, title: 'Choose a folder for your flashcards' })
-  return typeof picked === 'string' ? picked : null
+  // recursive: access to the folder's subfolders too (sets/<id>/…), not just its top level
+  const picked = await open({ directory: true, recursive: true, title: 'Choose a folder for your flashcards' })
+  if (typeof picked !== 'string') return null
+  localStorage.setItem(ACCESS_KEY, picked)
+  return picked
 }
 
 function clearCaches() {
-  const keep = (k: string) => k === ROOT_KEY || k === 'theme' || k.startsWith('fc_lib/') || k.startsWith('fc_settings_')
+  const keep = (k: string) => k === ROOT_KEY || k === ACCESS_KEY || k === 'theme' || k.startsWith('fc_lib/') || k.startsWith('fc_settings_')
   for (const key of Object.keys(localStorage)) if (key.startsWith('fc_') && !keep(key)) localStorage.removeItem(key)
 }
 
