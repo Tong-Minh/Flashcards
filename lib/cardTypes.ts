@@ -1,5 +1,7 @@
 import type { CardType } from './types'
 
+export const CARD_TYPES: CardType[] = ['open_ended', 'typed', 'multiple_choice', 'true_false', 'fill_blank', 'matching']
+
 export const TYPE_LABELS: Record<CardType, string> = {
   open_ended:      'Open Ended',
   multiple_choice: 'Multiple Choice',

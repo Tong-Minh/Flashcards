@@ -6,95 +6,29 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase/client'
 import { MAX_CARDS_PER_SET } from '@/lib/fetchAll'
 import { TYPE_BADGES } from '@/lib/cardTypes'
-import type { CardType } from '@/lib/types'
+import { parseCards } from '@/lib/cardFormat'
 
 const INSERT_CHUNK = 500
-
-interface ParsedCard {
-  question: string
-  answer: string
-  options: string[] | null
-  type: CardType
-}
-
-function parseCards(text: string): ParsedCard[] {
-  const trimmed = text.trim()
-  if (!trimmed) return []
-
-  const lines = trimmed.split('\n')
-
-  // Tab-separated: detect by presence of tab in first non-empty line
-  const firstLine = lines.find((l) => l.trim())
-  if (firstLine?.includes('\t')) {
-    // Unescape literal \n so AI-generated code blocks, lists and math blocks survive the
-    // one-per-line format — but leave math alone, where \n starts LaTeX commands (\neq, \nu, \nabla).
-    // Code fences are matched first so a $ inside code can't start a math span; \$ is a literal dollar.
-    const unescape = (s: string) =>
-      s.replace(/```[\s\S]*?```|\\\$|\$\$[\s\S]*?\$\$|\$[^$]*\$|\\n/g, m =>
-        m === '\\n' ? '\n' : m.startsWith('```') ? m.replace(/\\n/g, '\n') : m)
-    return lines
-      .filter((l) => l.trim() && l.includes('\t'))
-      .map((line) => {
-        const parts = line.split('\t').map((p) => unescape(p.trim()))
-        if (parts.length >= 4) {
-          // MC: question | correct answer | option C | option D (optionally E)
-          const question = parts[0]
-          const correctAnswer = parts[1]
-          const extras = parts.slice(2, 5)
-          const allOptions = [correctAnswer, ...extras].sort(() => Math.random() - 0.5)
-          return { question, answer: correctAnswer, options: allOptions, type: 'multiple_choice' as CardType }
-        }
-        const q = parts[0]
-        return {
-          question: q,
-          answer: parts[1] ?? '',
-          options: null,
-          type: (q.includes('___') ? 'fill_blank' : 'open_ended') as CardType,
-        }
-      })
-      .filter((c) => c.question && c.answer)
-  }
-
-  // Blank-line separated pairs
-  const groups: string[][] = []
-  let current: string[] = []
-  for (const line of lines) {
-    const t = line.trim()
-    if (t === '') {
-      if (current.length) { groups.push(current); current = [] }
-    } else {
-      current.push(t)
-    }
-  }
-  if (current.length) groups.push(current)
-
-  return groups
-    .filter((g) => g.length >= 2)
-    .map((g) => {
-      const q = g[0]
-      return {
-        question: q,
-        answer: g.slice(1).join('\n'),
-        options: null,
-        type: (q.includes('___') ? 'fill_blank' : 'open_ended') as CardType,
-      }
-    })
-}
 
 const AI_PROMPT = `You are creating flashcards for a study set on: [REPLACE WITH YOUR TOPIC]
 
 Instructions:
 - Generate as many cards as needed to build a comprehensive understanding of the topic — do not limit yourself to a fixed count
 - Base all content on accurate, real-world information from credible sources (textbooks, peer-reviewed research, official documentation, encyclopedias, authoritative references)
-- Include a mix of card types: open-ended recall, fill-in-the-blank (use ___ in the question), and multiple choice
+- Include a mix of card types: open-ended recall, type-the-answer, fill-in-the-blank (use ___ in the question), multiple choice, true/false, and matching
 - For programming or technical topics, include code examples where helpful
 
 Output ONLY the raw card data — one card per line, tab-separated. No headers, numbering, labels, or extra text of any kind.
 
 Formats (use a real tab character between each column):
 - Open-ended:      Question [TAB] Answer
+- Type the answer: [type] Question [TAB] Short exact answer [TAB] Other accepted answer (optional, more allowed)
 - Fill-in-blank:   Sentence with ___ in it [TAB] Missing word or phrase
 - Multiple choice: Question [TAB] Correct answer [TAB] Wrong option [TAB] Wrong option [TAB] Wrong option
+- True/false:      Statement [TAB] True   (or False)
+- Matching:        [match] Instructions [TAB] Term = Match [TAB] Term = Match [TAB] …   (2–8 pairs, each "left = right")
+
+Use type-the-answer only for short answers (a word, name, number, or term) that someone could type exactly; the check ignores capitalization, accents, and small typos. Use matching for sets of 3–6 related term/definition pairs.
 
 Code blocks: since each card must be one line, use \\n for line breaks inside code fields.
 Always specify a language name after the opening backticks — it enables syntax highlighting. Supported names: python, javascript, typescript, jsx, tsx, java, c, cpp, csharp, go, rust, kotlin, swift, ruby, php, bash, sql, json, yaml, html. Example:
@@ -124,7 +58,11 @@ What is the time complexity of binary search?	$O(\\log n)$ — the search space 
 What are the steps of binary search?	1. Set \`lo\` and \`hi\` to the ends\\n2. Check the middle element\\n3. Discard the half that can't contain the target
 Solve $ax^2 + bx + c = 0$.	Use the quadratic formula:\\n$$x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$$
 ___ is the process by which plants convert sunlight into glucose.	Photosynthesis
-Which sorting algorithm has worst-case $O(n^2)$ time complexity?	Bubble sort	Merge sort	Quick sort	Heap sort`
+Which sorting algorithm has worst-case $O(n^2)$ time complexity?	Bubble sort	Merge sort	Quick sort	Heap sort
+[type] Which organelle contains the cell's DNA?	nucleus
+[type] What is the chemical symbol for sodium?	Na
+Mitochondria have their own DNA.	True
+[match] Match each organelle to its function	Ribosome = Makes proteins	Nucleus = Stores DNA	Mitochondria = Produces ATP	Golgi apparatus = Packages proteins`
 
 export default function ImportCards() {
   const { id: setId } = useParams<{ id: string }>()
@@ -169,6 +107,7 @@ export default function ImportCards() {
       question: c.question,
       answer: c.answer,
       options: c.options,
+      pairs: c.pairs,
       type: c.type,
     }))
 
@@ -273,7 +212,11 @@ export default function ImportCards() {
                     </span>
                     <span className="text-gray-900 dark:text-gray-100 font-medium line-clamp-1">{card.question}</span>
                   </div>
-                  <p className="text-gray-500 dark:text-gray-400 line-clamp-1 text-xs pl-7">{card.answer}</p>
+                  <p className="text-gray-500 dark:text-gray-400 line-clamp-1 text-xs pl-7">
+                    {card.type === 'matching' ? card.pairs?.map(p => `${p.left} ↔ ${p.right}`).join(' · ')
+                      : card.type === 'typed' && card.options ? `${card.answer} (also: ${card.options.join(', ')})`
+                      : card.answer}
+                  </p>
                 </div>
               ))}
               {preview.length > 10 && (

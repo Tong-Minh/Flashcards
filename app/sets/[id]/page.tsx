@@ -550,7 +550,7 @@ export default function SetDetail() {
                           <div className="flex-1 min-w-0 [&_:is(h1,h2,h3):first-child]:mt-0">
                             {hasFormattedContent(card.question)
                               ? <ContentRenderer text={card.question} readOnly className="text-sm font-medium text-gray-900 dark:text-gray-100" />
-                              : previewText(card.question)}
+                              : previewText(card.question) || (card.type === 'matching' ? 'Match the pairs' : '')}
                           </div>
                         </div>
                         <div className="flex items-center gap-2 mt-1.5">
@@ -590,7 +590,15 @@ export default function SetDetail() {
                       )}
                     </div>
                     <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-700">
-                      {card.type === 'multiple_choice' && card.options ? (
+                      {card.type === 'matching' && card.pairs ? (
+                        <ul className="space-y-0.5">
+                          {card.pairs.map((p, i) => (
+                            <li key={i} className="text-xs text-gray-600 dark:text-gray-400">
+                              {previewText(p.left)} <span className="text-gray-300 dark:text-gray-600">↔</span> {previewText(p.right)}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : card.type === 'multiple_choice' && card.options ? (
                         <ul className="space-y-1">
                           {card.options.map(opt => (
                             <li

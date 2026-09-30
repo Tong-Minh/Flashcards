@@ -9,6 +9,8 @@ import { haptic } from '@/lib/haptic'
 import { fetchAllRows, MAX_CARDS_PER_SET } from '@/lib/fetchAll'
 import { ContentRenderer, previewText } from '@/components/ContentRenderer'
 import { ClozeQuestion, FlipCard } from '@/components/CardPreview'
+import { TypedAnswerInput, TypedResultBanner, TrueFalseButtons, MatchingBoard, MatchingPairsList } from '@/components/StudyInteractions'
+import { checkTypedAnswer, type TypedResult } from '@/lib/answerCheck'
 import {
   cacheCards, getCachedCards, updateCachedProgress,
   queueProgressUpdate, getPendingUpdates, removePendingUpdate,
@@ -112,6 +114,9 @@ export default function Study() {
   const [flipState,      setFlipState]      = useState<FlipState>('front')
   const [showBack,       setShowBack]       = useState(false)
   const [selectedOption, setSelectedOption] = useState<string | null>(null)
+  // Typed and matching cards: the outcome shown on the back
+  const [typed,          setTyped]          = useState<{ input: string; result: TypedResult } | null>(null)
+  const [matchMisses,    setMatchMisses]    = useState<number | null>(null)
   const [cardKey,        setCardKey]        = useState(0)
 
   // Regular session stats
@@ -273,6 +278,8 @@ export default function Study() {
     setFlipState('front')
     setShowBack(false)
     setSelectedOption(null)
+    setTyped(null)
+    setMatchMisses(null)
     setCardKey(0)
     setScheduling(null)
     sessionStart.current = Date.now()
@@ -308,6 +315,8 @@ export default function Study() {
     setFlipState('front')
     setShowBack(false)
     setSelectedOption(null)
+    setTyped(null)
+    setMatchMisses(null)
     setCardKey(0)
     setScheduling(null)
     sessionStart.current = Date.now()
@@ -461,6 +470,8 @@ export default function Study() {
       setFlipState('front')
       setShowBack(false)
       setSelectedOption(null)
+      setTyped(null)
+      setMatchMisses(null)
       setCardKey(k => k + 1)
       setScheduling(null)
       setQueue(newQueue)
@@ -770,6 +781,8 @@ export default function Study() {
   const cardNumber = done + 1
   const progressPct = totalInSession > 0 ? (done / totalInSession) * 100 : 0
   const isCorrectSelection = selectedOption !== null && selectedOption === card.answer
+  // Hint toward Again after an auto-checked miss. Only the rating the user taps is recorded.
+  const answeredWrong = typed?.result === 'incorrect' || (selectedOption !== null && !isCorrectSelection)
   const cardAnimClass = flipState === 'flipping' ? 'card-flip' : ''
 
   const intervals = scheduling ? {
@@ -807,12 +820,35 @@ export default function Study() {
             <p className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-3">
               {card.type === 'multiple_choice' ? 'Multiple Choice'
                : card.type === 'fill_blank'   ? 'Fill in the blank'
+               : card.type === 'typed'        ? 'Type the answer'
+               : card.type === 'true_false'   ? 'True or false?'
+               : card.type === 'matching'     ? 'Matching'
                : 'Tap to reveal answer'}
             </p>
             {card.type === 'fill_blank'
               ? <ClozeQuestion sentence={card.question} />
-              : <ContentRenderer text={card.question} className="text-xl font-medium text-gray-900 dark:text-gray-100 leading-relaxed flex-1" readOnly />
+              : <ContentRenderer
+                  text={card.type === 'matching' && !card.question.trim() ? 'Match the pairs' : card.question}
+                  className={`${card.type === 'matching' ? 'text-base' : 'text-xl flex-1'} font-medium text-gray-900 dark:text-gray-100 leading-relaxed`}
+                  readOnly
+                />
             }
+            {card.type === 'typed' && (
+              <TypedAnswerInput
+                onSubmit={input => {
+                  const result = checkTypedAnswer(input, card.answer, card.options)
+                  haptic(result === 'incorrect' ? 60 : 20)
+                  setTyped({ input, result })
+                  triggerFlip()
+                }}
+              />
+            )}
+            {card.type === 'true_false' && (
+              <TrueFalseButtons onPick={v => { setSelectedOption(v); triggerFlip() }} />
+            )}
+            {card.type === 'matching' && card.pairs && (
+              <MatchingBoard pairs={card.pairs} onDone={misses => { setMatchMisses(misses); triggerFlip() }} />
+            )}
             {card.type === 'multiple_choice' && card.options && (
               <div className="mt-5 space-y-2">
                 {card.options.map((opt, i) => (
@@ -834,6 +870,20 @@ export default function Study() {
                 <p className="text-xs font-medium text-indigo-400 uppercase tracking-wide mb-3">Answer</p>
                 <ClozeQuestion sentence={card.question} answer={card.answer} />
               </div>
+            ) : card.type === 'matching' ? (
+              <div className="flex flex-col flex-1">
+                {matchMisses !== null && (
+                  <div className={`mb-3 px-4 py-2.5 rounded-xl text-sm font-medium ${
+                    matchMisses === 0
+                      ? 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                      : 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
+                  }`}>
+                    {matchMisses === 0 ? '✓ All matched, no misses!' : `Matched with ${matchMisses} miss${matchMisses !== 1 ? 'es' : ''}`}
+                  </div>
+                )}
+                <p className="text-xs font-medium text-indigo-400 uppercase tracking-wide mb-2">Pairs</p>
+                <MatchingPairsList pairs={card.pairs ?? []} />
+              </div>
             ) : (
               <>
                 <div className="mb-4 pb-4 border-b border-gray-100 dark:border-gray-700">
@@ -842,7 +892,8 @@ export default function Study() {
                 </div>
                 <div className="flex flex-col flex-1">
                   <p className="text-xs font-medium text-indigo-400 uppercase tracking-wide mb-2">Answer</p>
-                  {card.type === 'multiple_choice' && selectedOption && (
+                  {card.type === 'typed' && typed && <TypedResultBanner input={typed.input} result={typed.result} />}
+                  {(card.type === 'multiple_choice' || card.type === 'true_false') && selectedOption && (
                     <div className={`flex items-center gap-2 mb-3 px-4 py-2.5 rounded-xl text-sm font-medium ${
                       isCorrectSelection
                         ? 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400'
@@ -852,6 +903,9 @@ export default function Study() {
                     </div>
                   )}
                   <ContentRenderer text={card.answer} className="text-xl font-semibold text-gray-900 dark:text-gray-100 leading-relaxed flex-1" readOnly />
+                  {card.type === 'typed' && card.options && card.options.length > 0 && (
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">Also accepted: {card.options.join(', ')}</p>
+                  )}
                   {card.type === 'multiple_choice' && card.options && (
                     <div className="mt-4 space-y-1.5">
                       {card.options.map((opt, i) => {
@@ -882,7 +936,9 @@ export default function Study() {
       {showBack ? (
         <div className="grid grid-cols-4 gap-2 fade-in">
           <button onClick={() => rate(Rating.Again)}
-            className="flex flex-col items-center py-3.5 rounded-2xl bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 active:bg-red-200 transition-colors border border-red-100 dark:border-red-900"
+            className={`flex flex-col items-center py-3.5 rounded-2xl bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 active:bg-red-200 transition-colors border border-red-100 dark:border-red-900 ${
+              answeredWrong ? 'ring-2 ring-red-400 ring-offset-2 dark:ring-offset-gray-900' : ''
+            }`}
           >
             <span className="text-base font-semibold">Again</span>
             {intervals && <span className="text-xs text-red-400 dark:text-red-500 mt-0.5">{intervals.again}</span>}

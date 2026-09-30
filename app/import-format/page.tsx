@@ -67,6 +67,32 @@ Mitochondria`}</pre>
           <p className="text-xs text-gray-400 mt-2">Tab format works too: <span className="font-mono">The capital of France is ___{"\\t"}Paris</span></p>
         </section>
 
+        <section className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+          <h2 className="font-semibold text-gray-900 text-base mb-1">True / False — automatic detection</h2>
+          <p className="text-gray-500 mb-3">
+            A card whose answer is exactly <code className="bg-gray-100 px-1 rounded text-xs font-mono">True</code> or <code className="bg-gray-100 px-1 rounded text-xs font-mono">False</code> becomes a true/false card.
+          </p>
+          <pre className="bg-gray-50 rounded-xl p-4 text-xs leading-relaxed overflow-x-auto border border-gray-100">{`The Pacific is the largest ocean.	True
+Bats are blind.	False`}</pre>
+        </section>
+
+        <section className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+          <h2 className="font-semibold text-gray-900 text-base mb-1">Type the answer (tab separated)</h2>
+          <p className="text-gray-500 mb-3">
+            Start the question with <code className="bg-gray-100 px-1 rounded text-xs font-mono">[type]</code>. When studying you type the answer; capitalization, accents, extra spaces, a leading &ldquo;a/an/the&rdquo;, and small typos are forgiven. Any extra columns are other answers that also count.
+          </p>
+          <pre className="bg-gray-50 rounded-xl p-4 text-xs leading-relaxed overflow-x-auto border border-gray-100">{`[type] What is the capital of Japan?	Tokyo
+[type] Largest US state by area?	Alaska	AK`}</pre>
+        </section>
+
+        <section className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+          <h2 className="font-semibold text-gray-900 text-base mb-1">Matching (tab separated)</h2>
+          <p className="text-gray-500 mb-3">
+            Start with <code className="bg-gray-100 px-1 rounded text-xs font-mono">[match]</code> and optional instructions, then one column per pair written as <code className="bg-gray-100 px-1 rounded text-xs font-mono">term = match</code>. Use 2–8 pairs; the matches are shuffled when studying.
+          </p>
+          <pre className="bg-gray-50 rounded-xl p-4 text-xs leading-relaxed overflow-x-auto border border-gray-100">{`[match] Match each country to its capital	France = Paris	Japan = Tokyo	Peru = Lima`}</pre>
+        </section>
+
         {/* Rich formatting */}
         <section className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
           <h2 className="font-semibold text-gray-900 text-base mb-1">Rich formatting</h2>
@@ -141,7 +167,7 @@ def hello():
         <section className="bg-indigo-50 rounded-2xl border border-indigo-100 p-5">
           <h2 className="font-semibold text-indigo-900 text-base mb-2">Tips</h2>
           <ul className="space-y-1.5 text-indigo-800 text-sm">
-            <li>• You can mix all card types in the same import — fill-in-blank is auto-detected by <span className="font-mono text-xs">___</span></li>
+            <li>• You can mix all card types in the same import — fill-in-blank and true/false are detected automatically</li>
             <li>• Blank-line format works great for pasting from notes apps</li>
             <li>• Tab format works great for pasting from Google Sheets or Excel</li>
             <li>• The app shows a live preview before you import — check it looks right first</li>

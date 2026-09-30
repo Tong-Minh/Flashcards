@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { ContentRenderer, hasCodeBlock } from '@/components/ContentRenderer'
 import { haptic } from '@/lib/haptic'
+import { MatchingPairsList } from '@/components/StudyInteractions'
 import type { Flashcard } from '@/lib/types'
 
 // ── Fill-in-the-blank renderer ────────────────────────────────────────────────
@@ -126,14 +127,33 @@ export function FlipCard({ card, onSwipeAway, className = '' }: FlipCardProps) {
         className={`${flipping ? 'card-flip' : entered ? '' : 'card-enter'} bg-white dark:bg-gray-800 rounded-2xl shadow-md border border-gray-100 dark:border-gray-700 p-6 min-h-[260px] flex flex-col cursor-pointer ${className}`}
       >
         <p className={`text-xs font-medium uppercase tracking-wide mb-3 ${showBack ? 'text-indigo-400' : 'text-gray-400 dark:text-gray-500'}`}>
-          {showBack ? 'Answer' : card.type === 'multiple_choice' ? 'Multiple Choice' : card.type === 'fill_blank' ? 'Fill in the blank' : 'Question'}
+          {showBack ? (card.type === 'matching' ? 'Pairs' : 'Answer')
+            : card.type === 'multiple_choice' ? 'Multiple Choice'
+            : card.type === 'fill_blank' ? 'Fill in the blank'
+            : card.type === 'typed' ? 'Type the answer'
+            : card.type === 'true_false' ? 'True or false?'
+            : card.type === 'matching' ? 'Matching'
+            : 'Question'}
         </p>
 
         {!showBack ? (
           <div className="flex flex-col flex-1">
             {card.type === 'fill_blank'
               ? <ClozeQuestion sentence={card.question} />
-              : <ContentRenderer text={card.question} className="text-xl font-medium text-gray-900 dark:text-gray-100 leading-relaxed" readOnly />}
+              : <ContentRenderer
+                  text={card.type === 'matching' && !card.question.trim() ? 'Match the pairs' : card.question}
+                  className="text-xl font-medium text-gray-900 dark:text-gray-100 leading-relaxed"
+                  readOnly
+                />}
+            {card.type === 'matching' && card.pairs && (
+              <div className="mt-5 flex flex-wrap gap-2">
+                {card.pairs.map((p, i) => (
+                  <div key={i} className="px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-600 text-sm text-gray-700 dark:text-gray-300">
+                    <ContentRenderer text={p.left} readOnly />
+                  </div>
+                ))}
+              </div>
+            )}
             {card.type === 'multiple_choice' && card.options && (
               <div className="mt-5 space-y-2">
                 {card.options.map((opt, i) => (
@@ -147,9 +167,14 @@ export function FlipCard({ card, onSwipeAway, className = '' }: FlipCardProps) {
           </div>
         ) : card.type === 'fill_blank' ? (
           <ClozeQuestion sentence={card.question} answer={card.answer} />
+        ) : card.type === 'matching' ? (
+          <MatchingPairsList pairs={card.pairs ?? []} />
         ) : (
           <div className="flex flex-col flex-1">
             <ContentRenderer text={card.answer} className="text-xl font-semibold text-gray-900 dark:text-gray-100 leading-relaxed" readOnly />
+            {card.type === 'typed' && card.options && card.options.length > 0 && (
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">Also accepted: {card.options.join(', ')}</p>
+            )}
             {card.type === 'multiple_choice' && card.options && (
               <div className="mt-4 space-y-1.5">
                 {card.options.map((opt, i) => {
