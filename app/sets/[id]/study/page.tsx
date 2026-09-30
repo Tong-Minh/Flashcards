@@ -538,9 +538,18 @@ export default function Study() {
           <span className="w-12 text-right text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">View</span>
         </div>
 
-        <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full mb-5 overflow-hidden">
-          <div className="h-2 bg-gray-400 dark:bg-gray-500 rounded-full transition-all duration-300" style={{ width: `${((viewIndex + 1) / viewCards.length) * 100}%` }} />
-        </div>
+        {/* Scrubber: drag (or tap) anywhere along it to jump to a card */}
+        <input
+          type="range"
+          min={0}
+          max={Math.max(viewCards.length - 1, 0)}
+          value={viewIndex}
+          onChange={e => setViewIndex(Number(e.target.value))}
+          disabled={viewCards.length < 2}
+          aria-label="Jump to card"
+          className="scrubber w-full mb-5"
+          style={{ '--fill': `${viewCards.length > 1 ? (viewIndex / (viewCards.length - 1)) * 100 : 100}%` } as React.CSSProperties}
+        />
 
         <div className="mb-5">
           <FlipCard key={viewCard.id} card={viewCard} />

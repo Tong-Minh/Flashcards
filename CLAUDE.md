@@ -31,7 +31,7 @@ Mobile-first flashcard PWA with FSRS spaced repetition. Next.js 15 (App Router) 
 - **Copying:** equations render with `data-latex` + `select-all`, and `components/CopyAsSource.tsx` (mounted in the root layout) rewrites a copied selection so equations become `$…$`. Editor math nodes copy as LaTeX via `renderText`. In the editor, only a code card's grip is draggable, so the code can be selected.
 - **Home tabs:** My Sets (client-side search over cached sets plus an All / Collections / Sets filter; no tag chips, `#tag` in the search box matches tags by prefix, same in Discover), Discover (`components/DiscoverTab.tsx`, calls the `discover_sets` RPC), Friends.
 - **Study controls:** Show Answer, the FSRS rating buttons, and View mode Back/Next live in `components/BottomBar.tsx` (fixed to the bottom of the screen). Pages using it end with `<BottomBarSpacer />`, which is always rendered so the layout doesn't shift.
-- **View mode:** the set page's View button opens `/sets/[id]/study?mode=view`. It browses every card in set order.
+- **View mode:** the set page's View button opens `/sets/[id]/study?mode=view`. It browses every card in set order. The progress bar is a draggable scrubber (`.scrubber` range input, styled in `globals.css`) for jumping to any card.
 
 ## Data model (Supabase, `public` schema)
 
