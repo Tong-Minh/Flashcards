@@ -513,19 +513,19 @@ export default function SetDetail() {
         </div>
       )}
 
-      {/* Study CTA */}
+      {/* Study CTA: View on the left, Study on the right (order-first / order-last) */}
       <div className="flex gap-3 mb-5">
         {cards.length > 0 ? (
           <Link
             href={`/sets/${id}/study`}
-            className="flex-1 block text-center bg-indigo-600 text-white py-4 rounded-2xl font-semibold text-lg hover:bg-indigo-700 active:bg-indigo-800 transition-colors shadow-sm"
+            className="order-last flex-1 block text-center bg-indigo-600 text-white py-4 rounded-2xl font-semibold text-lg hover:bg-indigo-700 active:bg-indigo-800 transition-colors shadow-sm"
           >
             {dueToday > 0 ? `Study — ${dueToday} due` : 'Study'}
           </Link>
         ) : (
           <button
             disabled
-            className="flex-1 text-center bg-indigo-600 text-white py-4 rounded-2xl font-semibold text-lg opacity-40 cursor-not-allowed shadow-sm"
+            className="order-last flex-1 text-center bg-indigo-600 text-white py-4 rounded-2xl font-semibold text-lg opacity-40 cursor-not-allowed shadow-sm"
           >
             Study
           </button>
@@ -534,7 +534,7 @@ export default function SetDetail() {
           <Link
             href={`/sets/${id}/study?mode=view`}
             title="Flip through every card without affecting stats or scheduling"
-            className="flex items-center gap-1.5 px-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl text-sm font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors shadow-sm"
+            className="order-first flex items-center gap-1.5 px-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl text-sm font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors shadow-sm"
           >
             <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
@@ -555,7 +555,7 @@ export default function SetDetail() {
             {showMoreMenu && (
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setShowMoreMenu(false)} />
-                <div className="absolute right-0 top-full mt-2 z-20 w-52 bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-100 dark:border-gray-700 py-1 overflow-hidden">
+                <div className="absolute left-0 top-full mt-2 z-20 w-52 bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-100 dark:border-gray-700 py-1 overflow-hidden">
                   <button
                     onClick={() => { setShowMoreMenu(false); forkSet() }}
                     disabled={forking}
