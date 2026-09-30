@@ -67,11 +67,16 @@ export function FlipCard({ card, onSwipeAway, className = '' }: FlipCardProps) {
   const start   = useRef<{ x: number; y: number } | null>(null)
   const moved   = useRef(false)
   const timers  = useRef<ReturnType<typeof setTimeout>[]>([])
+  const cardRef = useRef<HTMLDivElement>(null)
+  // Tallest the card has been: a flip can grow the card but never shrinks it
+  const [minHeight, setMinHeight] = useState<number>()
 
   useEffect(() => () => timers.current.forEach(clearTimeout), [])
 
   function flip() {
     if (flipping) return
+    const h = cardRef.current?.offsetHeight
+    if (h) setMinHeight(m => Math.max(m ?? 0, h))
     haptic(20)
     setEntered(true)
     setFlipping(true)
@@ -120,6 +125,8 @@ export function FlipCard({ card, onSwipeAway, className = '' }: FlipCardProps) {
   return (
     <div style={dragStyle} className={onSwipeAway ? "select-none [touch-action:pan-y]" : ""}>
       <div
+        ref={cardRef}
+        style={{ minHeight }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}

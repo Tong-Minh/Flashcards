@@ -29,7 +29,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* Prevent flash of unstyled content on dark mode */}
         <script dangerouslySetInnerHTML={{ __html: `(function(){try{var t=localStorage.getItem('theme');if(t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.classList.add('dark');}}catch(e){}})();` }} />
       </head>
-      <body className="bg-gray-50 dark:bg-gray-900 min-h-screen">
+      {/* Long unbroken words (identifiers, URLs) wrap instead of widening the page. overflow-x-clip is a
+          last-resort guard against sideways scrolling on phones; unlike overflow-hidden it keeps sticky working. */}
+      <body className="bg-gray-50 dark:bg-gray-900 min-h-screen [overflow-wrap:break-word] overflow-x-clip">
         <ThemeProvider>
           <RegisterSW />
           <AuthGuard>{children}</AuthGuard>

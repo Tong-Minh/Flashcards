@@ -163,7 +163,7 @@ export function MatchingPairsList({ pairs }: { pairs: MatchPair[] }) {
   return (
     <div className="space-y-1.5">
       {pairs.map((p, i) => (
-        <div key={i} className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-sm">
+        <div key={i} className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 text-sm">
           <div className="px-3 py-2 rounded-lg bg-gray-50 dark:bg-gray-700/50 text-gray-800 dark:text-gray-200"><ContentRenderer text={p.left} readOnly /></div>
           <span className="text-gray-300 dark:text-gray-600">↔</span>
           <div className="px-3 py-2 rounded-lg bg-gray-50 dark:bg-gray-700/50 text-gray-800 dark:text-gray-200"><ContentRenderer text={p.right} readOnly /></div>

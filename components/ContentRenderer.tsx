@@ -152,7 +152,11 @@ function renderTokens(tokens: InlineToken[], onMathClick?: MathClickHandler): Re
           case 'color':
             return <span key={i} className={COLOR_CLASSES[tok.color] ?? ''}>{renderTokens(tok.children, onMathClick)}</span>
           case 'math': {
-            const cls = tok.display ? 'block overflow-x-auto py-1 text-center' : 'inline-block align-middle'
+            // Rendered math can't wrap, so a long inline equation scrolls within the line instead of
+            // widening the page on narrow screens
+            const cls = tok.display
+              ? 'block overflow-x-auto py-1 text-center'
+              : 'inline-block max-w-full overflow-x-auto overflow-y-hidden align-middle'
             return (
               <span key={i}
                 className={onMathClick ? `${cls} cursor-pointer hover:opacity-70 transition-opacity` : cls}

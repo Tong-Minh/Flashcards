@@ -117,6 +117,8 @@ export default function Study() {
   // Typed and matching cards: the outcome shown on the back
   const [typed,          setTyped]          = useState<{ input: string; result: TypedResult } | null>(null)
   const [matchMisses,    setMatchMisses]    = useState<number | null>(null)
+  const [cardMinHeight,  setCardMinHeight]  = useState<number | null>(null)
+  const cardRef = useRef<HTMLDivElement>(null)
   const [cardKey,        setCardKey]        = useState(0)
 
   // Regular session stats
@@ -280,6 +282,7 @@ export default function Study() {
     setSelectedOption(null)
     setTyped(null)
     setMatchMisses(null)
+    setCardMinHeight(null)
     setCardKey(0)
     setScheduling(null)
     sessionStart.current = Date.now()
@@ -317,6 +320,7 @@ export default function Study() {
     setSelectedOption(null)
     setTyped(null)
     setMatchMisses(null)
+    setCardMinHeight(null)
     setCardKey(0)
     setScheduling(null)
     sessionStart.current = Date.now()
@@ -356,6 +360,8 @@ export default function Study() {
 
   function triggerFlip() {
     if (flipState !== 'front') return
+    // Keep the question side's height so a shorter answer doesn't shrink the card; a longer one still grows it
+    setCardMinHeight(cardRef.current?.offsetHeight ?? null)
     haptic(20)
     setFlipState('flipping')
     setTimeout(() => {
@@ -472,6 +478,7 @@ export default function Study() {
       setSelectedOption(null)
       setTyped(null)
       setMatchMisses(null)
+      setCardMinHeight(null)
       setCardKey(k => k + 1)
       setScheduling(null)
       setQueue(newQueue)
@@ -811,9 +818,13 @@ export default function Study() {
       {/* Card */}
       <div
         key={cardKey}
+        ref={cardRef}
         className={`${flipState === 'front' ? 'card-enter' : ''} bg-white dark:bg-gray-800 rounded-2xl shadow-md border border-gray-100 dark:border-gray-700 p-6 mb-5 min-h-[220px] flex flex-col ${cardAnimClass}`}
         onClick={!showBack && (card.type === 'open_ended' || card.type === 'fill_blank') ? triggerFlip : undefined}
-        style={{ cursor: !showBack && (card.type === 'open_ended' || card.type === 'fill_blank') ? 'pointer' : 'default' }}
+        style={{
+          cursor: !showBack && (card.type === 'open_ended' || card.type === 'fill_blank') ? 'pointer' : 'default',
+          minHeight: cardMinHeight ?? undefined,
+        }}
       >
         {!showBack ? (
           <div className="flex flex-col flex-1">
