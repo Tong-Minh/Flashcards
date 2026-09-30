@@ -143,6 +143,20 @@ export default function Study() {
 
   useEffect(() => { syncPending().then(loadCards) }, [setId])
 
+  // Study keyboard shortcuts. The handler is reassigned on every render of the session, so it always
+  // sees the current card; the listener itself is added once.
+  const studyKeys = useRef<((e: KeyboardEvent) => void) | null>(null)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return
+      const target = e.target as HTMLElement | null
+      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
+      studyKeys.current?.(e)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   useEffect(() => {
     if (phase !== 'view') return
     const onKey = (e: KeyboardEvent) => {
@@ -529,7 +543,7 @@ export default function Study() {
     const viewCard = viewCards[viewIndex]
     const atEnd    = viewIndex >= viewCards.length - 1
     return (
-      <div className="max-w-lg mx-auto px-4 py-6">
+      <div className="max-w-lg lg:max-w-3xl mx-auto px-4 py-6 lg:py-10">
         <div className="flex items-center justify-between mb-4">
           <button onClick={() => router.push(`/sets/${setId}`)} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors font-medium">
             ← Exit
@@ -555,7 +569,10 @@ export default function Study() {
           <FlipCard key={viewCard.id} card={viewCard} />
         </div>
 
-        <p className="text-xs text-center text-gray-400 dark:text-gray-500">Viewing only — doesn&apos;t affect your stats or schedule</p>
+        <p className="text-xs text-center text-gray-400 dark:text-gray-500">
+          Viewing only — doesn&apos;t affect your stats or schedule
+          <span className="hidden lg:inline"> · ← → to move between cards</span>
+        </p>
         <BottomBarSpacer />
 
         <BottomBar>
@@ -594,7 +611,7 @@ export default function Study() {
     const customVisible = nothing || showCustom
 
     return (
-      <div className="max-w-lg mx-auto px-4 py-6">
+      <div className="max-w-lg lg:max-w-2xl mx-auto px-4 py-6 lg:py-10">
         <div className="flex items-center gap-3 mb-8">
           <Link href={`/sets/${setId}`} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 text-xl transition-colors">←</Link>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Study</h1>
@@ -813,8 +830,30 @@ export default function Study() {
     easy:  formatInterval(scheduling[Rating.Easy].card),
   } : null
 
+  // Space/Enter reveals, 1–4 rate, A–D pick a multiple-choice option, T/F answer true/false
+  studyKeys.current = e => {
+    const key = e.key.toLowerCase()
+    if (showBack) {
+      const rating = ({ '1': Rating.Again, '2': Rating.Hard, '3': Rating.Good, '4': Rating.Easy } as Record<string, SRSRating>)[key]
+      if (rating !== undefined) { e.preventDefault(); rate(rating) }
+      return
+    }
+    if (flipState !== 'front') return
+    if ((key === ' ' || key === 'enter') && (card.type === 'open_ended' || card.type === 'fill_blank')) {
+      e.preventDefault()
+      triggerFlip()
+    } else if (card.type === 'multiple_choice' && card.options) {
+      const opt = card.options['abcdefghij'.indexOf(key)] ?? card.options[Number(key) - 1]
+      if (key.length === 1 && opt !== undefined) { e.preventDefault(); setSelectedOption(opt); triggerFlip() }
+    } else if (card.type === 'true_false' && (key === 't' || key === 'f')) {
+      e.preventDefault()
+      setSelectedOption(key === 't' ? 'True' : 'False')
+      triggerFlip()
+    }
+  }
+
   return (
-    <div className="max-w-lg mx-auto px-4 py-6">
+    <div className="max-w-lg lg:max-w-3xl mx-auto px-4 py-6 lg:py-10">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <button onClick={handleExit} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors font-medium">
@@ -833,7 +872,7 @@ export default function Study() {
       <div
         key={cardKey}
         ref={cardRef}
-        className={`${flipState === 'front' ? 'card-enter' : ''} bg-white dark:bg-gray-800 rounded-2xl shadow-md border border-gray-100 dark:border-gray-700 p-6 mb-5 min-h-[220px] flex flex-col ${cardAnimClass}`}
+        className={`${flipState === 'front' ? 'card-enter' : ''} bg-white dark:bg-gray-800 rounded-2xl shadow-md border border-gray-100 dark:border-gray-700 p-6 lg:p-10 mb-5 min-h-[220px] lg:min-h-[340px] flex flex-col ${cardAnimClass}`}
         onClick={!showBack && (card.type === 'open_ended' || card.type === 'fill_blank') ? () => { if (!hasTextSelection()) triggerFlip() } : undefined}
         style={{
           cursor: !showBack && (card.type === 'open_ended' || card.type === 'fill_blank') ? 'pointer' : 'default',
@@ -854,7 +893,7 @@ export default function Study() {
               ? <ClozeQuestion sentence={card.question} />
               : <ContentRenderer
                   text={card.type === 'matching' && !card.question.trim() ? 'Match the pairs' : card.question}
-                  className={`${card.type === 'matching' ? 'text-base' : 'text-xl flex-1'} font-medium text-gray-900 dark:text-gray-100 leading-relaxed`}
+                  className={`${card.type === 'matching' ? 'text-base' : 'text-xl lg:text-2xl flex-1'} font-medium text-gray-900 dark:text-gray-100 leading-relaxed`}
                   readOnly
                 />
             }
@@ -927,7 +966,7 @@ export default function Study() {
                       {isCorrectSelection ? '✓ Correct!' : `✗ Incorrect — you picked: ${previewText(selectedOption)}`}
                     </div>
                   )}
-                  <ContentRenderer text={card.answer} className="text-xl font-semibold text-gray-900 dark:text-gray-100 leading-relaxed flex-1" readOnly />
+                  <ContentRenderer text={card.answer} className="text-xl lg:text-2xl font-semibold text-gray-900 dark:text-gray-100 leading-relaxed flex-1" readOnly />
                   {card.type === 'typed' && card.options && card.options.length > 0 && (
                     <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">Also accepted: {card.options.join(', ')}</p>
                   )}
@@ -968,25 +1007,25 @@ export default function Study() {
               answeredWrong ? 'ring-2 ring-red-400 ring-offset-2 dark:ring-offset-gray-900' : ''
             }`}
           >
-            <span className="text-base font-semibold">Again</span>
+            <span className="text-base font-semibold">Again<Kbd>1</Kbd></span>
             {intervals && <span className="text-xs text-red-400 dark:text-red-500 mt-0.5">{intervals.again}</span>}
           </button>
           <button onClick={() => rate(Rating.Hard)}
             className="flex flex-col items-center py-3.5 rounded-2xl bg-orange-50 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 hover:bg-orange-100 dark:hover:bg-orange-900/40 active:bg-orange-200 transition-colors border border-orange-100 dark:border-orange-900"
           >
-            <span className="text-base font-semibold">Hard</span>
+            <span className="text-base font-semibold">Hard<Kbd>2</Kbd></span>
             {intervals && <span className="text-xs text-orange-400 dark:text-orange-500 mt-0.5">{intervals.hard}</span>}
           </button>
           <button onClick={() => rate(Rating.Good)}
             className="flex flex-col items-center py-3.5 rounded-2xl bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 active:bg-indigo-200 transition-colors border border-indigo-100 dark:border-indigo-900"
           >
-            <span className="text-base font-semibold">Good</span>
+            <span className="text-base font-semibold">Good<Kbd>3</Kbd></span>
             {intervals && <span className="text-xs text-indigo-400 dark:text-indigo-500 mt-0.5">{intervals.good}</span>}
           </button>
           <button onClick={() => rate(Rating.Easy)}
             className="flex flex-col items-center py-3.5 rounded-2xl bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/40 active:bg-green-200 transition-colors border border-green-100 dark:border-green-900"
           >
-            <span className="text-base font-semibold">Easy</span>
+            <span className="text-base font-semibold">Easy<Kbd>4</Kbd></span>
             {intervals && <span className="text-xs text-green-400 dark:text-green-500 mt-0.5">{intervals.easy}</span>}
           </button>
         </div>
@@ -995,11 +1034,22 @@ export default function Study() {
           <button onClick={triggerFlip}
             className="w-full py-4 rounded-2xl bg-indigo-600 text-white font-semibold text-base hover:bg-indigo-700 active:bg-indigo-800 transition-colors"
           >
-            Show Answer
+            Show Answer<Kbd light>Space</Kbd>
           </button>
         )
       )}
       </BottomBar>
     </div>
+  )
+}
+
+// Keyboard shortcut hint, desktop only (phones have no keyboard)
+function Kbd({ children, light }: { children: React.ReactNode; light?: boolean }) {
+  return (
+    <kbd className={`hidden lg:inline-block ml-2 align-middle px-1.5 py-px rounded border font-sans text-[11px] font-medium leading-4 ${
+      light ? 'border-white/30 text-white/80' : 'border-current opacity-50'
+    }`}>
+      {children}
+    </kbd>
   )
 }

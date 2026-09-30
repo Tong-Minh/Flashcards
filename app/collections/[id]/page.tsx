@@ -117,12 +117,12 @@ export default function CollectionDetail() {
   }
 
   if (loading && !collection) {
-    return <div className="max-w-lg mx-auto px-4 py-6 text-center text-gray-400 dark:text-gray-500 py-16">Loading…</div>
+    return <div className="max-w-lg lg:max-w-6xl mx-auto px-4 py-6 lg:px-8 lg:py-8 text-center text-gray-400 dark:text-gray-500 py-16">Loading…</div>
   }
 
   if (publicSets && collection) {
     return (
-      <div className="max-w-lg mx-auto px-4 py-6">
+      <div className="max-w-lg lg:max-w-6xl mx-auto px-4 py-6 lg:px-8 lg:py-8">
         <DetailHeader
           kind="collection"
           backHref="/"
@@ -143,7 +143,7 @@ export default function CollectionDetail() {
             No public sets in this collection yet
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
             {publicSets.map(s => <PublicSetCard key={s.id} set={s} />)}
           </div>
         )}
@@ -158,7 +158,7 @@ export default function CollectionDetail() {
   const tagSuggestions = Array.from(new Set(allSets.flatMap(s => s.tags ?? []))).sort()
 
   return (
-    <div className="max-w-lg mx-auto px-4 py-6">
+    <div className="max-w-lg lg:max-w-6xl mx-auto px-4 py-6 lg:px-8 lg:py-8">
       <DetailHeader
         kind="collection"
         backHref="/"
@@ -192,7 +192,7 @@ export default function CollectionDetail() {
       />
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-2 mb-5">
+      <div className="grid grid-cols-3 gap-2 mb-5 lg:max-w-md">
         {[
           { value: sets.length, label: 'Sets'     },
           { value: totalCards,  label: 'Cards'    },

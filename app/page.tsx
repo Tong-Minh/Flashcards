@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
 import { useUser } from '@/components/AuthGuard'
 import { useDarkMode } from '@/components/ThemeProvider'
@@ -19,10 +20,20 @@ async function signOut() {
 
 type Tab = 'mine' | 'discover' | 'friends'
 
+// useSearchParams needs a Suspense boundary to build
 export default function Home() {
+  return <Suspense fallback={null}><HomePage /></Suspense>
+}
+
+function HomePage() {
   const currentUser = useUser()
   const { theme, toggle } = useDarkMode()
-  const [tab,         setTab]         = useState<Tab>('mine')
+  const router      = useRouter()
+  const params      = useSearchParams()
+  // The tab lives in the URL so the desktop sidebar can link to it
+  const tabParam    = params.get('tab')
+  const tab: Tab    = tabParam === 'discover' || tabParam === 'friends' ? tabParam : 'mine'
+  const setTab      = (t: Tab) => router.replace(t === 'mine' ? '/' : `/?tab=${t}`, { scroll: false })
   const [sets,        setSets]        = useState<SetWithStats[]>([])
   const [collections, setCollections] = useState<Collection[]>([])
   const [loading,     setLoading]     = useState(true)
@@ -83,10 +94,11 @@ export default function Home() {
   }
 
   return (
-    <div className="max-w-lg mx-auto px-4 py-6">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-5">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Flashcards</h1>
+    <div className="max-w-lg lg:max-w-6xl mx-auto px-4 py-6 lg:px-8 lg:py-8">
+      {/* Header. On desktop the sidebar has the app name, tabs, theme and sign out, so the heading is the tab */}
+      <div className="flex items-center justify-between mb-5 lg:mb-6">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 lg:hidden">Flashcards</h1>
+        <h1 className="hidden lg:block text-2xl font-bold text-gray-900 dark:text-gray-100">{TAB_LABELS[tab]}</h1>
         <div className="flex items-center gap-2">
           {tab === 'mine' && (
             <div className="relative">
@@ -115,7 +127,7 @@ export default function Home() {
           )}
           <button
             onClick={toggle}
-            className="p-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors"
+            className="lg:hidden p-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors"
             title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
           >
             {theme === 'dark' ? (
@@ -131,7 +143,7 @@ export default function Home() {
           </button>
           <button
             onClick={signOut}
-            className="p-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors"
+            className="lg:hidden p-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors"
             title="Sign out"
           >
             <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -142,7 +154,7 @@ export default function Home() {
       </div>
 
       {/* Tab bar */}
-      <div className="flex border-b border-gray-200 dark:border-gray-700 mb-5">
+      <div className="flex border-b border-gray-200 dark:border-gray-700 mb-5 lg:hidden">
         {(Object.keys(TAB_LABELS) as Tab[]).map(t => (
           <button
             key={t}
@@ -170,9 +182,11 @@ export default function Home() {
           </div>
         ) : (
           <>
-            <SearchBar value={search} onChange={setSearch} placeholder="Search sets and collections, or #tag" className="mb-3" />
+            {/* Side by side on desktop */}
+            <div className="lg:flex lg:items-center lg:gap-4 mb-4">
+            <SearchBar value={search} onChange={setSearch} placeholder="Search sets and collections, or #tag" className="mb-3 lg:mb-0 lg:flex-1 lg:max-w-md" />
 
-            <div className="flex gap-1.5 mb-4">
+            <div className="flex gap-1.5">
               {(['all', 'collections', 'sets'] as const).map(k => (
                 <button
                   key={k}
@@ -186,6 +200,7 @@ export default function Home() {
                   {k === 'all' ? 'All' : k === 'collections' ? `Collections · ${collections.length}` : `Sets · ${sets.length}`}
                 </button>
               ))}
+            </div>
             </div>
 
             <SetOrganizer
@@ -216,7 +231,7 @@ export default function Home() {
 
       {/* ── Friends ─────────────────────────────────────────────────────── */}
       {tab === 'friends' && currentUser && (
-        <FriendsTab currentUser={currentUser} />
+        <div className="lg:max-w-2xl"><FriendsTab currentUser={currentUser} /></div>
       )}
 
     </div>

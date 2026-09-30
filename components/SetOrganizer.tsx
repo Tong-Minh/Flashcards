@@ -5,12 +5,13 @@ import {
   DndContext, PointerSensor, closestCenter, pointerWithin, useDroppable, useSensor, useSensors,
   type CollisionDetection, type DragEndEvent,
 } from '@dnd-kit/core'
-import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { SortableContext, arrayMove, rectSortingStrategy, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { restrictToVerticalAxis, restrictToWindowEdges } from '@dnd-kit/modifiers'
 import { GripVertical } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
 import { useLongPress } from '@/lib/useLongPress'
+import { useMediaQuery, DESKTOP_QUERY } from '@/lib/useMediaQuery'
 import {
   moveSets, setSetsVisibility, deleteSets, reorderSets, sortSets, type SetWithStats,
 } from '@/lib/sets'
@@ -64,6 +65,8 @@ export function SetOrganizer({
   const suppressClick = useRef(false)
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
+  // Desktop lays sets out in a grid, so drags move in both directions there
+  const grid    = useMediaQuery(DESKTOP_QUERY)
 
   function enterSelect(id?: string) {
     setSelecting(true)
@@ -202,14 +205,15 @@ export function SetOrganizer({
       <DndContext
         sensors={sensors}
         collisionDetection={collision}
-        // Lists only move up and down; without this a dragged card can slide off sideways forever
-        modifiers={[restrictToVerticalAxis, restrictToWindowEdges]}
+        // A phone's single-column list only moves up and down; without this a dragged card can slide
+        // off sideways forever. The desktop grid moves both ways but stays on screen.
+        modifiers={grid ? [restrictToWindowEdges] : [restrictToVerticalAxis, restrictToWindowEdges]}
         onDragStart={() => { suppressClick.current = true }}
         onDragCancel={() => { suppressClick.current = false }}
         onDragEnd={handleDragEnd}
       >
         {dropCollections.length > 0 && (
-          <div className="space-y-3 mb-5">
+          <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3 mb-5">
             {dropCollections.map(c => (
               <DroppableCollection key={c.id} collection={c} sets={setsByCollection[c.id] ?? []} />
             ))}
@@ -246,8 +250,8 @@ export function SetOrganizer({
           </div>
         )}
 
-        <SortableContext items={listSets.map(s => s.id)} strategy={verticalListSortingStrategy}>
-          <div className="space-y-3">
+        <SortableContext items={listSets.map(s => s.id)} strategy={grid ? rectSortingStrategy : verticalListSortingStrategy}>
+          <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
             {listSets.map(set => (
               <SortableSet
                 key={set.id}
@@ -264,7 +268,7 @@ export function SetOrganizer({
       </DndContext>
 
       {selecting && (
-        <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-gray-800/95 backdrop-blur border-t border-gray-200 dark:border-gray-700 pb-[max(env(safe-area-inset-bottom),0.75rem)]">
+        <div className="fixed-bar fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-gray-800/95 backdrop-blur border-t border-gray-200 dark:border-gray-700 pb-[max(env(safe-area-inset-bottom),0.75rem)]">
           <div className="max-w-lg mx-auto px-4 py-3 flex items-center gap-2">
             {/* Nothing picked yet: offer a way out in thumb reach instead of disabled actions */}
             {selected.size === 0 ? (
@@ -337,7 +341,7 @@ function SortableSet({ set, selecting, selected, onToggle, onLongPress }: {
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`relative [-webkit-touch-callout:none] ${isDragging ? 'z-10 opacity-80 shadow-xl rounded-2xl' : ''}`}
+      className={`relative h-full [-webkit-touch-callout:none] ${isDragging ? 'z-10 opacity-80 shadow-xl rounded-2xl' : ''}`}
       {...attributes}
       role={undefined}
       tabIndex={undefined}
@@ -367,7 +371,7 @@ function SortableSet({ set, selecting, selected, onToggle, onLongPress }: {
 function DroppableCollection({ collection, sets }: { collection: Collection; sets: SetWithStats[] }) {
   const { setNodeRef, isOver } = useDroppable({ id: COLLECTION_DROP + collection.id })
   return (
-    <div ref={setNodeRef}>
+    <div ref={setNodeRef} className="h-full">
       <CollectionCard
         id={collection.id}
         name={collection.name}

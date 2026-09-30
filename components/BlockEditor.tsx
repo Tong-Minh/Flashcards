@@ -302,7 +302,8 @@ function RichTextBlock({
           if (event.key === 'Enter' || event.key === 'Tab') { runSlash(f[i] ?? f[0]); return true }
           if (event.key === 'Escape')    { setSlash(null); return true }
         }
-        if (event.key === 'Tab') { editorRef.current?.commands.insertContent('  '); return true }
+        // Tab moves to the next field (question → answer) like a form input; code blocks indent instead
+        if (event.key === 'Tab') { return focusAdjacentField(view.dom as HTMLElement, event.shiftKey) }
         if (event.key === 'Enter' && singleLine) return true
         return false
       },
@@ -361,9 +362,11 @@ function RichTextBlock({
       ref={containerRef}
       className={`relative cursor-text ${singleLine ? '' : 'px-4'}`}
       style={singleLine ? undefined : { paddingTop: isFirst ? '0.75rem' : '0.5rem', paddingBottom: '0.5rem' }}
-      onClick={e => { if (e.target === e.currentTarget) editor?.commands.focus('end') }}
+      // Clicking the padding or empty space below the text starts typing at the end
+      onClick={e => { if (!(e.target as HTMLElement).closest('.ProseMirror, button, input')) editor?.commands.focus('end') }}
     >
-      <EditorContent editor={editor} style={{ minHeight }} />
+      {/* The editable element itself fills the minimum height, so a click anywhere in the box lands in it */}
+      <EditorContent editor={editor} style={{ minHeight }} className="[&>.ProseMirror]:min-h-[inherit]" />
 
       {slash && filtered.length > 0 && (
         <div
@@ -463,6 +466,98 @@ function ToolbarButton({ active, onClick, label, children }: {
   )
 }
 
+// ── Tab between fields ─────────────────────────────────────────────────────────
+
+const TABBABLE = 'input:not([type=hidden]):not([disabled]), textarea:not([disabled]), select:not([disabled]), '
+  + 'button:not([disabled]), a[href], [contenteditable="true"], [tabindex]:not([tabindex="-1"])'
+
+// Move focus from an editor to the next (or previous) field on the page, the way Tab works in a form.
+// Another BlockEditor counts as one field: focus lands in its text, skipping its code-block buttons.
+function focusAdjacentField(from: HTMLElement, back: boolean): boolean {
+  const root = from.closest('[data-field-editor]')
+  if (!root) return false
+  const all = Array.from(document.querySelectorAll<HTMLElement>(TABBABLE))
+    .filter(el => !root.contains(el) && el.getClientRects().length > 0)
+  const after = all.filter(el => root.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)
+  const before = all.filter(el => root.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_PRECEDING)
+  const target = back ? before[before.length - 1] : after[0]
+  if (!target) return false
+  const otherEditor = target.closest('[data-field-editor]')
+  if (otherEditor) {
+    const texts = otherEditor.querySelectorAll<HTMLElement>('[contenteditable="true"]')
+    const text = back ? texts[texts.length - 1] : texts[0]
+    if (text) {
+      text.focus()
+      // Caret at the end of the existing text
+      const sel = window.getSelection()
+      sel?.selectAllChildren(text)
+      sel?.collapseToEnd()
+      return true
+    }
+  }
+  target.focus()
+  return true
+}
+
+// The Tiptap editor behind a text block's DOM (Tiptap sets `dom.editor`)
+function editorOf(el: Element | null | undefined): Editor | undefined {
+  return (el as (Element & { editor?: Editor }) | null | undefined)?.editor
+}
+
+function focusEditorIn(el: HTMLElement) {
+  editorOf(el.querySelector('.ProseMirror'))?.commands.focus('end')
+}
+
+type Caret = { node: Node; offset: number }
+
+function caretFromPoint(x: number, y: number): Caret | null {
+  const doc = document as Document & { caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null }
+  if (doc.caretPositionFromPoint) {
+    const p = doc.caretPositionFromPoint(x, y)
+    return p ? { node: p.offsetNode, offset: p.offset } : null
+  }
+  const r = document.caretRangeFromPoint?.(x, y)
+  return r ? { node: r.startContainer, offset: r.startOffset } : null
+}
+
+// A point inside a code block moves to just before or after the whole block, so a selection
+// always takes code blocks whole
+function snapOutOfCode(p: Caret, after: boolean): Caret {
+  const el = p.node instanceof Element ? p.node : p.node.parentElement
+  const block = el?.closest<HTMLElement>('[data-block-type="code"]')
+  if (!block?.parentNode) return p
+  const i = Array.prototype.indexOf.call(block.parentNode.childNodes, block)
+  return { node: block.parentNode, offset: after ? i + 1 : i }
+}
+
+// Indent (or with outdent, un-indent) the lines touched by a textarea selection by two spaces.
+// Returns the new text and selection.
+function indentCode(text: string, start: number, end: number, outdent: boolean) {
+  const INDENT = '  '
+  if (!outdent && start === end) {
+    return { content: text.slice(0, start) + INDENT + text.slice(end), start: start + 2, end: start + 2 }
+  }
+  const lineStart = text.lastIndexOf('\n', start - 1) + 1
+  // A selection ending right at a line start doesn't include that line
+  const lastLineEnd = end > start && text[end - 1] === '\n' ? end - 1 : end
+  const lines = text.slice(lineStart, lastLineEnd).split('\n')
+  let first = 0, total = 0
+  const changed = lines.map((line, i) => {
+    const remove = !outdent ? 0 : line.startsWith(INDENT) ? 2 : /^[ \t]/.test(line) ? 1 : 0
+    const next   = outdent ? line.slice(remove) : INDENT + line
+    const delta  = outdent ? -remove : INDENT.length
+    if (i === 0) first = delta
+    total += delta
+    return next
+  })
+  const content = text.slice(0, lineStart) + changed.join('\n') + text.slice(lastLineEnd)
+  return {
+    content,
+    start: Math.max(lineStart, start + first),
+    end: Math.max(lineStart, end + total),
+  }
+}
+
 // ── CodeBlockCard ──────────────────────────────────────────────────────────────
 
 function CodeBlockCard({ block, armed, initialEditing, onChange, onDelete, onDragStart, onDragEnd, dragging }: {
@@ -556,13 +651,13 @@ function CodeBlockCard({ block, armed, initialEditing, onChange, onDelete, onDra
           onChange={e => onChange({ content: e.target.value })}
           onBlur={handleBlur}
           onKeyDown={e => {
-            if (e.key === 'Tab') {
-              e.preventDefault()
-              const el = e.currentTarget
-              const s = el.selectionStart, end = el.selectionEnd
-              onChange({ content: block.content.slice(0, s) + '  ' + block.content.slice(end) })
-              setTimeout(() => el.setSelectionRange(s + 2, s + 2), 0)
-            }
+            if (e.key !== 'Tab') return
+            // Code indents: Tab adds two spaces (to every selected line), Shift+Tab removes them
+            e.preventDefault()
+            const el = e.currentTarget
+            const { content, start, end } = indentCode(block.content, el.selectionStart, el.selectionEnd, e.shiftKey)
+            onChange({ content })
+            setTimeout(() => el.setSelectionRange(start, end), 0)
           }}
           className="w-full font-mono text-[0.8rem] leading-relaxed p-3 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-300 outline-none border-none"
           style={{ overflow: 'hidden', resize: 'none', minHeight: '3.5rem' }}
@@ -709,9 +804,168 @@ export function BlockEditor({ value, onChange, rows = 3, placeholder, className,
 
   const isDragging = dragIdx !== null
 
+  // ── Selecting across blocks ──
+  // Each text block is its own contenteditable, and browsers won't extend a drag-selection out of one.
+  // When a drag leaves the block it started in, every text block turns read-only for the moment
+  // (editing resumes on the next click or keypress), so the selection can span text and code blocks.
+  // Copy gives the markup (code blocks as fences, which paste back as code blocks); Backspace,
+  // Delete and cut remove the whole span.
+  const rootRef   = useRef<HTMLDivElement>(null)
+  const crossSel  = useRef(false)
+  const blocksRef = useRef(blocks)
+  blocksRef.current = blocks
+  const commitRef = useRef(commit)
+  commitRef.current = commit
+
+  useEffect(() => {
+    if (singleLine) return
+    const root = rootRef.current
+    if (!root) return
+
+    const setEditable = (on: boolean) => {
+      root.querySelectorAll('.ProseMirror').forEach(el => editorOf(el)?.setEditable(on, false))
+    }
+    const endCross = () => {
+      if (!crossSel.current) return
+      crossSel.current = false
+      setEditable(true)
+    }
+
+    // Blocks the selection touches, and the positions it starts/ends at inside partly covered text blocks
+    const span = () => {
+      const sel = window.getSelection()
+      if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return null
+      const range = sel.getRangeAt(0)
+      const els = Array.from(root.querySelectorAll<HTMLElement>(':scope > [data-block-idx]'))
+      const hit = els.filter(el => range.intersectsNode(el)).map(el => Number(el.dataset.blockIdx))
+      if (hit.length === 0) return null
+      const first = Math.min(...hit)
+      const last  = Math.max(...hit)
+      const editorAt = (i: number) => editorOf(els[i]?.querySelector('.ProseMirror'))
+      const posIn = (i: number, node: Node, offset: number) => {
+        const ed = editorAt(i)
+        if (!ed || !ed.view.dom.contains(node)) return null
+        try { return ed.view.posAtDOM(node, offset) } catch { return null }
+      }
+      return {
+        first, last, editorAt,
+        from: posIn(first, range.startContainer, range.startOffset),
+        to:   posIn(last, range.endContainer, range.endOffset),
+      }
+    }
+    type Span = NonNullable<ReturnType<typeof span>>
+
+    const cut = (ed: Editor, a: number, z: number) =>
+      serializeMarkup(ed.state.doc.cut(a, z).toJSON()).replace(/^\n/, '').replace(/\n$/, '')
+
+    const markupOf = (sp: Span) => {
+      const bs = blocksRef.current
+      const pieces: Block[] = []
+      for (let i = sp.first; i <= sp.last; i++) {
+        const b = bs[i]
+        if (!b) continue
+        if (b.type === 'code') { pieces.push(b); continue }
+        const ed   = sp.editorAt(i)
+        const size = ed?.state.doc.content.size ?? 0
+        const a = i === sp.first && sp.from !== null ? sp.from : 0
+        const z = i === sp.last && sp.to !== null ? sp.to : size
+        const content = ed && (a > 0 || z < size) ? cut(ed, a, z) : b.content
+        pieces.push({ ...b, content, lead: b.lead && i !== sp.first, trail: b.trail && i !== sp.last })
+      }
+      return serializeBlocks(pieces).replace(/^\n+|\n+$/g, '')
+    }
+
+    const deleteSpan = (sp: Span) => {
+      const bs = blocksRef.current
+      const firstB = bs[sp.first]
+      const lastB  = bs[sp.last]
+      const firstEd = sp.editorAt(sp.first)
+      const lastEd  = sp.editorAt(sp.last)
+      const head = firstB?.type === 'text' && firstEd && sp.from !== null ? cut(firstEd, 0, sp.from) : ''
+      const tail = lastB?.type === 'text' && lastEd && sp.to !== null ? cut(lastEd, sp.to, lastEd.state.doc.content.size) : ''
+      const merged: TextBlock = {
+        id: uid(), type: 'text', content: head + tail,
+        lead:  firstB?.type === 'text' && firstB.lead,
+        trail: lastB?.type === 'text' && lastB.trail,
+      }
+      crossSel.current = false
+      window.getSelection()?.removeAllRanges()
+      commitRef.current(parseBlocks(serializeBlocks([...bs.slice(0, sp.first), merged, ...bs.slice(sp.last + 1)])))
+    }
+
+    const onMouseDown = (e: MouseEvent) => {
+      endCross()
+      if (e.button !== 0 || !root.contains(e.target as Node)) return
+      const origin = (e.target as HTMLElement).closest('[data-block-idx]')
+      const start  = caretFromPoint(e.clientX, e.clientY)
+      if (!origin || !start) return
+
+      const onMove = (ev: MouseEvent) => {
+        if (!(ev.buttons & 1)) return
+        if (!crossSel.current) {
+          const over = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('[data-block-idx]')
+          if (!over || over === origin || !root.contains(over)) return
+          crossSel.current = true
+          setEditable(false)
+          ;(document.activeElement as HTMLElement | null)?.blur?.()
+        }
+        ev.preventDefault()
+        const cur = caretFromPoint(ev.clientX, ev.clientY)
+        if (!cur) return
+        const probe = document.createRange()
+        probe.setStart(start.node, start.offset)
+        const backward = probe.comparePoint(cur.node, cur.offset) < 0
+        const a = snapOutOfCode(start, backward)
+        const z = snapOutOfCode(cur, !backward)
+        window.getSelection()?.setBaseAndExtent(a.node, a.offset, z.node, z.offset)
+      }
+      const onUp = () => {
+        window.removeEventListener('mousemove', onMove)
+        window.removeEventListener('mouseup', onUp)
+      }
+      window.addEventListener('mousemove', onMove)
+      window.addEventListener('mouseup', onUp)
+    }
+
+    const onCopy = (e: ClipboardEvent) => {
+      if (!crossSel.current) return
+      const sp = span()
+      if (!sp || !e.clipboardData) return
+      e.clipboardData.setData('text/plain', markupOf(sp))
+      e.preventDefault()
+      if (e.type === 'cut') deleteSpan(sp)
+    }
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!crossSel.current) return
+      if (['Shift', 'Control', 'Meta', 'Alt'].includes(e.key)) return
+      if ((e.ctrlKey || e.metaKey) && ['c', 'x'].includes(e.key.toLowerCase())) return   // copy / cut events
+      if (e.key === 'Backspace' || e.key === 'Delete') {
+        const sp = span()
+        if (sp) { e.preventDefault(); deleteSpan(sp); return }
+      }
+      endCross()
+    }
+
+    window.addEventListener('mousedown', onMouseDown, true)
+    window.addEventListener('copy', onCopy)
+    window.addEventListener('cut', onCopy)
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => {
+      window.removeEventListener('mousedown', onMouseDown, true)
+      window.removeEventListener('copy', onCopy)
+      window.removeEventListener('cut', onCopy)
+      window.removeEventListener('keydown', onKeyDown, true)
+      endCross()
+    }
+  }, [singleLine])
+
   if (singleLine) {
     return (
-      <div className={`w-full border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 px-4 py-3 focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-transparent ${className ?? ''}`}>
+      <div
+        data-field-editor
+        onMouseDown={e => { if (e.target === e.currentTarget) { e.preventDefault(); focusEditorIn(e.currentTarget) } }}
+        className={`w-full cursor-text border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 px-4 py-3 focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-transparent ${className ?? ''}`}>
         <RichTextBlock
           content={value}
           placeholder={placeholder}
@@ -729,11 +983,13 @@ export function BlockEditor({ value, onChange, rows = 3, placeholder, className,
 
   return (
     <div
+      ref={rootRef}
+      data-field-editor
       className={`w-full border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-transparent ${className ?? ''}`}
       onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDropIdx(null) }}
     >
       {blocks.map((block, idx) => (
-        <div key={block.id}>
+        <div key={block.id} data-block-idx={idx} data-block-type={block.type}>
           <div
             className={`mx-3 transition-all duration-150 ${isDragging ? 'h-1.5' : 'h-0'} ${dropIdx === idx && isDragging ? 'bg-indigo-400 rounded' : ''}`}
             onDragOver={e => { e.preventDefault(); setDropIdx(idx) }}

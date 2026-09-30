@@ -370,7 +370,7 @@ export default function SetDetail() {
   }
 
   if (loading && !set) {
-    return <div className="max-w-lg mx-auto px-4 py-6 text-center text-gray-400 dark:text-gray-500 py-16">Loading…</div>
+    return <div className="max-w-lg lg:max-w-6xl mx-auto px-4 py-6 lg:px-8 lg:py-8 text-center text-gray-400 dark:text-gray-500 py-16">Loading…</div>
   }
 
   const mastered    = cards.filter(c => c.progress?.status === 'mastered').length
@@ -424,7 +424,10 @@ export default function SetDetail() {
     : null
 
   return (
-    <div className="max-w-lg mx-auto px-4 py-6">
+    <div className="max-w-lg lg:max-w-6xl mx-auto px-4 py-6 lg:px-8 lg:py-8">
+      {/* Desktop: the set (header, stats, Study) stays in a sticky left column beside the card list */}
+      <div className="lg:grid lg:grid-cols-[21rem_minmax(0,1fr)] lg:gap-10 lg:items-start">
+      <div className="lg:sticky lg:top-8">
       <DetailHeader
         kind="set"
         backHref={setCollection ? `/collections/${setCollection.id}` : '/'}
@@ -555,6 +558,9 @@ export default function SetDetail() {
         </div>
       )}
 
+      </div>
+
+      <div className="min-w-0">
       {/* ── Cards ─────────────────────────────────────────────────────────── */}
       <div ref={cardsTopRef} className="flex items-center justify-between mb-3 scroll-mt-4">
         {selecting ? (
@@ -642,7 +648,7 @@ export default function SetDetail() {
             placeholder="Search questions, answers, or #card number"
             className="mb-2"
           />
-          <div className="flex gap-1.5 overflow-x-auto pb-1 mb-3 -mx-4 px-4">
+          <div className="flex gap-1.5 overflow-x-auto pb-1 mb-3 -mx-4 px-4 lg:mx-0 lg:px-0 lg:flex-wrap">
             {(['all', 'new', 'learning', 'needs_review', 'mastered'] as const).map(s => {
               const count = s === 'all' ? cards.length : statusCounts[s] ?? 0
               return (
@@ -825,12 +831,15 @@ export default function SetDetail() {
         </div>
       )}
 
+      </div>
+      </div>
+
       {previewCard && <CardPreviewModal card={previewCard} onClose={closePreview} />}
 
       {selecting && (
         <>
           <div className="h-28" />
-          <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-gray-800/95 backdrop-blur border-t border-gray-200 dark:border-gray-700 pb-[max(env(safe-area-inset-bottom),0.75rem)]">
+          <div className="fixed-bar fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-gray-800/95 backdrop-blur border-t border-gray-200 dark:border-gray-700 pb-[max(env(safe-area-inset-bottom),0.75rem)]">
             <div className="max-w-lg mx-auto px-4 py-3 flex items-center gap-2">
               {/* Nothing picked yet: offer a way out in thumb reach instead of disabled actions */}
               {selectedCards.size === 0 ? (

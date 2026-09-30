@@ -4,7 +4,8 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase/client'
-import { getCachedSets, getCachedCollections } from '@/lib/storage'
+import { getCachedSets, getCachedCollections, cacheCollections } from '@/lib/storage'
+import type { Collection } from '@/lib/types'
 import { TagInput } from '@/components/TagInput'
 import { IconPicker } from '@/components/IconPicker'
 import { suggestIcon } from '@/lib/icons'
@@ -43,11 +44,12 @@ export default function NewCollection() {
       return
     }
 
+    cacheCollections([...getCachedCollections(), data as Collection].sort((a, b) => a.name.localeCompare(b.name)))
     router.push(`/collections/${data.id}`)
   }
 
   return (
-    <div className="max-w-lg mx-auto px-4 py-6">
+    <div className="max-w-lg lg:max-w-2xl mx-auto px-4 py-6 lg:py-10">
       <div className="flex items-center gap-3 mb-6">
         <Link href="/" className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 text-xl transition-colors">
           ←

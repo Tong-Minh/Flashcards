@@ -67,6 +67,8 @@ export function TrueFalseButtons({ onPick }: { onPick: (value: 'True' | 'False')
           className="py-4 rounded-xl border border-gray-200 dark:border-gray-600 text-base font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 active:bg-gray-100 dark:active:bg-gray-600 transition-colors"
         >
           {v}
+          {/* Keyboard shortcut, desktop only */}
+          <kbd className="hidden lg:inline-block ml-2 align-middle px-1.5 py-px rounded border border-current opacity-40 font-sans text-[11px] font-medium leading-4">{v[0]}</kbd>
         </button>
       ))}
     </div>

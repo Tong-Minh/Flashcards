@@ -123,3 +123,8 @@ pre[class*="language-"], code[class*="language-"] {
 /* Editor: an equation inside a text selection is highlighted as one whole block (see MathInSelection) */
 .tiptap-card-editor .math-in-selection > span,
 .tiptap-card-editor .math-in-selection > span > span { background-color: rgb(99 102 241 / 0.22); border-radius: 0.25rem; }
+
+/* Desktop: bars fixed to the bottom of the screen start right of the sidebar (see AppShell) */
+@media (min-width: 1024px) {
+  [data-sidebar] .fixed-bar { left: 16rem; }
+}

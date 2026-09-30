@@ -34,11 +34,11 @@ export function SetCard({ set, selecting, selected, onToggle, handle }: {
   return (
     <div
       onClickCapture={selecting ? e => { e.preventDefault(); e.stopPropagation(); onToggle?.() } : undefined}
-      className={`bg-white dark:bg-gray-800 rounded-2xl shadow-sm border overflow-hidden transition-colors ${
+      className={`h-full flex flex-col bg-white dark:bg-gray-800 rounded-2xl shadow-sm border overflow-hidden transition-colors ${
         selected ? 'border-indigo-500 ring-2 ring-indigo-500/40' : 'border-gray-100 dark:border-gray-700'
       } ${selecting ? 'cursor-pointer select-none' : ''}`}
     >
-      <Link href={`/sets/${set.id}`} className="block p-4">
+      <Link href={`/sets/${set.id}`} className="flex flex-col flex-1 p-4 hover:bg-gray-50/60 dark:hover:bg-gray-700/20 transition-colors">
         <div className="flex items-start justify-between gap-2 mb-3">
           <ItemIcon icon={set.icon} color={set.color} />
           <div className="flex-1 min-w-0">
@@ -73,7 +73,8 @@ export function SetCard({ set, selecting, selected, onToggle, handle }: {
           )}
         </div>
 
-        <div className="flex items-center gap-4 text-xs text-gray-400 dark:text-gray-500">
+        {/* mt-auto: in the desktop grid, cards in a row share a height, so stats line up at the bottom */}
+        <div className="mt-auto flex items-center gap-4 text-xs text-gray-400 dark:text-gray-500">
           <span>{set.totalCards} card{set.totalCards !== 1 ? 's' : ''}</span>
           <span>{set.totalSessions} session{set.totalSessions !== 1 ? 's' : ''}</span>
           <span>Last: {timeAgo(set.lastStudied)}</span>
@@ -123,7 +124,7 @@ export function CollectionCard({ id, name, description, tags, icon, color, sets,
   return (
     <Link
       href={`/collections/${id}`}
-      className={`flex items-start gap-3 rounded-2xl shadow-sm border p-4 transition-colors ${
+      className={`h-full flex items-start gap-3 rounded-2xl shadow-sm border p-4 transition-colors ${
         dropActive
           ? 'border-indigo-500 ring-2 ring-indigo-500/40 bg-indigo-50 dark:bg-indigo-900/30'
           : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/40'

@@ -23,7 +23,7 @@ export function UndoToast({ toast, onDismiss, raised }: {
 
   if (!toast) return null
   return (
-    <div className={`fixed left-0 right-0 z-50 flex justify-center px-4 pointer-events-none ${raised ? 'bottom-24' : 'bottom-6'}`}>
+    <div className={`fixed-bar fixed left-0 right-0 z-50 flex justify-center px-4 pointer-events-none ${raised ? 'bottom-24' : 'bottom-6'}`}>
       <div className="pointer-events-auto flex items-center gap-4 max-w-lg w-full bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 rounded-xl shadow-lg px-4 py-3 fade-in">
         <p className="flex-1 text-sm">{toast.message}</p>
         {toast.onUndo && (

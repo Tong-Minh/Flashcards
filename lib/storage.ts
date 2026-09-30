@@ -24,8 +24,12 @@ export function getCachedSets(): (FlashcardSet & {
 
 // ── Collections cache ─────────────────────────────────────────────────────────
 
+// Fired after the collections cache changes, so the desktop sidebar's list stays current
+export const COLLECTIONS_EVENT = 'fc:collections'
+
 export function cacheCollections(collections: Collection[]) {
   try { localStorage.setItem(K.collections, JSON.stringify(collections)) } catch {}
+  try { window.dispatchEvent(new Event(COLLECTIONS_EVENT)) } catch {}
 }
 
 export function getCachedCollections(): Collection[] {

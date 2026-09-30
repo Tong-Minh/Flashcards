@@ -3,6 +3,7 @@ import { RegisterSW } from '@/components/RegisterSW'
 import { CopyAsSource } from '@/components/CopyAsSource'
 import { StandaloneGestures } from '@/components/StandaloneGestures'
 import AuthGuard from '@/components/AuthGuard'
+import { AppShell } from '@/components/AppShell'
 import { ThemeProvider } from '@/components/ThemeProvider'
 import './globals.css'
 
@@ -38,7 +39,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <RegisterSW />
           <CopyAsSource />
           <StandaloneGestures />
-          <AuthGuard>{children}</AuthGuard>
+          <AuthGuard><AppShell>{children}</AppShell></AuthGuard>
         </ThemeProvider>
       </body>
     </html>

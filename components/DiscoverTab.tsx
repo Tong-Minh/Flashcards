@@ -38,7 +38,7 @@ export default function DiscoverTab() {
 
   return (
     <div>
-      <div className="sticky top-0 z-10 -mx-4 px-4 pb-3 pt-1 bg-gray-50 dark:bg-gray-900">
+      <div className="sticky top-0 z-10 -mx-4 px-4 lg:-mx-8 lg:px-8 pb-3 pt-1 bg-gray-50 dark:bg-gray-900 [&>*]:lg:max-w-md">
         <SearchBar value={query} onChange={setQuery} placeholder="Search public sets by name or #tag" />
       </div>
 
@@ -59,7 +59,7 @@ export default function DiscoverTab() {
           )}
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
           {sets.map(set => (
             <PublicSetCard key={set.id} set={set} onTagClick={t => setQuery(`#${t}`)} />
           ))}
@@ -68,7 +68,7 @@ export default function DiscoverTab() {
             <button
               onClick={() => load(query, sets.length)}
               disabled={loadingMore}
-              className="w-full py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 transition-colors"
+              className="w-full lg:col-span-full py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 transition-colors"
             >
               {loadingMore ? 'Loading…' : 'Load more'}
             </button>

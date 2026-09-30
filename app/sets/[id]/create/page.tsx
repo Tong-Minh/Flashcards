@@ -26,7 +26,7 @@ export default function CreateCard() {
   }
 
   return (
-    <div className="max-w-lg mx-auto px-4 py-6">
+    <div className="max-w-lg lg:max-w-2xl mx-auto px-4 py-6 lg:py-10">
       <div className="flex items-center gap-3 mb-6">
         <Link href={`/sets/${setId}`} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 text-xl transition-colors">
           ←
