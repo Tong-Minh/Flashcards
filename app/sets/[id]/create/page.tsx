@@ -1,12 +1,14 @@
 'use client'
 
-import { useParams, useRouter } from 'next/navigation'
+import { useRouter } from 'next/navigation'
+import { useRouteIds } from '@/lib/useRouteIds'
 import Link from 'next/link'
 import { store } from '@/lib/store'
 import { CardForm, type CardDraft } from '@/components/CardForm'
+import { paths } from '@/lib/paths'
 
 export default function CreateCard() {
-  const { id: setId } = useParams<{ id: string }>()
+  const { id: setId } = useRouteIds()
   const router = useRouter()
 
   async function save(card: CardDraft): Promise<string | null> {
@@ -20,14 +22,14 @@ export default function CreateCard() {
     } catch {
       return 'Failed to save. Please try again.'
     }
-    router.push(`/sets/${setId}`)
+    router.push(paths.set(setId))
     return null
   }
 
   return (
     <div className="max-w-lg lg:max-w-2xl mx-auto px-4 py-6 lg:py-10">
       <div className="flex items-center gap-3 mb-6">
-        <Link href={`/sets/${setId}`} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 text-xl transition-colors">
+        <Link href={paths.set(setId)} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 text-xl transition-colors">
           ←
         </Link>
         <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">New Card</h1>

@@ -10,6 +10,8 @@ import { useDarkMode } from '@/components/ThemeProvider'
 import { ItemIcon } from '@/components/ItemIcon'
 import { getCachedCollections, COLLECTIONS_EVENT } from '@/lib/storage'
 import type { Collection } from '@/lib/types'
+import { paths } from '@/lib/paths'
+import { IS_DESKTOP } from '@/lib/platform'
 
 // Pages that get the whole screen: signing in, and studying (focus mode)
 function isBare(pathname: string) {
@@ -92,11 +94,13 @@ function Sidebar() {
         {collections.length === 0 ? (
           <p className="px-2 py-1.5 text-sm text-gray-400 dark:text-gray-500">No collections yet</p>
         ) : collections.map(c => {
-          const active = pathname === `/collections/${c.id}`
+          const active = IS_DESKTOP
+            ? pathname.startsWith('/collections/_') && params.get('id') === c.id
+            : pathname === paths.collection(c.id)
           return (
             <Link
               key={c.id}
-              href={`/collections/${c.id}`}
+              href={paths.collection(c.id)}
               className={`flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-sm transition-colors ${
                 active
                   ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-medium'

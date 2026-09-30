@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { ItemIcon } from '@/components/ItemIcon'
 import { TagList } from '@/components/TagInput'
 import { noOrphan } from '@/lib/text'
+import { paths } from '@/lib/paths'
 
 // Shared header for set and collection pages: a label row (what it is, and for a set, which
 // collection it's in), then the icon with the name and description beside it, then tags.
@@ -34,7 +35,7 @@ export function DetailHeader({ kind, backHref, collection, owner, icon, color, n
           {collection && (
             <>
               {' · in '}
-              <Link href={`/collections/${collection.id}`} className="text-amber-600 dark:text-amber-400 hover:underline">
+              <Link href={paths.collection(collection.id)} className="text-amber-600 dark:text-amber-400 hover:underline">
                 {collection.name}
               </Link>
             </>

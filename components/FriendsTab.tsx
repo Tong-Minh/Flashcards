@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase/client'
 import type { User } from '@supabase/supabase-js'
 import type { Profile, FriendRequest, LeaderboardEntry, FlashcardSet } from '@/lib/types'
+import { paths } from '@/lib/paths'
 
 function timeAgo(iso: string | null): string {
   if (!iso) return 'Never'
@@ -281,7 +282,7 @@ export default function FriendsTab({ currentUser }: { currentUser: User }) {
                       {sets.map(set => (
                         <Link
                           key={set.id}
-                          href={`/sets/${set.id}`}
+                          href={paths.set(set.id)}
                           className="flex items-center px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                         >
                           <div className="flex-1 min-w-0">

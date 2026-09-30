@@ -1,13 +1,15 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useRouter } from 'next/navigation'
+import { useRouteIds } from '@/lib/useRouteIds'
 import Link from 'next/link'
 import { store } from '@/lib/store'
 import { CardForm, type CardDraft } from '@/components/CardForm'
+import { paths } from '@/lib/paths'
 
 export default function EditCard() {
-  const { id: setId, cardId } = useParams<{ id: string; cardId: string }>()
+  const { id: setId, cardId } = useRouteIds()
   const router = useRouter()
 
   const [card,     setCard]     = useState<CardDraft | null>(null)
@@ -17,7 +19,7 @@ export default function EditCard() {
 
   async function loadCard() {
     const c = await store.getCard(cardId).catch(() => null)
-    if (!c) { router.push(`/sets/${setId}`); return }
+    if (!c) { router.push(paths.set(setId)); return }
     setCard({ type: c.type, question: c.question, answer: c.answer, options: c.options, pairs: c.pairs })
   }
 
@@ -27,7 +29,7 @@ export default function EditCard() {
     } catch {
       return 'Failed to save. Please try again.'
     }
-    router.push(`/sets/${setId}`)
+    router.push(paths.set(setId))
     return null
   }
 
@@ -35,7 +37,7 @@ export default function EditCard() {
     if (!confirm('Delete this card?')) return
     setDeleting(true)
     await store.deleteCards([cardId]).catch(() => {})
-    router.push(`/sets/${setId}`)
+    router.push(paths.set(setId))
   }
 
   if (!card) {
@@ -45,7 +47,7 @@ export default function EditCard() {
   return (
     <div className="max-w-lg lg:max-w-2xl mx-auto px-4 py-6 lg:py-10">
       <div className="flex items-center gap-3 mb-6">
-        <Link href={`/sets/${setId}`} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 text-xl transition-colors">
+        <Link href={paths.set(setId)} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 text-xl transition-colors">
           ←
         </Link>
         <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Edit Card</h1>

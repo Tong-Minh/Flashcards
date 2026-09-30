@@ -1,11 +1,13 @@
 'use client'
 
 import { useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useRouter } from 'next/navigation'
+import { useRouteIds } from '@/lib/useRouteIds'
 import Link from 'next/link'
 import { store, PartialInsertError } from '@/lib/store'
 import { TYPE_BADGES } from '@/lib/cardTypes'
 import { parseCards } from '@/lib/cardFormat'
+import { paths } from '@/lib/paths'
 
 
 const AI_PROMPT = `You are creating flashcards for a study set on: [REPLACE WITH YOUR TOPIC]
@@ -63,7 +65,7 @@ Mitochondria have their own DNA.	True
 [match] Match each organelle to its function	Ribosome = Makes proteins	Nucleus = Stores DNA	Mitochondria = Produces ATP	Golgi apparatus = Packages proteins`
 
 export default function ImportCards() {
-  const { id: setId } = useParams<{ id: string }>()
+  const { id: setId } = useRouteIds()
   const router = useRouter()
 
   const [text, setText] = useState('')
@@ -107,13 +109,13 @@ export default function ImportCards() {
       return
     }
 
-    router.push(`/sets/${setId}`)
+    router.push(paths.set(setId))
   }
 
   return (
     <div className="max-w-lg lg:max-w-2xl mx-auto px-4 py-6 lg:py-10">
       <div className="flex items-center gap-3 mb-6">
-        <Link href={`/sets/${setId}`} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-xl transition-colors">
+        <Link href={paths.set(setId)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-xl transition-colors">
           ←
         </Link>
         <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Import Cards</h1>

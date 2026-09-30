@@ -4,6 +4,7 @@ import { TagList } from '@/components/TagInput'
 import { ItemIcon } from '@/components/ItemIcon'
 import { noOrphan } from '@/lib/text'
 import type { SetWithStats } from '@/lib/sets'
+import { paths } from '@/lib/paths'
 
 export function timeAgo(iso: string | null): string {
   if (!iso) return 'Never'
@@ -38,7 +39,7 @@ export function SetCard({ set, selecting, selected, onToggle, handle }: {
         selected ? 'border-indigo-500 ring-2 ring-indigo-500/40' : 'border-gray-100 dark:border-gray-700'
       } ${selecting ? 'cursor-pointer select-none' : ''}`}
     >
-      <Link href={`/sets/${set.id}`} className="flex flex-col flex-1 p-4 hover:bg-gray-50/60 dark:hover:bg-gray-700/20 transition-colors">
+      <Link href={paths.set(set.id)} className="flex flex-col flex-1 p-4 hover:bg-gray-50/60 dark:hover:bg-gray-700/20 transition-colors">
         <div className="flex items-start justify-between gap-2 mb-3">
           <ItemIcon icon={set.icon} color={set.color} />
           <div className="flex-1 min-w-0">
@@ -92,13 +93,13 @@ export function SetCard({ set, selecting, selected, onToggle, handle }: {
 
       <div className="flex border-t border-gray-100 dark:border-gray-700">
         <Link
-          href={`/sets/${set.id}/study`}
+          href={paths.study(set.id)}
           className="flex-1 text-center py-3 text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors"
         >
           Study
         </Link>
         <Link
-          href={`/sets/${set.id}`}
+          href={paths.set(set.id)}
           className="flex-1 text-center py-3 text-sm font-medium text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
         >
           Manage
@@ -123,7 +124,7 @@ export function CollectionCard({ id, name, description, tags, icon, color, sets,
   const toStudy    = sets.reduce((n, s) => n + s.toStudy, 0)
   return (
     <Link
-      href={`/collections/${id}`}
+      href={paths.collection(id)}
       className={`h-full flex items-start gap-3 rounded-2xl shadow-sm border p-4 transition-colors ${
         dropActive
           ? 'border-indigo-500 ring-2 ring-indigo-500/40 bg-indigo-50 dark:bg-indigo-900/30'

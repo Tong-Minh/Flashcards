@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useRouter } from 'next/navigation'
+import { useRouteIds } from '@/lib/useRouteIds'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase/client'
 import { useUser } from '@/components/AuthGuard'
@@ -31,6 +32,7 @@ import { Pencil } from 'lucide-react'
 import { exportCards, downloadText } from '@/lib/cardFormat'
 import { TYPE_BADGES } from '@/lib/cardTypes'
 import type { CardStatus, Collection, FlashcardSet, FlashcardWithProgress, SetStudyStats } from '@/lib/types'
+import { paths } from '@/lib/paths'
 
 const PAGE_SIZE = 50
 
@@ -69,7 +71,7 @@ function compactDate(iso: string | null): string {
 }
 
 export default function SetDetail() {
-  const { id } = useParams<{ id: string }>()
+  const { id } = useRouteIds()
   const router = useRouter()
   const currentUser = useUser()
 
@@ -190,7 +192,7 @@ export default function SetDetail() {
     setForking(true)
     try {
       const { data, error } = await supabase.rpc('fork_set', { original_set_id: id })
-      if (!error && data) router.push(`/sets/${data}`)
+      if (!error && data) router.push(paths.set(data))
     } finally {
       setForking(false)
     }
@@ -403,16 +405,16 @@ export default function SetDetail() {
   const noCards = cards.length === 0
   // ` then a number: fixed order so the numbers stay the same (unavailable actions are greyed out)
   const quickActions: QuickAction[] = isOwner ? [
-    { label: 'Add a card',   description: 'Create a new card in this set',     run: () => router.push(`/sets/${id}/create`), disabled: atCardLimit },
-    { label: 'Import cards', description: 'Paste text or generate with AI',    run: () => router.push(`/sets/${id}/import`), disabled: atCardLimit },
-    { label: 'Study',        description: dueToday > 0 ? `${dueToday} due` : 'Nothing due', run: () => router.push(`/sets/${id}/study`), disabled: noCards },
-    { label: 'View',         description: 'Flip through every card',          run: () => router.push(`/sets/${id}/study?mode=view`), disabled: noCards },
+    { label: 'Add a card',   description: 'Create a new card in this set',     run: () => router.push(paths.createCard(id)), disabled: atCardLimit },
+    { label: 'Import cards', description: 'Paste text or generate with AI',    run: () => router.push(paths.importCards(id)), disabled: atCardLimit },
+    { label: 'Study',        description: dueToday > 0 ? `${dueToday} due` : 'Nothing due', run: () => router.push(paths.study(id)), disabled: noCards },
+    { label: 'View',         description: 'Flip through every card',          run: () => router.push(paths.study(id, true)), disabled: noCards },
     { label: 'Export as .txt',                                                  run: exportSet, disabled: noCards },
     { label: 'Select cards', description: 'Move, reset or delete cards',       run: () => setSelecting(true), disabled: noCards },
     { label: 'Settings',     description: 'Name, icon, collection, sharing',   run: () => setShowSettings(true) },
   ] : [
-    { label: 'Study',          run: () => router.push(`/sets/${id}/study`), disabled: noCards },
-    { label: 'View',           run: () => router.push(`/sets/${id}/study?mode=view`), disabled: noCards },
+    { label: 'Study',          run: () => router.push(paths.study(id)), disabled: noCards },
+    { label: 'View',           run: () => router.push(paths.study(id, true)), disabled: noCards },
     { label: 'Duplicate set',  description: 'Save your own copy to study & edit', run: forkSet },
     { label: 'Export as .txt', run: exportSet, disabled: noCards },
   ]
@@ -424,7 +426,7 @@ export default function SetDetail() {
       <div className="lg:sticky lg:top-8">
       <DetailHeader
         kind="set"
-        backHref={setCollection ? `/collections/${setCollection.id}` : '/'}
+        backHref={setCollection ? paths.collection(setCollection.id) : '/'}
         collection={setCollection}
         icon={set?.icon}
         color={set?.color}
@@ -493,7 +495,7 @@ export default function SetDetail() {
       <div className="flex gap-3 mb-5">
         {cards.length > 0 ? (
           <Link
-            href={`/sets/${id}/study`}
+            href={paths.study(id)}
             className="order-last flex-1 block text-center bg-indigo-600 text-white py-4 rounded-2xl font-semibold text-lg hover:bg-indigo-700 active:bg-indigo-800 transition-colors shadow-sm"
           >
             {dueToday > 0 ? `Study — ${dueToday} due` : 'Study'}
@@ -508,7 +510,7 @@ export default function SetDetail() {
         )}
         {cards.length > 0 && (
           <Link
-            href={`/sets/${id}/study?mode=view`}
+            href={paths.study(id, true)}
             title="Flip through every card without affecting stats or scheduling"
             className="order-first flex items-center gap-1.5 px-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl text-sm font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors shadow-sm"
           >
@@ -602,7 +604,7 @@ export default function SetDetail() {
                       <div className="fixed inset-0 z-10" onClick={() => setShowTransferMenu(false)} />
                       <div className="absolute right-0 top-full mt-1 z-20 w-60 bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-100 dark:border-gray-700 py-1 overflow-hidden">
                         {isOwner && !atCardLimit && (
-                          <Link href={`/sets/${id}/import`} className="block px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                          <Link href={paths.importCards(id)} className="block px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
                             <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Import cards</p>
                             <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Paste text or generate with AI</p>
                           </Link>
@@ -626,7 +628,7 @@ export default function SetDetail() {
               )}
               {isOwner && !atCardLimit && (
                 <Link
-                  href={`/sets/${id}/create`}
+                  href={paths.createCard(id)}
                   className="ml-1 text-sm bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 font-medium transition-colors"
                 >
                   + Add
@@ -745,7 +747,7 @@ export default function SetDetail() {
                   )}
                   {isOwner && !selecting && (
                     <Link
-                      href={`/sets/${id}/edit/${card.id}`}
+                      href={paths.editCard(id, card.id)}
                       className="flex-shrink-0 p-1.5 -m-1 rounded-lg text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
                       aria-label="Edit card"
                       title="Edit card"

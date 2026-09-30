@@ -9,6 +9,7 @@ import type { Collection } from '@/lib/types'
 import { TagInput } from '@/components/TagInput'
 import { IconPicker } from '@/components/IconPicker'
 import { suggestIcon } from '@/lib/icons'
+import { paths } from '@/lib/paths'
 
 export default function NewCollection() {
   const router = useRouter()
@@ -42,7 +43,7 @@ export default function NewCollection() {
     }
 
     cacheCollections([...getCachedCollections(), created].sort((a, b) => a.name.localeCompare(b.name)))
-    router.push(`/collections/${created.id}`)
+    router.push(paths.collection(created.id))
   }
 
   return (

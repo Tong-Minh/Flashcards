@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { ItemIcon } from '@/components/ItemIcon'
 import { noOrphan } from '@/lib/text'
+import { paths } from '@/lib/paths'
 
 export interface PublicSet {
   id: string
@@ -18,7 +19,7 @@ export interface PublicSet {
 export function PublicSetCard({ set, onTagClick }: { set: PublicSet; onTagClick?: (tag: string) => void }) {
   return (
     <Link
-      href={`/sets/${set.id}`}
+      href={paths.set(set.id)}
       className="h-full flex items-start gap-3 bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm p-4 hover:border-indigo-200 dark:hover:border-indigo-800 transition-colors"
     >
       <ItemIcon icon={set.icon} color={set.color} />

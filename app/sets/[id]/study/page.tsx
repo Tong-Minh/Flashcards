@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useRouter } from 'next/navigation'
+import { useRouteIds } from '@/lib/useRouteIds'
 import Link from 'next/link'
 import { fsrs, createEmptyCard, Rating, State, type Card as FSRSCard, type RecordLog } from 'ts-fsrs'
 import { haptic, hasTextSelection } from '@/lib/haptic'
@@ -18,6 +19,7 @@ import {
   getTodayNewCount, incrementTodayNewCount, getSetSettings,
 } from '@/lib/storage'
 import type { FlashcardWithProgress, CardStatus, CardProgress, FSRSState } from '@/lib/types'
+import { paths } from '@/lib/paths'
 const f = fsrs()
 
 type SRSRating  = 1 | 2 | 3 | 4
@@ -94,7 +96,7 @@ function buildQueue(
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function Study() {
-  const { id: setId } = useParams<{ id: string }>()
+  const { id: setId } = useRouteIds()
   const router = useRouter()
 
   const [phase,        setPhase]        = useState<Phase>('loading')
@@ -348,7 +350,7 @@ export default function Study() {
       })
     }
     if (statsRef.current.cardsStudied > 0) await persistSession()
-    router.push(`/sets/${setId}`)
+    router.push(paths.set(setId))
   }
 
   async function persistSession() {
@@ -506,7 +508,7 @@ export default function Study() {
               </div>
             ))}
           </div>
-          <Link href={`/sets/${setId}`} className="block w-full bg-indigo-600 text-white px-8 py-4 rounded-2xl font-semibold text-lg hover:bg-indigo-700 active:bg-indigo-800 transition-colors">
+          <Link href={paths.set(setId)} className="block w-full bg-indigo-600 text-white px-8 py-4 rounded-2xl font-semibold text-lg hover:bg-indigo-700 active:bg-indigo-800 transition-colors">
             Back to Set
           </Link>
         </div>
@@ -521,7 +523,7 @@ export default function Study() {
     return (
       <div className="max-w-lg lg:max-w-3xl mx-auto px-4 py-6 lg:py-10">
         <div className="flex items-center justify-between mb-4">
-          <button onClick={() => router.push(`/sets/${setId}`)} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors font-medium">
+          <button onClick={() => router.push(paths.set(setId))} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors font-medium">
             ← Exit
           </button>
           <p className="text-sm text-gray-400 dark:text-gray-500">{viewIndex + 1} / {viewCards.length}</p>
@@ -561,7 +563,7 @@ export default function Study() {
               ← Back
             </button>
             <button
-              onClick={() => (atEnd ? router.push(`/sets/${setId}`) : setViewIndex(i => i + 1))}
+              onClick={() => (atEnd ? router.push(paths.set(setId)) : setViewIndex(i => i + 1))}
               className="py-4 rounded-2xl font-semibold text-base bg-indigo-600 text-white hover:bg-indigo-700 active:bg-indigo-800 transition-colors"
             >
               {atEnd ? 'Finish' : 'Next →'}
@@ -589,7 +591,7 @@ export default function Study() {
     return (
       <div className="max-w-lg lg:max-w-2xl mx-auto px-4 py-6 lg:py-10">
         <div className="flex items-center gap-3 mb-8">
-          <Link href={`/sets/${setId}`} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 text-xl transition-colors">←</Link>
+          <Link href={paths.set(setId)} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 text-xl transition-colors">←</Link>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Study</h1>
         </div>
 

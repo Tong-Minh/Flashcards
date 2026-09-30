@@ -10,6 +10,7 @@ import { TagInput } from '@/components/TagInput'
 import { IconPicker } from '@/components/IconPicker'
 import { suggestIcon } from '@/lib/icons'
 import type { Collection } from '@/lib/types'
+import { paths } from '@/lib/paths'
 
 export default function NewSet() {
   const router = useRouter()
@@ -59,7 +60,7 @@ export default function NewSet() {
       return
     }
 
-    router.push(`/sets/${created.id}`)
+    router.push(paths.set(created.id))
   }
 
   return (

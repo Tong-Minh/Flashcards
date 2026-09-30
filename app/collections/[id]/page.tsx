@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useRouter } from 'next/navigation'
+import { useRouteIds } from '@/lib/useRouteIds'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase/client'
 import { store } from '@/lib/store'
@@ -17,7 +18,7 @@ import { PublicSetCard, type PublicSet } from '@/components/PublicSetCard'
 import type { Collection } from '@/lib/types'
 
 export default function CollectionDetail() {
-  const { id } = useParams<{ id: string }>()
+  const { id } = useRouteIds()
   const router = useRouter()
   const currentUser = useUser()
 
