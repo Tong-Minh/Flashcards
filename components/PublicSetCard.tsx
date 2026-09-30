@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { ItemIcon } from '@/components/ItemIcon'
+import { noOrphan } from '@/lib/text'
 
 export interface PublicSet {
   id: string
@@ -23,7 +24,7 @@ export function PublicSetCard({ set, onTagClick }: { set: PublicSet; onTagClick?
       <ItemIcon icon={set.icon} color={set.color} />
       <div className="flex-1 min-w-0">
         <div className="flex items-start justify-between gap-2">
-          <p className="font-semibold text-gray-900 dark:text-gray-100 text-base leading-snug">{set.name}</p>
+          <p className="font-semibold text-gray-900 dark:text-gray-100 text-base leading-snug text-pretty">{noOrphan(set.name)}</p>
           <span className="flex-shrink-0 text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-700 border border-gray-100 dark:border-gray-600 rounded-full px-2.5 py-1 font-medium">
             {set.card_count} card{set.card_count !== 1 ? 's' : ''}
           </span>

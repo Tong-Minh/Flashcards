@@ -2,6 +2,7 @@ import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { ItemIcon } from '@/components/ItemIcon'
 import { TagList } from '@/components/TagInput'
+import { noOrphan } from '@/lib/text'
 
 // Shared header for set and collection pages: a label row (what it is, and for a set, which
 // collection it's in), then the icon with the name and description beside it, then tags.
@@ -46,8 +47,8 @@ export function DetailHeader({ kind, backHref, collection, owner, icon, color, n
       <div className="flex items-center gap-3">
         <ItemIcon icon={icon} color={color} kind={kind} size="lg" />
         <div className="flex-1 min-w-0">
-          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 leading-snug">
-            {name}
+          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 leading-snug text-pretty">
+            {noOrphan(name)}
             {/* A box exactly one title line tall, with the pill centered in it, so the pill lines up with
                 the title text and doesn't make its line taller */}
             {badge && <span className="inline-flex items-center align-top h-[1.375em] ml-2 [&>*]:leading-4">{badge}</span>}

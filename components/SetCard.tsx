@@ -2,6 +2,7 @@ import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { TagList } from '@/components/TagInput'
 import { ItemIcon } from '@/components/ItemIcon'
+import { noOrphan } from '@/lib/text'
 import type { SetWithStats } from '@/lib/sets'
 
 export function timeAgo(iso: string | null): string {
@@ -42,7 +43,7 @@ export function SetCard({ set, selecting, selected, onToggle, handle }: {
           <ItemIcon icon={set.icon} color={set.color} />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <h2 className="font-semibold text-gray-900 dark:text-gray-100 text-base leading-snug">{set.name}</h2>
+              <h2 className="font-semibold text-gray-900 dark:text-gray-100 text-base leading-snug text-pretty">{noOrphan(set.name)}</h2>
               {!set.is_public && (
                 <span className="text-xs text-gray-400 bg-gray-100 dark:bg-gray-700 dark:text-gray-400 px-1.5 py-0.5 rounded-full">Private</span>
               )}
@@ -131,7 +132,7 @@ export function CollectionCard({ id, name, description, tags, icon, color, sets,
       <ItemIcon icon={icon} color={color} kind="collection" />
       <div className="flex-1 min-w-0">
         <div className="flex items-start justify-between gap-2">
-          <h2 className="font-semibold text-gray-900 dark:text-gray-100 text-base leading-snug">{name}</h2>
+          <h2 className="font-semibold text-gray-900 dark:text-gray-100 text-base leading-snug text-pretty">{noOrphan(name)}</h2>
           {toStudy > 0 && (
             <span className="flex-shrink-0 bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 text-xs font-semibold px-2.5 py-1 rounded-full">
               {toStudy} to study

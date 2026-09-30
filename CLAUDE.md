@@ -57,6 +57,7 @@ Schema changes go through Supabase migrations (the Supabase MCP server is config
 
 ## Conventions
 
+- Set/collection names render through `noOrphan()` (`lib/text.ts`, glues the last words with non-breaking spaces so a wrapped name never ends in a tiny fragment) plus `text-pretty`. Don't use `text-balance` on titles: it wraps too early on phones.
 - Tailwind only (its `content` includes `lib/` because `lib/icons.ts` defines color classes), with a `dark:` variant on every color. Palette: indigo primary, gray neutrals, rounded-xl/2xl cards.
 - Layout is `max-w-lg mx-auto px-4 py-6` per page. Modals use a `fixed inset-0 bg-black/50` backdrop.
 - Imports use the `@/` alias. Column-aligned `useState` declarations are the house style.
