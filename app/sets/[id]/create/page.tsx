@@ -34,7 +34,7 @@ export default function CreateCard() {
         <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">New Card</h1>
       </div>
 
-      <CardForm submitLabel="Save Card" onSubmit={save} />
+      <CardForm submitLabel="Save Card" onSubmit={save} autoFocus />
     </div>
   )
 }

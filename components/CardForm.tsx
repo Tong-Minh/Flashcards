@@ -20,8 +20,10 @@ let rowSeq = 0
 const rowId = () => `row${++rowSeq}`
 
 // Card editor shared by the create and edit pages. Validates per type and hands back the row to save.
-export function CardForm({ initial, submitLabel, onSubmit }: {
+export function CardForm({ initial, submitLabel, onSubmit, autoFocus }: {
   initial?: CardDraft
+  // Put the cursor in the question box on arrival (new cards)
+  autoFocus?: boolean
   submitLabel: string
   // Returns an error message, or null on success
   onSubmit: (card: CardDraft) => Promise<string | null>
@@ -140,6 +142,7 @@ export function CardForm({ initial, submitLabel, onSubmit }: {
         <BlockEditor
           value={question}
           onChange={setQuestion}
+          autoFocus={autoFocus}
           rows={type === 'matching' ? 1 : 3}
           placeholder={
             type === 'fill_blank' ? 'The capital of France is ___'

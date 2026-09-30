@@ -709,11 +709,19 @@ interface Props {
   hideHint?: boolean
   // One-line rich input (multiple-choice options): no code blocks, headings or line breaks
   singleLine?: boolean
+  // Start with the cursor in the editor (on devices with a mouse; on phones it would pop up the keyboard)
+  autoFocus?: boolean
 }
 
-export function BlockEditor({ value, onChange, rows = 3, placeholder, className, hideHint, singleLine }: Props) {
+export function BlockEditor({ value, onChange, rows = 3, placeholder, className, hideHint, singleLine, autoFocus }: Props) {
   const [blocks,   setBlocks]   = useState(() => parseBlocks(value))
   const [focusReq, setFocusReq] = useState<{ id: string; at: 'start' | 'end' } | null>(null)
+  useEffect(() => {
+    if (!autoFocus || singleLine || !window.matchMedia('(pointer: fine)').matches) return
+    const first = blocks.find(b => b.type === 'text')
+    if (first) setFocusReq({ id: first.id, at: 'end' })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   // Code block highlighted by a first Backspace from the line below it; a second Backspace deletes it
   const [armedCodeId, setArmedCodeId] = useState<string | null>(null)
   const lastSerial = useRef(value)
