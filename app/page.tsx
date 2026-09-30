@@ -123,6 +123,10 @@ function HomePage() {
                       <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">New collection</p>
                       <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">A folder to group sets together</p>
                     </Link>
+                    <Link href="/import-anki" className="block px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors border-t border-gray-100 dark:border-gray-700">
+                      <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Import from Anki</p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">An .apkg deck or a text export</p>
+                    </Link>
                   </div>
                 </>
               )}

@@ -9,7 +9,12 @@ It comes in two versions built from the same code:
 - **Web app:** sign in with Google and your sets sync across devices. It also has friends, a
   Discover page of public sets, and share links. It installs as an app on phones (Add to Home Screen).
 - **Desktop app (Windows):** no account. Your cards are files in a folder on your PC, it works
-  offline, and there's no practical limit on set size. It updates itself from GitHub Releases.
+  offline, and there's no practical limit on set size. Cards can include images (paste, drag, or /image).
+  It updates itself from GitHub Releases.
+
+Both can **import Anki decks** (`.apkg` or a text export) from the **+ New** menu: decks become sets,
+clozes become fill-in-the-blank cards, and math, code, and formatting carry over. Every card starts as new, and
+images come along in the desktop app.
 
 ## Getting the desktop app
 
