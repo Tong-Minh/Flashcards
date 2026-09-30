@@ -25,6 +25,7 @@ import { useLongPress } from '@/lib/useLongPress'
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { SortableRow } from '@/components/SortableRow'
+import { Pencil } from 'lucide-react'
 import { exportCards, downloadText } from '@/lib/cardFormat'
 import { TYPE_BADGES } from '@/lib/cardTypes'
 import type { CardStatus, Collection, FlashcardSet, FlashcardWithProgress, StudySession } from '@/lib/types'
@@ -371,21 +372,6 @@ export default function SetDetail() {
     if (error) { setCards(before); cacheCards(id, before) }
   }
 
-  async function reorderCard(index: number, dir: 'up' | 'down') {
-    const other = dir === 'up' ? index - 1 : index + 1
-    if (other < 0 || other >= cards.length) return
-    const swapped = [...cards]
-    ;[swapped[index], swapped[other]] = [swapped[other], swapped[index]]
-    // Only write cards whose position actually changed (after the first reorder that's just the swapped pair)
-    const changed = swapped.flatMap((c, i) => (c.position !== i ? [{ id: c.id, position: i }] : []))
-    const newCards = swapped.map((c, i) => ({ ...c, position: i }))
-    setCards(newCards)
-    cacheCards(id, newCards)
-    await Promise.all(
-      changed.map(c => supabase.from('flashcards').update({ position: c.position }).eq('id', c.id))
-    )
-  }
-
   if (loading && !set) {
     return <div className="max-w-lg mx-auto px-4 py-6 text-center text-gray-400 dark:text-gray-500 py-16">Loading…</div>
   }
@@ -412,7 +398,7 @@ export default function SetDetail() {
   const numberQuery   = q.match(/^#?(\d+)$/)
   const cardNumber    = numberQuery ? Number(numberQuery[1]) : null
   const textQuery     = q.startsWith('#') && numberQuery ? '' : q
-  // Keep each card's index in the full list: it's the card number and what reorderCard works on
+  // Keep each card's index in the full list: it's the card number shown on each row
   const filteredCards = cards
     .map((card, idx) => ({ card, idx }))
     .filter(({ card, idx }) =>
@@ -607,7 +593,9 @@ export default function SetDetail() {
                   >
                     {allFilteredSelected ? 'Select none' : filtering ? `Select all ${filteredCards.length}` : 'Select all'}
                   </button>
-                  <button onClick={exitCardSelect} className="text-sm font-semibold text-gray-600 dark:text-gray-300">Done</button>
+                  <button onClick={exitCardSelect} className="text-sm font-semibold text-gray-600 dark:text-gray-300">
+                    {selectedCards.size === 0 ? 'Cancel' : 'Done'}
+                  </button>
                 </div>
               </>
             ) : (
@@ -777,30 +765,14 @@ export default function SetDetail() {
                         </div>
                       )}
                       {isOwner && !selecting && (
-                        <div className="flex items-stretch gap-3 flex-shrink-0">
-                          <Link
-                            href={`/sets/${id}/edit/${card.id}`}
-                            className="flex items-center px-2.5 text-xs text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
-                          >
-                            Edit
-                          </Link>
-                          <div className="flex flex-col rounded-lg border border-gray-200 dark:border-gray-600 overflow-hidden w-7">
-                            <button
-                              onClick={() => reorderCard(idx, 'up')}
-                              disabled={filtering || idx === 0}
-                              className="flex-1 flex items-center justify-center text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-600 dark:hover:text-gray-300 disabled:opacity-20 transition-colors border-b border-gray-200 dark:border-gray-600"
-                            >
-                              <svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor"><path d="M4 1L7 6H1L4 1Z"/></svg>
-                            </button>
-                            <button
-                              onClick={() => reorderCard(idx, 'down')}
-                              disabled={filtering || idx === cards.length - 1}
-                              className="flex-1 flex items-center justify-center text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-600 dark:hover:text-gray-300 disabled:opacity-20 transition-colors"
-                            >
-                              <svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor"><path d="M4 7L1 2H7L4 7Z"/></svg>
-                            </button>
-                          </div>
-                        </div>
+                        <Link
+                          href={`/sets/${id}/edit/${card.id}`}
+                          className="flex-shrink-0 p-1.5 -m-1 rounded-lg text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                          aria-label="Edit card"
+                          title="Edit card"
+                        >
+                          <Pencil size={16} />
+                        </Link>
                       )}
                     </div>
                     <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-700">
@@ -886,7 +858,15 @@ export default function SetDetail() {
           <div className="h-28" />
           <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-gray-800/95 backdrop-blur border-t border-gray-200 dark:border-gray-700 pb-[max(env(safe-area-inset-bottom),0.75rem)]">
             <div className="max-w-lg mx-auto px-4 py-3 flex items-center gap-2">
-              {[
+              {/* Nothing picked yet: offer a way out in thumb reach instead of disabled actions */}
+              {selectedCards.size === 0 ? (
+                <button
+                  onClick={exitCardSelect}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                >
+                  Cancel
+                </button>
+              ) : [
                 { label: 'Move',  onClick: () => setShowSetPicker(true), cls: 'bg-indigo-600 text-white hover:bg-indigo-700' },
                 { label: 'Reset', onClick: resetSelectedCards,          cls: 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600' },
                 { label: 'Delete', onClick: deleteSelectedCards,        cls: 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40' },
@@ -894,7 +874,7 @@ export default function SetDetail() {
                 <button
                   key={b.label}
                   onClick={b.onClick}
-                  disabled={selectedCards.size === 0 || cardBusy}
+                  disabled={cardBusy}
                   className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-colors disabled:opacity-40 ${b.cls}`}
                 >
                   {b.label}

@@ -228,7 +228,9 @@ export function SetOrganizer({
                 >
                   {selected.size === listSets.length ? 'Select none' : 'Select all'}
                 </button>
-                <button onClick={exitSelect} className="text-sm font-semibold text-gray-600 dark:text-gray-300">Done</button>
+                <button onClick={exitSelect} className="text-sm font-semibold text-gray-600 dark:text-gray-300">
+                  {selected.size === 0 ? 'Cancel' : 'Done'}
+                </button>
               </div>
             ) : (
               <div className="flex items-center gap-2">
@@ -261,11 +263,18 @@ export function SetOrganizer({
       {selecting && (
         <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-gray-800/95 backdrop-blur border-t border-gray-200 dark:border-gray-700 pb-[max(env(safe-area-inset-bottom),0.75rem)]">
           <div className="max-w-lg mx-auto px-4 py-3 flex items-center gap-2">
-            <BarButton onClick={() => setShowMove(true)} disabled={selected.size === 0 || busy} primary>Move</BarButton>
-            <BarButton onClick={() => setVisibility(!allPublic)} disabled={selected.size === 0 || busy}>
-              {allPublic ? 'Make private' : 'Make public'}
-            </BarButton>
-            <BarButton onClick={remove} disabled={selected.size === 0 || busy} danger>Delete</BarButton>
+            {/* Nothing picked yet: offer a way out in thumb reach instead of disabled actions */}
+            {selected.size === 0 ? (
+              <BarButton onClick={exitSelect}>Cancel</BarButton>
+            ) : (
+              <>
+                <BarButton onClick={() => setShowMove(true)} disabled={busy} primary>Move</BarButton>
+                <BarButton onClick={() => setVisibility(!allPublic)} disabled={busy}>
+                  {allPublic ? 'Make private' : 'Make public'}
+                </BarButton>
+                <BarButton onClick={remove} disabled={busy} danger>Delete</BarButton>
+              </>
+            )}
           </div>
         </div>
       )}
