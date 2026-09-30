@@ -32,6 +32,10 @@ export function DownloadLibraryButton({ className = iconButton }: { className?: 
   )
 }
 
+// When the app last asked GitHub for an update (kept across sidebar remounts, e.g. after studying)
+let lastUpdateCheck = 0
+const UPDATE_RECHECK_MS = 10 * 60 * 1000
+
 // Desktop app: the open library folder, importing a library zip, switching folders, and app updates
 export function DesktopLibraryFooter({ themeButton }: { themeButton: ReactNode }) {
   const fileInput = useRef<HTMLInputElement>(null)
@@ -42,12 +46,16 @@ export function DesktopLibraryFooter({ themeButton }: { themeButton: ReactNode }
   useEffect(() => {
     import('@/lib/store/desktop').then(m => setRoot(m.libraryRoot()))
     if (!inTauri()) return
-    // Checks the GitHub release for a newer version
-    ;(async () => {
+    // Checks the latest GitHub release for a newer version: on launch, every hour while the app is
+    // open, and when the window regains focus (at most every 10 minutes). Offline, it quietly fails.
+    let cancelled = false
+    const checkNow = async () => {
+      if (Date.now() - lastUpdateCheck < UPDATE_RECHECK_MS) return
+      lastUpdateCheck = Date.now()
       try {
         const { check } = await import('@tauri-apps/plugin-updater')
         const found = await check()
-        if (!found) return
+        if (!found || cancelled) return
         setUpdate({
           version: found.version,
           install: async () => {
@@ -57,7 +65,15 @@ export function DesktopLibraryFooter({ themeButton }: { themeButton: ReactNode }
           },
         })
       } catch {}
-    })()
+    }
+    checkNow()
+    const timer = setInterval(checkNow, 60 * 60 * 1000)
+    window.addEventListener('focus', checkNow)
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+      window.removeEventListener('focus', checkNow)
+    }
   }, [])
 
   async function importZip(file: File) {
