@@ -12,9 +12,9 @@ jobs:
   windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 20
           cache: npm
@@ -27,8 +27,9 @@ jobs:
 
       - run: npm ci
 
-      # Update signing needs the release key; test builds skip it
-      - run: npx tauri build --bundles nsis --config "{\"bundle\":{\"createUpdaterArtifacts\":false}}"
+      # Update signing needs the release key; test builds skip it (a config file, since inline JSON
+      # doesn't survive PowerShell's quoting)
+      - run: npx tauri build --bundles nsis --config src-tauri/tauri.ci.conf.json
 
       - uses: actions/upload-artifact@v4
         with:
