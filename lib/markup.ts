@@ -99,6 +99,9 @@ export function parseMarkup(text: string, opts: { singleLine?: boolean } = {}): 
       content.push({ type: 'heading', attrs: { level: heading[1].length }, ...(inner.length ? { content: inner } : {}) })
     } else if (isMathBlockLine(trimmed)) {
       content.push({ type: 'mathBlock', attrs: { latex: trimmed.slice(2, -2) } })
+    } else if (matchImageLine(trimmed)) {
+      const image = matchImageLine(trimmed)!
+      content.push({ type: 'image', attrs: { src: image.src, alt: image.alt } })
     } else if (listLine) {
       // Consecutive lines of the same list kind form one list
       const type = listLine.ordered ? 'orderedList' : 'bulletList'
@@ -117,6 +120,13 @@ export function parseMarkup(text: string, opts: { singleLine?: boolean } = {}): 
 
 export function isMathBlockLine(trimmed: string): boolean {
   return trimmed.startsWith('$$') && trimmed.endsWith('$$') && trimmed.length > 4
+}
+
+// A line that is only ![alt](path) is an image (desktop app only; the path is "images/<file>" in
+// the library folder)
+export function matchImageLine(trimmed: string): { alt: string; src: string } | null {
+  const m = trimmed.match(/^!\[([^\]\n]*)\]\(([^()\s]+)\)$/)
+  return m ? { alt: m[1], src: m[2] } : null
 }
 
 // "- item" / "* item" (bullet) or "3. item" (numbered). Escaped "\- " / "3\. " are plain text.
@@ -178,6 +188,8 @@ export function serializeMarkup(doc: JSONContent): string {
         return `${'#'.repeat(Number(block.attrs?.level ?? 1))} ${serializeInline(block.content)}`
       case 'mathBlock':
         return `$$${block.attrs?.latex ?? ''}$$`
+      case 'image':
+        return `![${String(block.attrs?.alt ?? '').replace(/[\]\n]/g, '')}](${block.attrs?.src ?? ''})`
       case 'bulletList':
         return (block.content ?? []).map(item => `- ${serializeInline(item.content?.[0]?.content)}`).join('\n')
       case 'orderedList': {
@@ -190,6 +202,8 @@ export function serializeMarkup(doc: JSONContent): string {
           .replace(/^(\s*)(#{1,3} )/, '$1\\$2')
           .replace(/^(\s*)- /, '$1\\- ')
           .replace(/^(\s*)(\d{1,9})\. /, '$1$2\\. ')
+          // …or an image line
+          .replace(/^(\s*)!\[/, '$1!\\[')
       }
     }
   }).join('\n')

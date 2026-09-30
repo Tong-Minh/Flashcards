@@ -207,6 +207,14 @@ export const supabaseStore: Store = {
     await check(supabase.from('study_sessions').insert({ set_id: setId, ...s }))
   },
 
+  // Images are desktop-only (the web app has no image storage)
+  async saveImage() {
+    throw new Error('Images are only available in the desktop app')
+  },
+  async imageUrl() {
+    return null
+  },
+
   // Totals come from the set_study_stats view, which includes rolled-up older sessions
   async getSetStats(setId) {
     const { data } = await supabase.from('set_study_stats')

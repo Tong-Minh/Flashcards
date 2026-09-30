@@ -11,6 +11,7 @@ import { BulletList, OrderedList, ListItem, ListKeymap } from '@tiptap/extension
 import { Placeholder } from '@tiptap/extensions'
 import { COLOR_CLASSES, renderMath } from '@/components/ContentRenderer'
 import { MathPopup } from './MathPopup'
+import { CardImage } from '@/components/CardImage'
 
 // ── Color mark: [red]text[/red] ───────────────────────────────────────────────
 
@@ -179,6 +180,35 @@ export const MathBlock = Node.create({
   addNodeView() { return ReactNodeViewRenderer(MathView) },
 })
 
+// ── Image block: ![alt](images/<file>) ───────────────────────────────────────
+// In every build, so a card's image line survives editing, though only the desktop app can add one
+
+function ImageView({ node, selected }: ReactNodeViewProps) {
+  return (
+    <NodeViewWrapper as="div" className={`py-1 rounded-lg ${selected ? 'ring-2 ring-indigo-400' : ''}`} data-drag-handle>
+      <CardImage src={String(node.attrs.src ?? '')} alt={String(node.attrs.alt ?? '')} />
+    </NodeViewWrapper>
+  )
+}
+
+export const ImageBlock = Node.create({
+  name: 'image',
+  group: 'block',
+  atom: true,
+  selectable: true,
+  draggable: true,
+  addAttributes() {
+    return {
+      src: { default: '', parseHTML: el => el.getAttribute('data-src') ?? '', renderHTML: a => ({ 'data-src': String(a.src ?? '') }) },
+      alt: { default: '', parseHTML: el => el.getAttribute('data-alt') ?? '', renderHTML: a => ({ 'data-alt': String(a.alt ?? '') }) },
+    }
+  },
+  parseHTML() { return [{ tag: 'div[data-card-image]' }] },
+  renderHTML({ HTMLAttributes }) { return ['div', mergeAttributes(HTMLAttributes, { 'data-card-image': '' })] },
+  renderText({ node }) { return `![${node.attrs.alt ?? ''}](${node.attrs.src ?? ''})` },
+  addNodeView() { return ReactNodeViewRenderer(ImageView) },
+})
+
 // ── Extension sets ────────────────────────────────────────────────────────────
 
 // The browser doesn't paint the selection highlight over rendered math (it isn't editable text), so
@@ -229,6 +259,7 @@ export function buildExtensions({ singleLine, placeholder }: { singleLine?: bool
       ? [Document.extend({ content: 'paragraph' })]
       : [
           MathBlock,
+          ImageBlock,
           // One level of "- " / "1. " lists; typing "- " or "1. " at a line start converts it
           BulletList,
           OrderedList,

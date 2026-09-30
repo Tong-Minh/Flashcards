@@ -721,7 +721,7 @@ export default function SetDetail() {
                     {/* Number in its own column so formatted (block-level) questions start on the same line as plain ones */}
                     <div className="flex gap-1 text-sm font-medium text-gray-900 dark:text-gray-100">
                       <span className="flex-shrink-0 text-gray-400 dark:text-gray-500">{idx + 1}.</span>
-                      <div className="flex-1 min-w-0 [&_:is(h1,h2,h3):first-child]:mt-0">
+                      <div className="flex-1 min-w-0 [&_:is(h1,h2,h3):first-child]:mt-0 [&_.card-image]:max-h-40 [&_.card-image]:mx-0">
                         {hasFormattedContent(card.question)
                           ? <ContentRenderer text={card.question} readOnly className="text-sm font-medium text-gray-900 dark:text-gray-100" />
                           : previewText(card.question) || (card.type === 'matching' ? 'Match the pairs' : '')}
@@ -786,7 +786,7 @@ export default function SetDetail() {
                     </ul>
                   ) : (
                     hasFormattedContent(card.answer)
-                      ? <div className="text-xs text-gray-600 dark:text-gray-400"><ContentRenderer text={card.answer} readOnly /></div>
+                      ? <div className="text-xs text-gray-600 dark:text-gray-400 [&_.card-image]:max-h-40 [&_.card-image]:mx-0"><ContentRenderer text={card.answer} readOnly /></div>
                       : <p className="text-xs text-gray-600 dark:text-gray-400">{previewText(card.answer)}</p>
                   )}
                 </div>

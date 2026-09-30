@@ -71,4 +71,9 @@ export interface Store {
   resetProgress(cardIds: string[]): Promise<void>
   recordSession(setId: string, session: SessionInput): Promise<void>
   getSetStats(setId: string): Promise<SetStudyStats | null>
+
+  // Card images (desktop app only). saveImage stores the bytes and returns the path cards use
+  // ("images/<hash>.<ext>"); imageUrl gives a URL to display one, or null if it's missing.
+  saveImage(bytes: Uint8Array, ext: string): Promise<string>
+  imageUrl(path: string): Promise<string | null>
 }

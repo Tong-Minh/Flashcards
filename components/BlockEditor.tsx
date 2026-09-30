@@ -6,6 +6,9 @@ import { NodeSelection, Selection } from '@tiptap/pm/state'
 import { highlight, LANG_ALIASES, LANGUAGE_OPTIONS } from '@/components/ContentRenderer'
 import { buildExtensions } from '@/components/editor/extensions'
 import { parseMarkup, serializeMarkup } from '@/lib/markup'
+import { IS_DESKTOP } from '@/lib/platform'
+import { store } from '@/lib/store'
+import { imageFileFrom, prepareImage } from '@/lib/images'
 
 // ── Slash commands ─────────────────────────────────────────────────────────────
 
@@ -18,6 +21,7 @@ type CommandKind =
   | { kind: 'mark'; mark: 'bold' | 'italic' | 'code' }
   | { kind: 'color'; color: string }
   | { kind: 'clear' }
+  | { kind: 'image' }
 
 type SlashCommand = { id: string; label: string; desc: string; icon: string; iconClass?: string } & CommandKind
 
@@ -25,6 +29,8 @@ const SLASH_COMMANDS: SlashCommand[] = [
   { id: 'code',   label: 'Code block', desc: 'Syntax-highlighted block', icon: '</>', kind: 'code' },
   { id: 'math',   label: 'Math',       desc: 'Inline LaTeX equation',    icon: '∑',   kind: 'math' },
   { id: 'mathblock', label: 'Math block', desc: 'Centered equation on its own line', icon: '∑̲', kind: 'mathBlock' },
+  // Images live in the desktop app's library folder
+  ...(IS_DESKTOP ? [{ id: 'image', label: 'Image', desc: 'From a file (or paste or drag one in)', icon: '▣', kind: 'image' as const }] : []),
   { id: 'bullet', label: 'Bulleted list', desc: 'Simple bullet points',  icon: '•',   kind: 'list', ordered: false },
   { id: 'numbered', label: 'Numbered list', desc: 'List with numbers',   icon: '1.',  kind: 'list', ordered: true },
   { id: 'h1',     label: 'Heading 1',  desc: 'Large title',              icon: 'H1',  kind: 'heading', level: 1 },
@@ -76,6 +82,37 @@ function applyCommand(editor: Editor, cmd: SlashCommand) {
     case 'color':   toggleColor(editor, cmd.color); break
     case 'clear':   clearFormatting(editor); break
   }
+}
+
+// ── Images (desktop app) ────────────────────────────────────────────────────────
+
+function pickImageFile(): Promise<File | null> {
+  return new Promise(resolve => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'image/*'
+    input.onchange = () => resolve(input.files?.[0] ?? null)
+    input.click()
+  })
+}
+
+// Compresses the image, saves it to the library, and inserts it as its own block: at `at` (a drop
+// position), or at the cursor, replacing the line if it's empty
+async function insertImageFile(editor: Editor, file: File, at?: number) {
+  let src: string
+  try {
+    const { bytes, ext } = await prepareImage(file, file.name)
+    src = await store.saveImage(bytes, ext)
+  } catch {
+    alert('Could not add that image.')
+    return
+  }
+  const block = { type: 'image', attrs: { src, alt: '' } }
+  if (at !== undefined) { editor.chain().focus().insertContentAt(at, block).run(); return }
+  const { $from } = editor.state.selection
+  const emptyLine = $from.parent.type.name === 'paragraph' && $from.parent.content.size === 0
+  if (emptyLine) editor.chain().focus().insertContentAt({ from: $from.before(), to: $from.after() }, block).run()
+  else editor.chain().focus().insertContent(block).run()
 }
 
 // Plain text from here on: drop marks on the selection and the ones that would carry into the
@@ -209,7 +246,7 @@ function RichTextBlock({
   const [toolbar, setToolbar] = useState<ToolbarState | null>(null)
   const [, forceRender] = useState(0)
 
-  const blockOnly = ['code', 'heading', 'mathBlock', 'list']
+  const blockOnly = ['code', 'heading', 'mathBlock', 'list', 'image']
   const commands = singleLine ? SLASH_COMMANDS.filter(c => !blockOnly.includes(c.kind)) : SLASH_COMMANDS
   const menuListRef = useRef<HTMLDivElement>(null)
 
@@ -274,6 +311,9 @@ function RichTextBlock({
       // Plain-text markup (a copied code block or equation, or card text from elsewhere) is rebuilt into
       // real code blocks and math. Rich clipboard HTML, including copies from this editor, pastes normally.
       handlePaste: (view, event) => {
+        // A pasted picture (e.g. a screenshot) becomes an image block (desktop app)
+        const image = IS_DESKTOP && !singleLine ? imageFileFrom(event.clipboardData) : null
+        if (image && editorRef.current) { insertImageFile(editorRef.current, image); return true }
         const text = event.clipboardData?.getData('text/plain') ?? ''
         const html = event.clipboardData?.getData('text/html') ?? ''
         if (!text || html) return false
@@ -288,6 +328,15 @@ function RichTextBlock({
           return true
         }
         editorRef.current?.chain().focus().insertContent(parseMarkup(text, { singleLine }).content ?? []).run()
+        return true
+      },
+      // An image file dropped in becomes an image block where it lands (desktop app)
+      handleDrop: (view, event, _slice, moved) => {
+        if (moved || !IS_DESKTOP || singleLine || !editorRef.current) return false
+        const image = imageFileFrom(event.dataTransfer)
+        if (!image) return false
+        const pos = view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos
+        insertImageFile(editorRef.current, image, pos)
         return true
       },
       handleKeyDown: (view, event) => {
@@ -344,6 +393,10 @@ function RichTextBlock({
     const to = ed.state.selection.from
     ed.chain().focus().deleteRange({ from: s.from, to }).run()
 
+    if (cmd.kind === 'image') {
+      pickImageFile().then(file => { if (file) insertImageFile(ed, file) })
+      return
+    }
     if (cmd.kind === 'code') {
       // Split this text block at the cursor; BlockEditor inserts a code card between the halves
       const pos    = ed.state.selection.from

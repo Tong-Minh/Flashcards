@@ -52,6 +52,12 @@ function parse<T>(text: string | null, fallback: T): T {
 
 const uuid = () => crypto.randomUUID()
 
+const IMAGE_TYPES: Record<string, string> = {
+  webp: 'image/webp', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', svg: 'image/svg+xml',
+}
+
+export type LocalStore = Store & { pruneImages(): Promise<number> }
+
 // Card order: manual position first, then creation time
 function compareCards(a: Flashcard, b: Flashcard) {
   if (a.position !== b.position) {
@@ -64,11 +70,13 @@ function compareCards(a: Flashcard, b: Flashcard) {
 
 // A Store over a library folder. The whole library is read into memory on first use; each change
 // rewrites only the file it touched.
-export function createLocalStore(files: Files): Store {
+export function createLocalStore(files: Files): LocalStore {
   let library: LibraryFile = { version: LIBRARY_VERSION, collections: [] }
   const sets    = new Map<string, SetData>()
   const cardSet = new Map<string, string>()   // card id → set id
   let loading: Promise<void> | null = null
+  // Object URLs of images already read, by path
+  const imageUrls = new Map<string, string>()
 
   function ensure() {
     loading ??= (async () => {
@@ -147,7 +155,7 @@ export function createLocalStore(files: Files): Store {
     cardSet.clear()
   }
 
-  const api: Store = {
+  const api: LocalStore = {
     remote: false,
     maxCardsPerSet: 100_000,
 
@@ -374,11 +382,52 @@ export function createLocalStore(files: Files): Store {
       const d = sets.get(setId)
       return d ? stats(d) : null
     },
+
+    // Named by a hash of the bytes, so the same image is stored once however many cards use it
+    async saveImage(bytes, ext) {
+      const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes as BufferSource))
+      const hash = [...digest.slice(0, 12)].map(b => b.toString(16).padStart(2, '0')).join('')
+      const path = `images/${hash}.${ext.replace(/[^a-z0-9]/gi, '').toLowerCase() || 'bin'}`
+      if (!(await files.readBytes(path))) await files.writeBytes(path, bytes)
+      return path
+    },
+
+    async imageUrl(path) {
+      if (!/^images\/[\w.-]+$/.test(path)) return null
+      const cached = imageUrls.get(path)
+      if (cached) return cached
+      const bytes = await files.readBytes(path)
+      if (!bytes) return null
+      const ext = path.split('.').pop()!.toLowerCase()
+      const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: IMAGE_TYPES[ext] ?? 'application/octet-stream' }))
+      imageUrls.set(path, url)
+      return url
+    },
+
+    // Deletes images no card refers to any more. Run when the library opens, before anything can be
+    // mid-edit (a card being written may use an image it hasn't saved yet).
+    async pruneImages() {
+      await ensure()
+      const used = new Set<string>()
+      for (const d of sets.values()) {
+        for (const c of d.cards) {
+          const text = [c.question, c.answer, ...(c.options ?? []), ...(c.pairs ?? []).flatMap(p => [p.left, p.right])].join('\n')
+          for (const m of text.matchAll(/images\/[\w.-]+/g)) used.add(m[0])
+        }
+      }
+      let removed = 0
+      for (const name of await files.listFiles('images')) {
+        if (name.endsWith('.tmp') || !used.has(`images/${name}`)) { await files.remove(`images/${name}`); removed++ }
+      }
+      return removed
+    },
   }
 
-  for (const key of Object.keys(api) as (keyof Store)[]) {
+  // Reads never leave memory ahead of the disk, so only writes need the reset below
+  const READS = new Set<string>(['imageUrl', 'pruneImages'])
+  for (const key of Object.keys(api) as (keyof LocalStore)[]) {
     const fn = api[key]
-    if (typeof fn !== 'function') continue
+    if (typeof fn !== 'function' || READS.has(key)) continue
     ;(api as unknown as Record<string, unknown>)[key] = async (...args: unknown[]) => {
       try {
         return await (fn as (...a: unknown[]) => Promise<unknown>).apply(api, args)

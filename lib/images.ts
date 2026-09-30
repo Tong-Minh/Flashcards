@@ -1,0 +1,40 @@
+// Prepares an image for a card: scaled down to at most MAX_SIDE px and re-encoded as WebP, which keeps
+// screenshots around 50–200 KB. GIFs (possibly animated) and SVGs are kept as they are, and so is any
+// image the re-encode wouldn't shrink.
+
+const MAX_SIDE = 1600
+const QUALITY  = 0.85
+
+const EXT_BY_TYPE: Record<string, string> = {
+  'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif', 'image/svg+xml': 'svg',
+}
+
+export function extFor(type: string, name = ''): string {
+  return EXT_BY_TYPE[type] ?? name.split('.').pop()?.toLowerCase() ?? 'png'
+}
+
+export async function prepareImage(blob: Blob, name = ''): Promise<{ bytes: Uint8Array; ext: string }> {
+  const original = { bytes: new Uint8Array(await blob.arrayBuffer()), ext: extFor(blob.type, name) }
+  if (original.ext === 'gif' || original.ext === 'svg') return original
+  try {
+    const bitmap = await createImageBitmap(blob)
+    const scale  = Math.min(1, MAX_SIDE / Math.max(bitmap.width, bitmap.height))
+    const canvas = document.createElement('canvas')
+    canvas.width  = Math.max(1, Math.round(bitmap.width * scale))
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale))
+    canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+    bitmap.close()
+    const webp = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/webp', QUALITY))
+    if (!webp || (scale === 1 && webp.size >= blob.size)) return original
+    return { bytes: new Uint8Array(await webp.arrayBuffer()), ext: 'webp' }
+  } catch {
+    // Not decodable here (e.g. an unusual format): keep it as is
+    return original
+  }
+}
+
+// The first image file in a paste or drop, if any
+export function imageFileFrom(data: DataTransfer | null | undefined): File | null {
+  for (const file of Array.from(data?.files ?? [])) if (file.type.startsWith('image/')) return file
+  return null
+}

@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import type { ReactNode } from 'react'
-import { tokenizeInline, tokensToPlainText, isMathBlockLine, matchListLine, type InlineToken } from '@/lib/markup'
+import { tokenizeInline, tokensToPlainText, isMathBlockLine, matchImageLine, matchListLine, type InlineToken } from '@/lib/markup'
+import { CardImage } from '@/components/CardImage'
 import Prism from 'prismjs'
 import katex from 'katex'
 import 'katex/dist/katex.min.css'
@@ -100,6 +101,7 @@ export function hasFormattedContent(text: string): boolean {
     /\[\w+\][^\[]+\[\/\w+\]/.test(text) ||   // color
     /\$[^$\n]+\$/.test(text)            ||   // math
     /^\s*([-*]|\d+\.) /m.test(text)     ||   // list
+    /^\s*!\[[^\]\n]*\]\(\S+\)\s*$/m.test(text) || // image
     /\\[*$\[\]`\\#.\-]/.test(text)           // escaped literal
   )
 }
@@ -111,6 +113,7 @@ export function previewText(text: string): string {
     .map(line => {
       const t = line.trimStart()
       if (t.startsWith('$$') && t.endsWith('$$') && t.length > 4) return '[math]'
+      if (matchImageLine(t)) return '[image]'
       return tokensToPlainText(tokenizeInline(line.replace(/^\s*#{1,3} /, '')))
     })
     .join('\n')
@@ -226,6 +229,8 @@ function renderLine(line: string, j: number, onMathClick?: MathClickHandler): Re
   if (trimmed.startsWith('## '))  return <h2 key={j} className="text-lg  font-bold mt-3 mb-1">{renderInline(trimmed.slice(3), onMathClick)}</h2>
   if (trimmed.startsWith('# '))   return <h1 key={j} className="text-xl  font-bold mt-3 mb-1">{renderInline(trimmed.slice(2), onMathClick)}</h1>
   if (line === '')                return <br key={j} />
+  const image = matchImageLine(trimmed)
+  if (image) return <CardImage key={j} src={image.src} alt={image.alt} />
   if (isMathBlockLine(trimmed)) {
     const expr = trimmed.slice(2, -2)
     return (
@@ -376,7 +381,8 @@ export function ContentRenderer({ text, className, readOnly, onCodeLangChange, o
   const anyCode  = segments.some(s => s.type === 'code')
 
   if (!anyCode) {
-    const hasBlocks = /^#{1,3} /m.test(text) || /^\$\$[\s\S]+?\$\$/m.test(text) || text.split('\n').some(l => matchListLine(l))
+    const hasBlocks = /^#{1,3} /m.test(text) || /^\$\$[\s\S]+?\$\$/m.test(text) ||
+      text.split('\n').some(l => matchListLine(l) || matchImageLine(l.trimStart()))
     const content   = hasBlocks ? renderTextBlock(text, 0, onInlineMathClick) : renderInline(text, onInlineMathClick)
     if (className) return <div className={className}>{content}</div>
     return <>{content}</>
