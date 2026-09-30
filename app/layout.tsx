@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { RegisterSW } from '@/components/RegisterSW'
 import { CopyAsSource } from '@/components/CopyAsSource'
+import { StandaloneGestures } from '@/components/StandaloneGestures'
 import AuthGuard from '@/components/AuthGuard'
 import { ThemeProvider } from '@/components/ThemeProvider'
 import './globals.css'
@@ -36,6 +37,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ThemeProvider>
           <RegisterSW />
           <CopyAsSource />
+          <StandaloneGestures />
           <AuthGuard>{children}</AuthGuard>
         </ThemeProvider>
       </body>
