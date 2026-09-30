@@ -46,15 +46,14 @@ export function DetailHeader({ kind, backHref, collection, owner, icon, color, n
       <div className="flex items-center gap-3">
         <ItemIcon icon={icon} color={color} kind={kind} size="lg" />
         <div className="flex-1 min-w-0">
-          {/* Balanced wrapping splits a long name into even lines instead of leaving one word dangling */}
-          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 leading-snug text-balance">
+          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 leading-snug">
             {name}
             {/* A box exactly one title line tall, with the pill centered in it, so the pill lines up with
                 the title text and doesn't make its line taller */}
             {badge && <span className="inline-flex items-center align-top h-[1.375em] ml-2 [&>*]:leading-4">{badge}</span>}
           </h1>
           {description && (
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5 text-pretty">{description}</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{description}</p>
           )}
         </div>
       </div>
