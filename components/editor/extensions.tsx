@@ -35,7 +35,18 @@ function MathView({ node, updateAttributes, deleteNode, editor, getPos, selected
   const [anchor, setAnchor] = useState<DOMRect | null>(null)
 
   useEffect(() => {
-    if (!latex && ref.current) setAnchor(ref.current.getBoundingClientRect())
+    if (latex) return
+    // A new node view isn't attached and laid out on mount, so measuring now gives an empty rect at
+    // the top-left of the screen. Wait until it has a real position (a few frames at most).
+    let frame = 0
+    let tries = 0
+    const measure = () => {
+      const rect = ref.current?.getBoundingClientRect()
+      if (rect && (rect.width > 0 || rect.height > 0)) { setAnchor(rect); return }
+      if (++tries < 10) frame = requestAnimationFrame(measure)
+    }
+    frame = requestAnimationFrame(measure)
+    return () => cancelAnimationFrame(frame)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -101,6 +112,8 @@ export const MathInline = Node.create({
   addAttributes() { return mathAttrs },
   parseHTML() { return [{ tag: 'span[data-math-inline]' }] },
   renderHTML({ HTMLAttributes }) { return ['span', mergeAttributes(HTMLAttributes, { 'data-math-inline': '' })] },
+  // Copied as plain text, math keeps its LaTeX source
+  renderText({ node }) { return node.attrs.display ? `$$${node.attrs.latex}$$` : `$${node.attrs.latex}$` },
   addNodeView() { return ReactNodeViewRenderer(MathView) },
   addInputRules() {
     const type = this.type
@@ -140,6 +153,7 @@ export const MathBlock = Node.create({
   addAttributes() { return { latex: { default: '' } } },
   parseHTML() { return [{ tag: 'div[data-math-block]' }] },
   renderHTML({ HTMLAttributes }) { return ['div', mergeAttributes(HTMLAttributes, { 'data-math-block': '' })] },
+  renderText({ node }) { return `$$${node.attrs.latex}$$` },
   addNodeView() { return ReactNodeViewRenderer(MathView) },
 })
 

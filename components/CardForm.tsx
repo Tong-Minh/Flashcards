@@ -198,6 +198,9 @@ export function CardForm({ initial, submitLabel, onSubmit }: {
               className="flex-1 min-w-[8rem] bg-transparent text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 outline-none"
             />
           </div>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1.5">
+            Press Enter or type a comma after each one to add it. Each answer can have spaces, e.g. <span className="font-medium">New York City</span>.
+          </p>
         </div>
       )}
 

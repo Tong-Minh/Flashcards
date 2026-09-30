@@ -452,6 +452,7 @@ function CodeBlockCard({ block, armed, initialEditing, onChange, onDelete, onDra
   const [editing, setEditing] = useState(initialEditing)
   const cardRef = useRef<HTMLDivElement>(null)
   const taRef   = useRef<HTMLTextAreaElement>(null)
+  const pressAt = useRef<{ x: number; y: number } | null>(null)
 
   useEffect(() => {
     if (editing) { taRef.current?.focus(); autoResize(taRef.current) }
@@ -480,13 +481,21 @@ function CodeBlockCard({ block, armed, initialEditing, onChange, onDelete, onDra
             ? 'bg-indigo-100 dark:bg-indigo-950/60'
             : 'bg-gray-200/80 hover:bg-gray-300/70 dark:bg-black/40 dark:hover:bg-black/60'
       } ${dragging ? 'opacity-40' : ''}`}
-      draggable
-      onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; onDragStart() }}
-      onDragEnd={onDragEnd}
     >
     <div className="rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700/50">
       <div className="px-3 py-1.5 bg-gray-100 dark:bg-gray-800/80 flex items-center gap-2 border-b border-gray-200 dark:border-gray-700/50">
-        <div className="flex-shrink-0 cursor-grab active:cursor-grabbing text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 transition-colors">
+        {/* Only the grip drags, so the code itself can be highlighted and copied */}
+        <div
+          draggable
+          onDragStart={e => {
+            e.dataTransfer.effectAllowed = 'move'
+            if (cardRef.current) e.dataTransfer.setDragImage(cardRef.current, 16, 16)
+            onDragStart()
+          }}
+          onDragEnd={onDragEnd}
+          title="Drag to move"
+          className="flex-shrink-0 cursor-grab active:cursor-grabbing text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 transition-colors"
+        >
           <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
             <circle cx="2.5" cy="2.5" r="1.5"/><circle cx="7.5" cy="2.5" r="1.5"/>
             <circle cx="2.5" cy="7"   r="1.5"/><circle cx="7.5" cy="7"   r="1.5"/>
@@ -535,10 +544,18 @@ function CodeBlockCard({ block, armed, initialEditing, onChange, onDelete, onDra
           placeholder="Type code here…"
         />
       ) : (
+        // Highlighting selects the whole block (to copy it); a plain click opens it for editing, where
+        // part of the code can be selected
         <pre
-          className="overflow-x-auto overflow-y-auto max-h-72 bg-gray-50 dark:bg-gray-900 p-3 m-0 text-[0.8rem] leading-relaxed text-gray-800 dark:text-gray-300 cursor-pointer"
-          onClick={() => setEditing(true)}
-          title="Click to edit"
+          className="overflow-x-auto overflow-y-auto max-h-72 bg-gray-50 dark:bg-gray-900 p-3 m-0 text-[0.8rem] leading-relaxed text-gray-800 dark:text-gray-300 cursor-pointer select-all"
+          onPointerDown={e => { pressAt.current = { x: e.clientX, y: e.clientY } }}
+          onClick={e => {
+            const p = pressAt.current
+            pressAt.current = null
+            if (p && Math.hypot(e.clientX - p.x, e.clientY - p.y) > 4) return
+            setEditing(true)
+          }}
+          title="Click to edit · drag across to select all"
         >
           <code
             className={resolvedLang ? `language-${resolvedLang}` : undefined}

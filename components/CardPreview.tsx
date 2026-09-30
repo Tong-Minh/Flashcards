@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { ContentRenderer, hasCodeBlock } from '@/components/ContentRenderer'
-import { haptic } from '@/lib/haptic'
+import { haptic, hasTextSelection } from '@/lib/haptic'
 import { MatchingPairsList } from '@/components/StudyInteractions'
 import type { Flashcard } from '@/lib/types'
 
@@ -49,6 +49,7 @@ export function ClozeQuestion({ sentence, answer }: { sentence: string; answer?:
 
 const SWIPE_DISMISS_PX = 100
 const TAP_SLOP_PX      = 8
+const FLY_OUT_MS       = 250
 
 interface FlipCardProps {
   card: Flashcard
@@ -64,6 +65,8 @@ export function FlipCard({ card, onSwipeAway, className = '' }: FlipCardProps) {
   // The enter animation must only play on mount; re-applying it after a flip replays a rotation
   const [entered,  setEntered]  = useState(false)
   const [drag,     setDrag]     = useState<{ x: number; y: number } | null>(null)
+  // Where a dismissed card flies to before onSwipeAway runs
+  const [flyOut,   setFlyOut]   = useState<{ x: number; y: number } | null>(null)
   const start   = useRef<{ x: number; y: number } | null>(null)
   const moved   = useRef(false)
   const timers  = useRef<ReturnType<typeof setTimeout>[]>([])
@@ -105,16 +108,30 @@ export function FlipCard({ card, onSwipeAway, className = '' }: FlipCardProps) {
     const dx = e.clientX - start.current.x
     const dy = e.clientY - start.current.y
     start.current = null
-    setDrag(null)
-    if (!moved.current) {
+    if (!moved.current && !hasTextSelection()) {
+      setDrag(null)
       flip()
     } else if (onSwipeAway && (Math.abs(dx) > SWIPE_DISMISS_PX || (e.pointerType === "mouse" && Math.hypot(dx, dy) > SWIPE_DISMISS_PX))) {
       haptic(15)
-      onSwipeAway()
+      // Carry on in the swipe's direction until off screen, fading out, then dismiss
+      const len  = Math.max(Math.hypot(dx, dy), 1)
+      const dist = Math.max(window.innerWidth, window.innerHeight)
+      setDrag(null)
+      setFlyOut({ x: dx + (dx / len) * dist, y: dy + (dy / len) * dist })
+      timers.current.push(setTimeout(onSwipeAway, FLY_OUT_MS))
+    } else {
+      setDrag(null)
     }
   }
 
-  const dragStyle = drag
+  const dragStyle = flyOut
+    ? {
+        transform: `translate(${flyOut.x}px, ${flyOut.y}px) rotate(${flyOut.x / 20}deg)`,
+        opacity: 0,
+        transition: `transform ${FLY_OUT_MS}ms ease-in, opacity ${FLY_OUT_MS}ms ease-in`,
+        pointerEvents: 'none' as const,
+      }
+    : drag
     ? {
         transform: `translate(${drag.x}px, ${drag.y}px) rotate(${drag.x / 20}deg)`,
         opacity: Math.max(0.3, 1 - Math.hypot(drag.x, drag.y) / 400),
@@ -224,9 +241,16 @@ export function CardPreviewModal({ card, onClose }: { card: Flashcard; onClose: 
   }, [onClose])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/50 fade-in" onClick={onClose}>
-      <div className="w-full max-w-lg max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <FlipCard key={card.id} card={card} onSwipeAway={onClose} />
+    // The backdrop itself scrolls (for tall cards) so nothing around the card clips its flip or swipe;
+    // an inner scroll box would cut the card off at its edges.
+    <div className="fixed inset-0 z-50 overflow-y-auto overflow-x-hidden bg-black/50 fade-in">
+      <div
+        className="min-h-full flex items-center justify-center px-4 py-12"
+        onClick={e => { if (e.target === e.currentTarget) onClose() }}
+      >
+        <div className="w-full max-w-lg">
+          <FlipCard key={card.id} card={card} onSwipeAway={onClose} />
+        </div>
       </div>
     </div>
   )

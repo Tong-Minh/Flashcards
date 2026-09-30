@@ -122,6 +122,27 @@ export function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
+function CopyCodeButton({ code }: { code: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      type="button"
+      onClick={async e => {
+        e.stopPropagation()
+        try {
+          await navigator.clipboard.writeText(code)
+          setCopied(true)
+          setTimeout(() => setCopied(false), 1500)
+        } catch {}
+      }}
+      className="text-xs font-medium text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors flex-shrink-0 px-1 rounded"
+      title="Copy code"
+    >
+      {copied ? 'Copied' : 'Copy'}
+    </button>
+  )
+}
+
 export function renderMath(expr: string, display: boolean): string {
   try {
     return katex.renderToString(expr.trim(), { throwOnError: false, displayMode: display, output: 'html' })
@@ -154,11 +175,14 @@ function renderTokens(tokens: InlineToken[], onMathClick?: MathClickHandler): Re
           case 'math': {
             // Rendered math can't wrap, so a long inline equation scrolls within the line instead of
             // widening the page on narrow screens
+            // select-all + data-latex: highlighting takes the whole equation and copies its LaTeX (see CopyAsSource)
             const cls = tok.display
-              ? 'block overflow-x-auto py-1 text-center'
-              : 'inline-block max-w-full overflow-x-auto overflow-y-hidden align-middle'
+              ? 'block overflow-x-auto py-1 text-center select-all'
+              : 'inline-block max-w-full overflow-x-auto overflow-y-hidden align-middle select-all'
             return (
               <span key={i}
+                data-latex={tok.s}
+                data-display={tok.display ? '' : undefined}
                 className={onMathClick ? `${cls} cursor-pointer hover:opacity-70 transition-opacity` : cls}
                 onClick={onMathClick ? (e) => { e.stopPropagation(); onMathClick(tok.s, tok.display, e.currentTarget.getBoundingClientRect()) } : undefined}
                 dangerouslySetInnerHTML={{ __html: renderMath(tok.s, tok.display) }}
@@ -206,7 +230,9 @@ function renderLine(line: string, j: number, onMathClick?: MathClickHandler): Re
     const expr = trimmed.slice(2, -2)
     return (
       <div key={j}
-        className={`overflow-x-auto py-2 flex justify-center${onMathClick ? ' cursor-pointer hover:opacity-70 transition-opacity' : ''}`}
+        data-latex={expr}
+        data-display=""
+        className={`overflow-x-auto py-2 flex justify-center select-all${onMathClick ? ' cursor-pointer hover:opacity-70 transition-opacity' : ''}`}
         onClick={onMathClick ? (e) => { e.stopPropagation(); onMathClick(expr, true, e.currentTarget.getBoundingClientRect()) } : undefined}
         dangerouslySetInnerHTML={{ __html: renderMath(expr, true) }}
       />
@@ -274,6 +300,7 @@ function CodeBlock({ code, lang, readOnly, onLangChange }: {
       <div className="my-2 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700/50">
         <div className="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 flex items-center gap-2">
           {langControl()}
+          <CopyCodeButton code={code} />
           <button
             type="button"
             onClick={e => { e.stopPropagation(); setFullscreen(true) }}

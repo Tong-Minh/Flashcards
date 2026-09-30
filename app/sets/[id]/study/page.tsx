@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { fsrs, createEmptyCard, Rating, State, type Card as FSRSCard, type RecordLog } from 'ts-fsrs'
 import { supabase } from '@/lib/supabase/client'
-import { haptic } from '@/lib/haptic'
+import { haptic, hasTextSelection } from '@/lib/haptic'
 import { fetchAllRows, MAX_CARDS_PER_SET } from '@/lib/fetchAll'
 import { ContentRenderer, previewText } from '@/components/ContentRenderer'
 import { ClozeQuestion, FlipCard } from '@/components/CardPreview'
@@ -820,7 +820,7 @@ export default function Study() {
         key={cardKey}
         ref={cardRef}
         className={`${flipState === 'front' ? 'card-enter' : ''} bg-white dark:bg-gray-800 rounded-2xl shadow-md border border-gray-100 dark:border-gray-700 p-6 mb-5 min-h-[220px] flex flex-col ${cardAnimClass}`}
-        onClick={!showBack && (card.type === 'open_ended' || card.type === 'fill_blank') ? triggerFlip : undefined}
+        onClick={!showBack && (card.type === 'open_ended' || card.type === 'fill_blank') ? () => { if (!hasTextSelection()) triggerFlip() } : undefined}
         style={{
           cursor: !showBack && (card.type === 'open_ended' || card.type === 'fill_blank') ? 'pointer' : 'default',
           minHeight: cardMinHeight ?? undefined,

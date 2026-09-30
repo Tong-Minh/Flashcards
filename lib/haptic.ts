@@ -15,3 +15,10 @@ export function haptic(ms = 20) {
     try { _label.click() } catch {}
   }
 }
+
+// True right after the user drag-selected text, so a tap handler (card flip) can ignore that click
+export function hasTextSelection(): boolean {
+  if (typeof window === 'undefined') return false
+  const sel = window.getSelection()
+  return !!sel && !sel.isCollapsed && sel.toString().trim().length > 0
+}
