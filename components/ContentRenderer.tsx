@@ -1,7 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import type { ReactNode } from 'react'
+import { tokenizeInline, tokensToPlainText, type InlineToken } from '@/lib/markup'
 import Prism from 'prismjs'
 import katex from 'katex'
 import 'katex/dist/katex.min.css'
@@ -57,7 +59,7 @@ const LANGUAGE_OPTIONS = [
   { value: 'markup',     label: 'HTML / XML'  },
 ]
 
-const COLOR_CLASSES: Record<string, string> = {
+export const COLOR_CLASSES: Record<string, string> = {
   red:    'text-red-500',
   green:  'text-green-600',
   blue:   'text-blue-500',
@@ -93,65 +95,33 @@ export function hasCodeBlock(text: string): boolean {
 export function hasFormattedContent(text: string): boolean {
   return (
     /```[\s\S]*?```/.test(text)         ||   // code block
-    /\*\*[^*\n]+\*\*/.test(text)        ||   // bold
-    /\*[^*\n]+\*/.test(text)            ||   // italic
+    /\*[^*\n]+\*/.test(text)            ||   // bold / italic
     /^#{1,3} /m.test(text)              ||   // heading
     /\[\w+\][^\[]+\[\/\w+\]/.test(text) ||   // color
-    /\$[^$\n]+\$/.test(text)                 // math
+    /\$[^$\n]+\$/.test(text)            ||   // math
+    /\\[*$\[\]`\\#]/.test(text)              // escaped literal
   )
 }
 
 export function previewText(text: string): string {
   const stripped = text
     .replace(/```[\s\S]*?```/g, '[code]')
-    .replace(/`([^`\n]+)`/g, '$1')
-    .replace(/\*\*([^*\n]+)\*\*/g, '$1')
-    .replace(/\*([^*\n]+)\*/g, '$1')
-    .replace(/^#{1,3} /gm, '')
-    .replace(/\[(\w+)\]([\s\S]+?)\[\/\1\]/g, '$2')
-    .replace(/\$\$([\s\S]+?)\$\$/g, '[math]')
-    .replace(/\$([^$\n]+)\$/g, '$1')
+    .split('\n')
+    .map(line => {
+      const t = line.trimStart()
+      if (t.startsWith('$$') && t.endsWith('$$') && t.length > 4) return '[math]'
+      return tokensToPlainText(tokenizeInline(line.replace(/^\s*#{1,3} /, '')))
+    })
+    .join('\n')
     .trim()
   return stripped || '[code block]'
-}
-
-// ── Inline tokenizer ──────────────────────────────────────────────────────────
-
-type InlineToken =
-  | { t: 'text';   s: string }
-  | { t: 'code';   s: string }
-  | { t: 'bold';   s: string }
-  | { t: 'italic'; s: string }
-  | { t: 'color';  color: string; s: string }
-  | { t: 'math';   s: string; display: boolean }
-
-// Order matters: code > display-math > inline-math > bold > italic > color
-const INLINE_SRC = /`([^`\n]+)`|\$\$([\s\S]+?)\$\$|\$([^$\n]+)\$|\*\*([^*\n]+)\*\*|\*([^*\n]+)\*|\[(\w+)\]([\s\S]+?)\[\/\6\]/g
-
-function tokenizeInline(text: string): InlineToken[] {
-  const tokens: InlineToken[] = []
-  const re = new RegExp(INLINE_SRC.source, 'g')
-  let last = 0
-  let m: RegExpExecArray | null
-  while ((m = re.exec(text)) !== null) {
-    if (m.index > last) tokens.push({ t: 'text', s: text.slice(last, m.index) })
-    if      (m[1] !== undefined) tokens.push({ t: 'code',   s: m[1] })
-    else if (m[2] !== undefined) tokens.push({ t: 'math',   s: m[2], display: true  })
-    else if (m[3] !== undefined) tokens.push({ t: 'math',   s: m[3], display: false })
-    else if (m[4] !== undefined) tokens.push({ t: 'bold',   s: m[4] })
-    else if (m[5] !== undefined) tokens.push({ t: 'italic', s: m[5] })
-    else if (m[6] !== undefined) tokens.push({ t: 'color',  color: m[6], s: m[7] })
-    last = m.index + m[0].length
-  }
-  if (last < text.length) tokens.push({ t: 'text', s: text.slice(last) })
-  return tokens
 }
 
 export function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
-function renderMath(expr: string, display: boolean): string {
+export function renderMath(expr: string, display: boolean): string {
   try {
     return katex.renderToString(expr.trim(), { throwOnError: false, displayMode: display, output: 'html' })
   } catch {
@@ -163,7 +133,11 @@ type MathClickHandler = (expr: string, display: boolean, rect: DOMRect) => void
 
 function renderInline(text: string, onMathClick?: MathClickHandler): ReactNode {
   const tokens = tokenizeInline(text)
-  if (tokens.length === 1 && tokens[0].t === 'text') return text
+  if (tokens.length === 1 && tokens[0].t === 'text') return tokens[0].s
+  return renderTokens(tokens, onMathClick)
+}
+
+function renderTokens(tokens: InlineToken[], onMathClick?: MathClickHandler): ReactNode {
   return (
     <>
       {tokens.map((tok, i) => {
@@ -171,11 +145,11 @@ function renderInline(text: string, onMathClick?: MathClickHandler): ReactNode {
           case 'code':
             return <code key={i} className="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-1.5 py-0.5 rounded text-[0.85em] font-mono">{tok.s}</code>
           case 'bold':
-            return <strong key={i} className="font-semibold">{tok.s}</strong>
+            return <strong key={i} className="font-semibold">{renderTokens(tok.children, onMathClick)}</strong>
           case 'italic':
-            return <em key={i} className="italic">{tok.s}</em>
+            return <em key={i} className="italic">{renderTokens(tok.children, onMathClick)}</em>
           case 'color':
-            return <span key={i} className={COLOR_CLASSES[tok.color] ?? ''}>{tok.s}</span>
+            return <span key={i} className={COLOR_CLASSES[tok.color] ?? ''}>{renderTokens(tok.children, onMathClick)}</span>
           case 'math': {
             const cls = tok.display ? 'block overflow-x-auto py-1 text-center' : 'inline-block align-middle'
             return (
@@ -281,7 +255,7 @@ function CodeBlock({ code, lang, readOnly, onLangChange }: {
           {langControl()}
           <button
             type="button"
-            onClick={() => setFullscreen(true)}
+            onClick={e => { e.stopPropagation(); setFullscreen(true) }}
             className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors flex-shrink-0 p-0.5 rounded"
             title="Expand"
           >
@@ -298,10 +272,15 @@ function CodeBlock({ code, lang, readOnly, onLangChange }: {
         </pre>
       </div>
 
-      {fullscreen && (
+      {/* Portal escapes transformed ancestors (card flip animations) that would trap position:fixed.
+          React events still bubble through portals, so stop them before they reach a card's flip handler. */}
+      {fullscreen && createPortal(
         <div
           className="fixed inset-0 z-[200] bg-black/80 flex items-center justify-center p-4"
-          onClick={() => setFullscreen(false)}
+          onClick={e => { e.stopPropagation(); setFullscreen(false) }}
+          onPointerDown={e => e.stopPropagation()}
+          onPointerMove={e => e.stopPropagation()}
+          onPointerUp={e => e.stopPropagation()}
         >
           <div
             className="bg-gray-50 dark:bg-gray-900 rounded-xl overflow-hidden w-full max-w-4xl max-h-[90vh] flex flex-col"
@@ -311,7 +290,7 @@ function CodeBlock({ code, lang, readOnly, onLangChange }: {
               {langControl(true)}
               <button
                 type="button"
-                onClick={() => setFullscreen(false)}
+                onClick={e => { e.stopPropagation(); setFullscreen(false) }}
                 className="text-gray-400 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors flex-shrink-0 p-1 rounded"
                 title="Close"
               >
@@ -327,7 +306,8 @@ function CodeBlock({ code, lang, readOnly, onLangChange }: {
               />
             </pre>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   )

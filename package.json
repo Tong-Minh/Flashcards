@@ -9,6 +9,11 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",
+    "@tiptap/extension-document": "^3.31.4",
+    "@tiptap/extensions": "^3.31.4",
+    "@tiptap/pm": "^3.31.4",
+    "@tiptap/react": "^3.31.4",
+    "@tiptap/starter-kit": "^3.31.4",
     "@types/prismjs": "^1.26.6",
     "katex": "^0.18.9",
     "next": "^15.3.4",

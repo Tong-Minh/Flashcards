@@ -4,7 +4,10 @@ import { useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase/client'
+import { MAX_CARDS_PER_SET } from '@/lib/fetchAll'
 import type { CardType } from '@/lib/types'
+
+const INSERT_CHUNK = 500
 
 interface ParsedCard {
   question: string
@@ -135,6 +138,21 @@ export default function ImportCards() {
     setError('')
     setImporting(true)
 
+    const { count } = await supabase
+      .from('flashcards')
+      .select('id', { count: 'exact', head: true })
+      .eq('set_id', setId)
+    const room = MAX_CARDS_PER_SET - (count ?? 0)
+    if (preview.length > room) {
+      setError(
+        room <= 0
+          ? `This set already has the maximum of ${MAX_CARDS_PER_SET.toLocaleString()} cards.`
+          : `Sets can hold up to ${MAX_CARDS_PER_SET.toLocaleString()} cards. This set has room for ${room.toLocaleString()} more, but you're importing ${preview.length.toLocaleString()}.`
+      )
+      setImporting(false)
+      return
+    }
+
     const rows = preview.map((c) => ({
       set_id: setId,
       question: c.question,
@@ -143,11 +161,16 @@ export default function ImportCards() {
       type: c.type,
     }))
 
-    const { error: err } = await supabase.from('flashcards').insert(rows)
-    if (err) {
-      setError('Import failed. Please try again.')
-      setImporting(false)
-      return
+    // Insert in chunks to keep request bodies reasonable for large imports
+    for (let i = 0; i < rows.length; i += INSERT_CHUNK) {
+      const { error: err } = await supabase.from('flashcards').insert(rows.slice(i, i + INSERT_CHUNK))
+      if (err) {
+        setError(i === 0
+          ? 'Import failed. Please try again.'
+          : `Import stopped partway — ${i} of ${rows.length} cards were added. Please try the rest again.`)
+        setImporting(false)
+        return
+      }
     }
 
     router.push(`/sets/${setId}`)

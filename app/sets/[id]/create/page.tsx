@@ -4,8 +4,8 @@ import { useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase/client'
-import { RichTextarea } from '@/components/RichTextarea'
 import { BlockEditor } from '@/components/BlockEditor'
+import { MAX_CARDS_PER_SET } from '@/lib/fetchAll'
 import type { CardType } from '@/lib/types'
 
 const TYPE_LABELS: Record<CardType, string> = {
@@ -45,6 +45,16 @@ export default function CreateCard() {
     }
 
     setSaving(true)
+
+    const { count } = await supabase
+      .from('flashcards')
+      .select('id', { count: 'exact', head: true })
+      .eq('set_id', setId)
+    if ((count ?? 0) >= MAX_CARDS_PER_SET) {
+      setError(`This set already has the maximum of ${MAX_CARDS_PER_SET.toLocaleString()} cards.`)
+      setSaving(false)
+      return
+    }
 
     const cardAnswer =
       type === 'multiple_choice' ? options[correctIndex!].trim() : answer.trim()
@@ -146,12 +156,12 @@ export default function CreateCard() {
                       </svg>
                     )}
                   </button>
-                  <RichTextarea
+                  <BlockEditor
+                    singleLine
                     value={opt}
                     onChange={(val) => updateOption(i, val)}
-                    rows={1}
                     placeholder={`Option ${String.fromCharCode(65 + i)}`}
-                    className="flex-1 border border-gray-300 dark:border-gray-600 rounded-xl px-4 py-3 text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
+                    className="flex-1 min-w-0"
                     hideHint
                   />
                 </div>

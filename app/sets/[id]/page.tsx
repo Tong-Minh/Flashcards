@@ -9,10 +9,16 @@ import {
   cacheCards, getCachedCards, getCachedSets,
   cacheSessions, getCachedSessions,
   getSetSettings, saveSetSettings,
-  resetTodayNewCount,
+  resetTodayNewCount, clearSavedSession,
+  getCachedCollections, cacheSets,
 } from '@/lib/storage'
+import { fetchAllRows, MAX_CARDS_PER_SET } from '@/lib/fetchAll'
 import { previewText, ContentRenderer, hasFormattedContent } from '@/components/ContentRenderer'
-import type { FlashcardSet, FlashcardWithProgress, StudySession } from '@/lib/types'
+import { CardPreviewModal } from '@/components/CardPreview'
+import { TagInput, TagList } from '@/components/TagInput'
+import type { Collection, FlashcardSet, FlashcardWithProgress, StudySession } from '@/lib/types'
+
+const PAGE_SIZE = 50
 
 const STATUS_STYLES: Record<string, { label: string; className: string }> = {
   new:          { label: 'New',      className: 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300'     },
@@ -60,6 +66,10 @@ export default function SetDetail() {
   const [tab,      setTab]      = useState<'cards' | 'history'>('cards')
   const [forking,     setForking]     = useState(false)
   const [showMoreMenu, setShowMoreMenu] = useState(false)
+  const [page,         setPage]         = useState(0)
+  const [previewCard,  setPreviewCard]  = useState<FlashcardWithProgress | null>(null)
+  const [collections,  setCollections]  = useState<Collection[]>([])
+  const cardsTopRef = useRef<HTMLDivElement>(null)
 
   // Settings sheet
   const [showSettings,      setShowSettings]      = useState(false)
@@ -67,6 +77,8 @@ export default function SetDetail() {
   const [descInput,         setDescInput]         = useState('')
   const [isPublicInput,     setIsPublicInput]     = useState(true)
   const [dailyLimitInput,   setDailyLimitInput]   = useState(20)
+  const [tagsInput,         setTagsInput]         = useState<string[]>([])
+  const [collectionInput,   setCollectionInput]   = useState('')
   const nameRef = useRef<HTMLInputElement>(null)
 
   const isOwner = !!currentUser && !!set && set.user_id === currentUser.id
@@ -85,35 +97,40 @@ export default function SetDetail() {
         setNameInput(cachedSet.name)
         setDescInput(cachedSet.description ?? '')
         setIsPublicInput(cachedSet.is_public ?? false)
+        setTagsInput(cachedSet.tags ?? [])
+        setCollectionInput(cachedSet.collection_id ?? '')
       }
       if (cachedCards.length > 0) setCards(cachedCards)
       if (cachedSess.length  > 0) setSessions(cachedSess)
       setLoading(false)
     }
 
+    setCollections(getCachedCollections())
     const settings = getSetSettings(id)
     setDailyLimitInput(settings.dailyNewLimit)
 
     if (!navigator.onLine) { setLoading(false); return }
 
-    const [setRes, cardsRes, sessionsRes] = await Promise.all([
+    const [setRes, rawCards, sessionsRes, collectionsRes] = await Promise.all([
       supabase.from('sets').select('*').eq('id', id).single(),
-      supabase
+      fetchAllRows<FlashcardWithProgress>(() => supabase
         .from('flashcards')
         .select('*, progress:card_progress(*)')
         .eq('set_id', id)
         .order('position', { ascending: true, nullsFirst: false })
-        .order('created_at', { ascending: true }),
+        .order('created_at', { ascending: true })
+        .order('id', { ascending: true }), MAX_CARDS_PER_SET),
       supabase
         .from('study_sessions')
         .select('*')
         .eq('set_id', id)
         .order('completed_at', { ascending: false }),
+      supabase.from('collections').select('*').order('name'),
     ])
 
     if (!setRes.data) { router.push('/'); return }
 
-    const freshCards = (cardsRes.data ?? []).map((c) => ({
+    const freshCards = rawCards.map((c) => ({
       ...c,
       progress: Array.isArray(c.progress) ? (c.progress[0] ?? null) : c.progress,
     }))
@@ -123,6 +140,9 @@ export default function SetDetail() {
     setNameInput(setRes.data.name)
     setDescInput(setRes.data.description ?? '')
     setIsPublicInput(setRes.data.is_public ?? false)
+    setTagsInput(setRes.data.tags ?? [])
+    setCollectionInput(setRes.data.collection_id ?? '')
+    if (collectionsRes.data) setCollections(collectionsRes.data)
     setCards(freshCards)
     setSessions(freshSessions)
     cacheCards(id, freshCards)
@@ -134,12 +154,17 @@ export default function SetDetail() {
     const trimmedName = nameInput.trim()
     const trimmedDesc = descInput.trim()
     if (!trimmedName) return
-    await supabase.from('sets').update({
+    const patch = {
       name: trimmedName,
       description: trimmedDesc || null,
       is_public: isPublicInput,
-    }).eq('id', id)
-    setSet(s => s ? { ...s, name: trimmedName, description: trimmedDesc || null, is_public: isPublicInput } : s)
+      tags: tagsInput,
+      collection_id: collectionInput || null,
+    }
+    const { error } = await supabase.from('sets').update(patch).eq('id', id)
+    if (error) return
+    setSet(s => s ? { ...s, ...patch } : s)
+    cacheSets(getCachedSets().map(s => (s.id === id ? { ...s, ...patch } : s)))
     setShowSettings(false)
   }
 
@@ -161,14 +186,28 @@ export default function SetDetail() {
 
   async function resetProgress() {
     if (!confirm('Reset all FSRS progress for this set? Cards will return to New state.')) return
+    // Chunked so the id list in the query string stays well under URL length limits
     const cardIds = cards.map(c => c.id)
-    if (cardIds.length > 0) {
-      await supabase.from('card_progress').delete().in('card_id', cardIds)
+    for (let i = 0; i < cardIds.length; i += 200) {
+      await supabase.from('card_progress').delete().in('card_id', cardIds.slice(i, i + 200))
     }
     resetTodayNewCount(id)
     const reset = cards.map(c => ({ ...c, progress: null }))
     setCards(reset)
     cacheCards(id, reset)
+    setShowSettings(false)
+  }
+
+  async function clearAllCards() {
+    if (!confirm(`Delete all ${cards.length} cards in "${set?.name}"? The set, its settings, and its study history are kept. This can't be undone.`)) return
+    // card_progress rows cascade-delete with their cards
+    const { error } = await supabase.from('flashcards').delete().eq('set_id', id)
+    if (error) { alert('Failed to clear cards. Please try again.'); return }
+    resetTodayNewCount(id)
+    clearSavedSession(id)
+    setCards([])
+    cacheCards(id, [])
+    setPage(0)
     setShowSettings(false)
   }
 
@@ -181,12 +220,15 @@ export default function SetDetail() {
   async function reorderCard(index: number, dir: 'up' | 'down') {
     const other = dir === 'up' ? index - 1 : index + 1
     if (other < 0 || other >= cards.length) return
-    const newCards = [...cards]
-    ;[newCards[index], newCards[other]] = [newCards[other], newCards[index]]
+    const swapped = [...cards]
+    ;[swapped[index], swapped[other]] = [swapped[other], swapped[index]]
+    // Only write cards whose position actually changed (after the first reorder that's just the swapped pair)
+    const changed = swapped.flatMap((c, i) => (c.position !== i ? [{ id: c.id, position: i }] : []))
+    const newCards = swapped.map((c, i) => ({ ...c, position: i }))
     setCards(newCards)
     cacheCards(id, newCards)
     await Promise.all(
-      newCards.map((c, i) => supabase.from('flashcards').update({ position: i }).eq('id', c.id))
+      changed.map(c => supabase.from('flashcards').update({ position: c.position }).eq('id', c.id))
     )
   }
 
@@ -203,6 +245,20 @@ export default function SetDetail() {
     return new Date(p.due ?? now) <= now
   }).length
 
+  const setCollection = set?.collection_id ? collections.find(c => c.id === set.collection_id) ?? null : null
+  const atCardLimit   = cards.length >= MAX_CARDS_PER_SET
+  const pageCount     = Math.max(1, Math.ceil(cards.length / PAGE_SIZE))
+  const safePage      = Math.min(page, pageCount - 1)
+  const pageStart     = safePage * PAGE_SIZE
+  const pageCards     = cards.slice(pageStart, pageStart + PAGE_SIZE)
+
+  function closePreview() { setPreviewCard(null) }
+
+  function goToPage(p: number) {
+    setPage(p)
+    cardsTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
   const lastStudied  = sessions[0]?.completed_at ?? null
   const totalSessions = sessions.length
   const avgCorrect   =
@@ -217,8 +273,13 @@ export default function SetDetail() {
     <div className="max-w-lg mx-auto px-4 py-6">
       {/* Header */}
       <div className="flex items-start gap-3 mb-4">
-        <Link href="/" className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 text-xl transition-colors flex-shrink-0 mt-1">←</Link>
+        <Link href={setCollection ? `/collections/${setCollection.id}` : '/'} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 text-xl transition-colors flex-shrink-0 mt-1">←</Link>
         <div className="flex-1 min-w-0">
+          {setCollection && (
+            <Link href={`/collections/${setCollection.id}`} className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wide hover:underline">
+              {setCollection.name}
+            </Link>
+          )}
           <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 leading-tight">{set?.name}</h1>
             {set && !set.is_public && (
@@ -230,6 +291,7 @@ export default function SetDetail() {
           {set?.description && (
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{set.description}</p>
           )}
+          <TagList tags={set?.tags} className="mt-2" />
         </div>
         {isOwner && (
           <button
@@ -351,11 +413,14 @@ export default function SetDetail() {
       {/* ── Cards tab ─────────────────────────────────────────────────────── */}
       {tab === 'cards' && (
         <>
-          <div className="flex items-center justify-between mb-3">
+          <div ref={cardsTopRef} className="flex items-center justify-between mb-3 scroll-mt-4">
             <h2 className="font-semibold text-gray-900 dark:text-gray-100">
               {cards.length} card{cards.length !== 1 ? 's' : ''}
             </h2>
-            {isOwner && (
+            {isOwner && atCardLimit && (
+              <span className="text-xs text-gray-400 dark:text-gray-500">Limit of {MAX_CARDS_PER_SET.toLocaleString()} reached</span>
+            )}
+            {isOwner && !atCardLimit && (
               <div className="flex items-center gap-2">
                 <Link
                   href={`/sets/${id}/import`}
@@ -380,11 +445,20 @@ export default function SetDetail() {
             </div>
           ) : (
             <div className="space-y-2">
-              {cards.map((card, idx) => {
+              {pageCards.map((card, pageIdx) => {
+                const idx    = pageStart + pageIdx
                 const status = card.progress?.status ?? 'new'
                 const badge  = STATUS_STYLES[status]
                 return (
-                  <div key={card.id} className="bg-white dark:bg-gray-800 rounded-xl p-3.5 shadow-sm border border-gray-100 dark:border-gray-700">
+                  <div
+                    key={card.id}
+                    onClick={e => {
+                      // Edit / reorder controls and links inside content keep their own behavior
+                      if ((e.target as HTMLElement).closest('a, button')) return
+                      setPreviewCard(card)
+                    }}
+                    className="bg-white dark:bg-gray-800 rounded-xl p-3.5 shadow-sm border border-gray-100 dark:border-gray-700 cursor-pointer hover:border-indigo-200 dark:hover:border-indigo-800 transition-colors"
+                  >
                     <div className="flex items-start gap-3">
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
@@ -459,8 +533,41 @@ export default function SetDetail() {
               })}
             </div>
           )}
+
+          {pageCount > 1 && (
+            <div className="flex items-center justify-between gap-3 mt-4">
+              <button
+                onClick={() => goToPage(safePage - 1)}
+                disabled={safePage === 0}
+                className="px-4 py-2 text-sm font-medium rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >
+                ← Prev
+              </button>
+              <select
+                value={safePage}
+                onChange={e => goToPage(Number(e.target.value))}
+                className="text-sm text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 outline-none"
+                aria-label="Page"
+              >
+                {Array.from({ length: pageCount }, (_, i) => (
+                  <option key={i} value={i}>
+                    {i * PAGE_SIZE + 1}–{Math.min((i + 1) * PAGE_SIZE, cards.length)} of {cards.length}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={() => goToPage(safePage + 1)}
+                disabled={safePage >= pageCount - 1}
+                className="px-4 py-2 text-sm font-medium rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >
+                Next →
+              </button>
+            </div>
+          )}
         </>
       )}
+
+      {previewCard && <CardPreviewModal card={previewCard} onClose={closePreview} />}
 
       {/* ── History tab ───────────────────────────────────────────────────── */}
       {tab === 'history' && (
@@ -513,7 +620,7 @@ export default function SetDetail() {
             onClick={() => setShowSettings(false)}
           />
           <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-            <div className="w-full max-w-sm bg-white dark:bg-gray-800 rounded-2xl shadow-xl">
+            <div className="w-full max-w-sm max-h-[90vh] overflow-y-auto bg-white dark:bg-gray-800 rounded-2xl shadow-xl">
             <div className="px-5 pt-5 pb-6">
               <div className="flex items-center justify-between mb-5">
                 <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Settings</h2>
@@ -545,6 +652,25 @@ export default function SetDetail() {
                     rows={2}
                     placeholder="Optional"
                     className="w-full border border-gray-300 dark:border-gray-600 rounded-xl px-3 py-2 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 bg-white dark:bg-gray-700 outline-none focus:border-indigo-500 resize-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Collection</label>
+                  <select
+                    value={collectionInput}
+                    onChange={e => setCollectionInput(e.target.value)}
+                    className="w-full border border-gray-300 dark:border-gray-600 rounded-xl px-3 py-2 text-sm text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-700 outline-none focus:border-indigo-500"
+                  >
+                    <option value="">None</option>
+                    {collections.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Tags</label>
+                  <TagInput
+                    value={tagsInput}
+                    onChange={setTagsInput}
+                    suggestions={Array.from(new Set(getCachedSets().flatMap(s => s.tags ?? []))).sort()}
                   />
                 </div>
                 <button
@@ -598,6 +724,13 @@ export default function SetDetail() {
                   className="w-full py-3 rounded-xl border border-orange-200 dark:border-orange-800 text-orange-600 dark:text-orange-400 text-sm font-semibold hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-colors"
                 >
                   Reset all progress
+                </button>
+                <button
+                  onClick={clearAllCards}
+                  disabled={cards.length === 0}
+                  className="w-full py-3 rounded-xl border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm font-semibold hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Clear all cards
                 </button>
                 <button
                   onClick={deleteSet}

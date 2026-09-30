@@ -9,6 +9,17 @@ export interface FlashcardSet {
   created_at: string
   user_id: string | null
   is_public: boolean
+  tags: string[]
+  collection_id: string | null
+}
+
+export interface Collection {
+  id: string
+  name: string
+  description: string | null
+  tags: string[]
+  user_id: string | null
+  created_at: string
 }
 
 export interface Profile {

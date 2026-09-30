@@ -1,13 +1,15 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase/client'
 import { useUser } from '@/components/AuthGuard'
 import { useDarkMode } from '@/components/ThemeProvider'
-import { cacheSets, getCachedSets } from '@/lib/storage'
+import { getCachedSets, getCachedCollections } from '@/lib/storage'
+import { loadSetsAndCollections, type SetWithStats } from '@/lib/sets'
+import { SetCard, CollectionCard } from '@/components/SetCard'
 import FriendsTab from '@/components/FriendsTab'
-import type { FlashcardSet } from '@/lib/types'
+import type { Collection } from '@/lib/types'
 
 async function signOut() {
   await supabase.auth.signOut()
@@ -15,93 +17,58 @@ async function signOut() {
 
 type Tab = 'mine' | 'friends'
 
-interface SetWithStats extends FlashcardSet {
-  totalCards: number
-  toStudy: number
-  lastStudied: string | null
-  totalSessions: number
-}
-
-function timeAgo(iso: string | null): string {
-  if (!iso) return 'Never'
-  const date = new Date(iso)
-  const diff = Date.now() - date.getTime()
-  const days = Math.floor(diff / 86400000)
-  if (days === 0) {
-    const h = date.getHours() % 12 || 12
-    const m = date.getMinutes().toString().padStart(2, '0')
-    const ampm = date.getHours() >= 12 ? 'pm' : 'am'
-    return `Today ${h}:${m}${ampm}`
-  }
-  if (days === 1) return 'Yesterday'
-  if (days < 7) return `${days}d ago`
-  if (days < 30) return `${Math.floor(days / 7)}w ago`
-  return `${Math.floor(days / 30)}mo ago`
-}
-
 export default function Home() {
   const currentUser = useUser()
   const { theme, toggle } = useDarkMode()
-  const [tab,     setTab]     = useState<Tab>('mine')
-  const [sets,    setSets]    = useState<SetWithStats[]>([])
-  const [loading, setLoading] = useState(true)
+  const [tab,         setTab]         = useState<Tab>('mine')
+  const [sets,        setSets]        = useState<SetWithStats[]>([])
+  const [collections, setCollections] = useState<Collection[]>([])
+  const [loading,     setLoading]     = useState(true)
+  const [showNewMenu, setShowNewMenu] = useState(false)
+  const [activeTag,   setActiveTag]   = useState<string | null>(null)
 
   useEffect(() => {
     const cached = getCachedSets()
     if (cached.length > 0) {
       setSets(cached as SetWithStats[])
+      setCollections(getCachedCollections())
       setLoading(false)
     }
     loadSets()
   }, [])
 
   async function loadSets() {
-    if (!navigator.onLine) { setLoading(false); return }
-    const [setsRes, cardsRes, progressRes, sessionsRes] = await Promise.all([
-      supabase.from('sets').select('*').eq('user_id', currentUser?.id ?? '').order('created_at', { ascending: false }),
-      supabase.from('flashcards').select('id, set_id'),
-      supabase.from('card_progress').select('card_id, status'),
-      supabase
-        .from('study_sessions')
-        .select('set_id, completed_at')
-        .order('completed_at', { ascending: false }),
-    ])
-
-    const cards    = cardsRes.data ?? []
-    const progress = progressRes.data ?? []
-    const sessions = sessionsRes.data ?? []
-
-    const masteredIds = new Set(progress.filter((p) => p.status === 'mastered').map((p) => p.card_id))
-
-    const lastStudiedBySet: Record<string, string>  = {}
-    const sessionCountBySet: Record<string, number> = {}
-    for (const s of sessions) {
-      if (!lastStudiedBySet[s.set_id]) lastStudiedBySet[s.set_id] = s.completed_at
-      sessionCountBySet[s.set_id] = (sessionCountBySet[s.set_id] ?? 0) + 1
+    if (!navigator.onLine || !currentUser) { setLoading(false); return }
+    try {
+      const fresh = await loadSetsAndCollections(currentUser.id)
+      setSets(fresh.sets)
+      setCollections(fresh.collections)
+    } catch (err) {
+      console.error('Failed to refresh sets', err)
+    } finally {
+      setLoading(false)
     }
-
-    const statsMap = cards.reduce(
-      (acc, c) => {
-        if (!c.set_id) return acc
-        if (!acc[c.set_id]) acc[c.set_id] = { total: 0, mastered: 0 }
-        acc[c.set_id].total++
-        if (masteredIds.has(c.id)) acc[c.set_id].mastered++
-        return acc
-      },
-      {} as Record<string, { total: number; mastered: number }>
-    )
-
-    const processed = (setsRes.data ?? []).map((s) => ({
-      ...s,
-      totalCards:    statsMap[s.id]?.total    ?? 0,
-      toStudy:       (statsMap[s.id]?.total ?? 0) - (statsMap[s.id]?.mastered ?? 0),
-      lastStudied:   lastStudiedBySet[s.id]   ?? null,
-      totalSessions: sessionCountBySet[s.id]  ?? 0,
-    }))
-    setSets(processed)
-    cacheSets(processed)
-    setLoading(false)
   }
+
+  const allTags = useMemo(() => {
+    const tags = new Set<string>()
+    for (const s of sets) for (const t of s.tags ?? []) tags.add(t)
+    for (const c of collections) for (const t of c.tags ?? []) tags.add(t)
+    return [...tags].sort()
+  }, [sets, collections])
+
+  const setsByCollection = useMemo(() => {
+    const map: Record<string, SetWithStats[]> = {}
+    for (const s of sets) if (s.collection_id) (map[s.collection_id] ??= []).push(s)
+    return map
+  }, [sets])
+
+  const collectionIds = new Set(collections.map(c => c.id))
+  // With a tag filter, show every matching set (even ones inside collections); otherwise only ungrouped sets.
+  const visibleCollections = activeTag ? collections.filter(c => c.tags?.includes(activeTag)) : collections
+  const visibleSets = activeTag
+    ? sets.filter(s => s.tags?.includes(activeTag))
+    : sets.filter(s => !s.collection_id || !collectionIds.has(s.collection_id))
 
   const TAB_LABELS: Record<Tab, string> = {
     mine:    'My Sets',
@@ -115,12 +82,29 @@ export default function Home() {
         <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Flashcards</h1>
         <div className="flex items-center gap-2">
           {tab === 'mine' && (
-            <Link
-              href="/sets/new"
-              className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 active:bg-indigo-800 transition-colors"
-            >
-              + New Set
-            </Link>
+            <div className="relative">
+              <button
+                onClick={() => setShowNewMenu(v => !v)}
+                className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 active:bg-indigo-800 transition-colors"
+              >
+                + New
+              </button>
+              {showNewMenu && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setShowNewMenu(false)} />
+                  <div className="absolute right-0 top-full mt-2 z-20 w-56 bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-100 dark:border-gray-700 py-1 overflow-hidden">
+                    <Link href="/sets/new" className="block px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                      <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">New set</p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">A deck of cards to study</p>
+                    </Link>
+                    <Link href="/collections/new" className="block px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                      <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">New collection</p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">A folder to group sets together</p>
+                    </Link>
+                  </div>
+                </>
+              )}
+            </div>
           )}
           <button
             onClick={toggle}
@@ -171,76 +155,62 @@ export default function Home() {
       {tab === 'mine' && (
         loading ? (
           <div className="text-center text-gray-400 dark:text-gray-500 py-16">Loading...</div>
-        ) : sets.length === 0 ? (
+        ) : sets.length === 0 && collections.length === 0 ? (
           <div className="text-center text-gray-400 dark:text-gray-500 py-16">
             <p className="text-4xl mb-3">📚</p>
             <p className="font-medium text-gray-500 dark:text-gray-400 mb-1">No sets yet</p>
             <p className="text-sm">Create a set to start studying</p>
           </div>
         ) : (
-          <div className="space-y-3">
-            {sets.map((set) => (
-              <div key={set.id} className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
-                <Link href={`/sets/${set.id}`} className="block p-4">
-                  <div className="flex items-start justify-between gap-2 mb-3">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h2 className="font-semibold text-gray-900 dark:text-gray-100 text-base leading-snug">{set.name}</h2>
-                        {!set.is_public && (
-                          <span className="text-xs text-gray-400 bg-gray-100 dark:bg-gray-700 dark:text-gray-400 px-1.5 py-0.5 rounded-full">Private</span>
-                        )}
-                      </div>
-                      {set.description && (
-                        <p className="text-sm text-gray-400 dark:text-gray-500 mt-0.5 line-clamp-1">{set.description}</p>
-                      )}
-                    </div>
-                    {set.toStudy > 0 && (
-                      <span className="flex-shrink-0 bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 text-xs font-semibold px-2.5 py-1 rounded-full">
-                        {set.toStudy} to study
-                      </span>
-                    )}
-                    {set.toStudy === 0 && set.totalCards > 0 && (
-                      <span className="flex-shrink-0 bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 text-xs font-semibold px-2.5 py-1 rounded-full">
-                        Mastered
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-4 text-xs text-gray-400 dark:text-gray-500">
-                    <span>{set.totalCards} card{set.totalCards !== 1 ? 's' : ''}</span>
-                    <span>{set.totalSessions} session{set.totalSessions !== 1 ? 's' : ''}</span>
-                    <span>Last: {timeAgo(set.lastStudied)}</span>
-                  </div>
-
-                  {set.totalCards > 0 && (
-                    <div className="mt-3 h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-green-400 rounded-full transition-all"
-                        style={{
-                          width: `${Math.round(((set.totalCards - set.toStudy) / set.totalCards) * 100)}%`,
-                        }}
-                      />
-                    </div>
-                  )}
-                </Link>
-
-                <div className="flex border-t border-gray-100 dark:border-gray-700">
-                  <Link
-                    href={`/sets/${set.id}/study`}
-                    className="flex-1 text-center py-3 text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors"
+          <>
+            {/* Tag filter */}
+            {allTags.length > 0 && (
+              <div className="flex gap-1.5 overflow-x-auto pb-1 mb-4 -mx-4 px-4">
+                {[null, ...allTags].map(t => (
+                  <button
+                    key={t ?? '__all'}
+                    onClick={() => setActiveTag(t)}
+                    className={`flex-shrink-0 text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${
+                      activeTag === t
+                        ? 'bg-indigo-600 border-indigo-600 text-white'
+                        : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700'
+                    }`}
                   >
-                    Study
-                  </Link>
-                  <Link
-                    href={`/sets/${set.id}`}
-                    className="flex-1 text-center py-3 text-sm font-medium text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
-                  >
-                    Manage
-                  </Link>
-                </div>
+                    {t === null ? 'All' : `#${t}`}
+                  </button>
+                ))}
               </div>
-            ))}
-          </div>
+            )}
+
+            {visibleCollections.length > 0 && (
+              <div className="space-y-3 mb-5">
+                {visibleCollections.map(c => (
+                  <CollectionCard
+                    key={c.id}
+                    id={c.id}
+                    name={c.name}
+                    description={c.description}
+                    tags={c.tags ?? []}
+                    sets={setsByCollection[c.id] ?? []}
+                  />
+                ))}
+              </div>
+            )}
+
+            {visibleCollections.length > 0 && visibleSets.length > 0 && (
+              <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-3">
+                {activeTag ? 'Sets' : 'Ungrouped sets'}
+              </p>
+            )}
+
+            <div className="space-y-3">
+              {visibleSets.map(set => <SetCard key={set.id} set={set} />)}
+            </div>
+
+            {activeTag && visibleSets.length === 0 && visibleCollections.length === 0 && (
+              <p className="text-center text-sm text-gray-400 dark:text-gray-500 py-10">Nothing tagged #{activeTag}</p>
+            )}
+          </>
         )
       )}
 

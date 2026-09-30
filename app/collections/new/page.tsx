@@ -1,0 +1,99 @@
+'use client'
+
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+import { supabase } from '@/lib/supabase/client'
+import { getCachedSets, getCachedCollections } from '@/lib/storage'
+import { TagInput } from '@/components/TagInput'
+
+export default function NewCollection() {
+  const router = useRouter()
+  const [name,        setName]        = useState('')
+  const [description, setDescription] = useState('')
+  const [tags,        setTags]        = useState<string[]>([])
+  const [saving,      setSaving]      = useState(false)
+  const [error,       setError]       = useState('')
+
+  const tagSuggestions = Array.from(new Set([
+    ...getCachedSets().flatMap(s => s.tags ?? []),
+    ...getCachedCollections().flatMap(c => c.tags ?? []),
+  ])).sort()
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!name.trim()) return setError('Please enter a collection name.')
+    setSaving(true)
+
+    const { data, error: err } = await supabase
+      .from('collections')
+      .insert({ name: name.trim(), description: description.trim() || null, tags })
+      .select()
+      .single()
+
+    if (err || !data) {
+      setError('Failed to create collection. Please try again.')
+      setSaving(false)
+      return
+    }
+
+    router.push(`/collections/${data.id}`)
+  }
+
+  return (
+    <div className="max-w-lg mx-auto px-4 py-6">
+      <div className="flex items-center gap-3 mb-6">
+        <Link href="/" className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 text-xl transition-colors">
+          ←
+        </Link>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">New Collection</h1>
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Collection name</label>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Biology 101"
+            autoFocus
+            className="w-full border border-gray-300 dark:border-gray-600 rounded-xl px-4 py-3 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+            Description <span className="text-gray-400 dark:text-gray-500 font-normal">(optional)</span>
+          </label>
+          <input
+            type="text"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="What sets go in here?"
+            className="w-full border border-gray-300 dark:border-gray-600 rounded-xl px-4 py-3 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+            Tags <span className="text-gray-400 dark:text-gray-500 font-normal">(optional)</span>
+          </label>
+          <TagInput value={tags} onChange={setTags} suggestions={tagSuggestions} />
+        </div>
+
+        {error && (
+          <p className="text-red-500 dark:text-red-400 text-sm bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg px-4 py-3">{error}</p>
+        )}
+
+        <button
+          type="submit"
+          disabled={saving}
+          className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-semibold text-base hover:bg-indigo-700 active:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {saving ? 'Creating...' : 'Create Collection'}
+        </button>
+      </form>
+    </div>
+  )
+}

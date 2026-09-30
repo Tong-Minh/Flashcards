@@ -1,8 +1,9 @@
-import type { FlashcardWithProgress, CardProgress, CardStatus, FlashcardSet, StudySession } from './types'
+import type { FlashcardWithProgress, CardProgress, CardStatus, FlashcardSet, StudySession, Collection } from './types'
 
 const K = {
   cards:    (setId: string) => `fc_cards_${setId}`,
   sets:     'fc_sets_v2',   // bumped so old stat-less cache is ignored
+  collections: 'fc_collections_v1',
   sessions: (setId: string) => `fc_sessions_${setId}`,
   pending:  'fc_pending_v1',
   session:  (setId: string) => `fc_session_${setId}`,
@@ -19,6 +20,16 @@ export function getCachedSets(): (FlashcardSet & {
   totalCards: number; toStudy: number; lastStudied: string | null; totalSessions: number
 })[] {
   try { return JSON.parse(localStorage.getItem(K.sets) ?? '[]') } catch { return [] }
+}
+
+// ── Collections cache ─────────────────────────────────────────────────────────
+
+export function cacheCollections(collections: Collection[]) {
+  try { localStorage.setItem(K.collections, JSON.stringify(collections)) } catch {}
+}
+
+export function getCachedCollections(): Collection[] {
+  try { return JSON.parse(localStorage.getItem(K.collections) ?? '[]') } catch { return [] }
 }
 
 // ── Cards cache (per set, with progress) ─────────────────────────────────────

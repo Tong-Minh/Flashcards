@@ -1,0 +1,281 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useParams, useRouter } from 'next/navigation'
+import Link from 'next/link'
+import { supabase } from '@/lib/supabase/client'
+import { useUser } from '@/components/AuthGuard'
+import { getCachedSets, getCachedCollections, cacheSets, cacheCollections } from '@/lib/storage'
+import { loadSetsAndCollections, type SetWithStats } from '@/lib/sets'
+import { SetCard } from '@/components/SetCard'
+import { TagInput, TagList } from '@/components/TagInput'
+import type { Collection } from '@/lib/types'
+
+export default function CollectionDetail() {
+  const { id } = useParams<{ id: string }>()
+  const router = useRouter()
+  const currentUser = useUser()
+
+  const [collection,  setCollection]  = useState<Collection | null>(null)
+  const [allSets,     setAllSets]     = useState<SetWithStats[]>([])
+  const [loading,     setLoading]     = useState(true)
+  const [showPicker,  setShowPicker]  = useState(false)
+  const [busySetId,   setBusySetId]   = useState<string | null>(null)
+
+  // Settings modal
+  const [showSettings, setShowSettings] = useState(false)
+  const [nameInput,    setNameInput]    = useState('')
+  const [descInput,    setDescInput]    = useState('')
+  const [tagsInput,    setTagsInput]    = useState<string[]>([])
+
+  useEffect(() => { load() }, [id])
+
+  function apply(sets: SetWithStats[], collections: Collection[]) {
+    const c = collections.find(c => c.id === id) ?? null
+    setAllSets(sets)
+    setCollection(c)
+    if (c) {
+      setNameInput(c.name)
+      setDescInput(c.description ?? '')
+      setTagsInput(c.tags ?? [])
+    }
+    return c
+  }
+
+  async function load() {
+    const cachedSets = getCachedSets() as SetWithStats[]
+    if (apply(cachedSets, getCachedCollections())) setLoading(false)
+    if (!navigator.onLine || !currentUser) { setLoading(false); return }
+    const fresh = await loadSetsAndCollections(currentUser.id)
+    if (!apply(fresh.sets, fresh.collections)) { router.push('/'); return }
+    setLoading(false)
+  }
+
+  async function toggleMembership(set: SetWithStats) {
+    const next = set.collection_id === id ? null : id
+    setBusySetId(set.id)
+    const { error } = await supabase.from('sets').update({ collection_id: next }).eq('id', set.id)
+    setBusySetId(null)
+    if (error) return
+    const updated = allSets.map(s => (s.id === set.id ? { ...s, collection_id: next } : s))
+    setAllSets(updated)
+    cacheSets(updated)
+  }
+
+  async function saveInfo() {
+    const name = nameInput.trim()
+    if (!name || !collection) return
+    const patch = { name, description: descInput.trim() || null, tags: tagsInput }
+    const { error } = await supabase.from('collections').update(patch).eq('id', id)
+    if (error) return
+    const updated = { ...collection, ...patch }
+    setCollection(updated)
+    cacheCollections(getCachedCollections().map(c => (c.id === id ? updated : c)))
+    setShowSettings(false)
+  }
+
+  async function deleteCollection() {
+    if (!confirm(`Delete the collection "${collection?.name}"? The sets inside it will be kept and moved out.`)) return
+    await supabase.from('collections').delete().eq('id', id)
+    cacheCollections(getCachedCollections().filter(c => c.id !== id))
+    cacheSets(allSets.map(s => (s.collection_id === id ? { ...s, collection_id: null } : s)))
+    router.push('/')
+  }
+
+  if (loading && !collection) {
+    return <div className="max-w-lg mx-auto px-4 py-6 text-center text-gray-400 dark:text-gray-500 py-16">Loading…</div>
+  }
+
+  const sets       = allSets.filter(s => s.collection_id === id)
+  const totalCards = sets.reduce((n, s) => n + s.totalCards, 0)
+  const toStudy    = sets.reduce((n, s) => n + s.toStudy, 0)
+  const tagSuggestions = Array.from(new Set(allSets.flatMap(s => s.tags ?? []))).sort()
+
+  return (
+    <div className="max-w-lg mx-auto px-4 py-6">
+      {/* Header */}
+      <div className="flex items-start gap-3 mb-4">
+        <Link href="/" className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 text-xl transition-colors flex-shrink-0 mt-1">←</Link>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wide">Collection</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 leading-tight">{collection?.name}</h1>
+          {collection?.description && (
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{collection.description}</p>
+          )}
+          <TagList tags={collection?.tags} className="mt-2" />
+        </div>
+        <button
+          onClick={() => setShowSettings(true)}
+          className="flex-shrink-0 text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300 transition-colors p-1 mt-0.5"
+          aria-label="Settings"
+        >
+          <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+        </button>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-3 gap-2 mb-5">
+        {[
+          { value: sets.length, label: 'Sets'     },
+          { value: totalCards,  label: 'Cards'    },
+          { value: toStudy,     label: 'To study' },
+        ].map(({ value, label }) => (
+          <div key={label} className="bg-white dark:bg-gray-800 rounded-xl p-2.5 text-center shadow-sm border border-gray-100 dark:border-gray-700">
+            <div className="text-base font-bold text-gray-900 dark:text-gray-100">{value}</div>
+            <div className="text-xs text-gray-400 dark:text-gray-500">{label}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="font-semibold text-gray-900 dark:text-gray-100">Sets</h2>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowPicker(true)}
+            className="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-medium px-3 py-1.5"
+          >
+            Add existing
+          </button>
+          <Link
+            href={`/sets/new?collection=${id}`}
+            className="text-sm bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 font-medium transition-colors"
+          >
+            + New set
+          </Link>
+        </div>
+      </div>
+
+      {sets.length === 0 ? (
+        <div className="text-center text-gray-400 dark:text-gray-500 py-10 bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700">
+          <p className="mb-1">No sets in this collection</p>
+          <p className="text-sm">Create a new set or add existing ones</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {sets.map(set => <SetCard key={set.id} set={set} />)}
+        </div>
+      )}
+
+      {/* ── Set picker ────────────────────────────────────────────────────── */}
+      {showPicker && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setShowPicker(false)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center px-4 pointer-events-none">
+            <div className="w-full max-w-sm max-h-[80vh] flex flex-col bg-white dark:bg-gray-800 rounded-2xl shadow-xl pointer-events-auto">
+              <div className="flex items-center justify-between px-5 pt-5 pb-3">
+                <div>
+                  <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Sets in collection</h2>
+                  <p className="text-xs text-gray-400 dark:text-gray-500">A set can be in one collection at a time</p>
+                </div>
+                <button
+                  onClick={() => setShowPicker(false)}
+                  className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors text-xl leading-none"
+                >
+                  ×
+                </button>
+              </div>
+              <div className="overflow-y-auto px-3 pb-4">
+                {allSets.length === 0 && (
+                  <p className="text-sm text-center text-gray-400 dark:text-gray-500 py-6">You don&apos;t have any sets yet</p>
+                )}
+                {allSets.map(s => {
+                  const inThis  = s.collection_id === id
+                  const otherName = !inThis && s.collection_id
+                    ? getCachedCollections().find(c => c.id === s.collection_id)?.name
+                    : null
+                  return (
+                    <button
+                      key={s.id}
+                      onClick={() => toggleMembership(s)}
+                      disabled={busySetId === s.id}
+                      className="w-full flex items-center gap-3 px-2 py-2.5 rounded-xl text-left hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors disabled:opacity-50"
+                    >
+                      <span className={`w-5 h-5 flex-shrink-0 rounded-md border-2 flex items-center justify-center text-xs ${
+                        inThis ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-gray-300 dark:border-gray-600'
+                      }`}>
+                        {inThis && '✓'}
+                      </span>
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{s.name}</span>
+                        <span className="block text-xs text-gray-400 dark:text-gray-500">
+                          {s.totalCards} cards{otherName ? ` · in ${otherName}` : ''}
+                        </span>
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── Settings modal ────────────────────────────────────────────────── */}
+      {showSettings && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setShowSettings(false)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center px-4 pointer-events-none">
+            <div className="w-full max-w-sm bg-white dark:bg-gray-800 rounded-2xl shadow-xl pointer-events-auto">
+              <div className="px-5 pt-5 pb-6">
+                <div className="flex items-center justify-between mb-5">
+                  <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Collection settings</h2>
+                  <button
+                    onClick={() => setShowSettings(false)}
+                    className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors text-xl leading-none"
+                  >
+                    ×
+                  </button>
+                </div>
+
+                <div className="mb-5 space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Name</label>
+                    <input
+                      value={nameInput}
+                      onChange={e => setNameInput(e.target.value)}
+                      className="w-full border border-gray-300 dark:border-gray-600 rounded-xl px-3 py-2 text-sm text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-700 outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Description</label>
+                    <textarea
+                      value={descInput}
+                      onChange={e => setDescInput(e.target.value)}
+                      rows={2}
+                      placeholder="Optional"
+                      className="w-full border border-gray-300 dark:border-gray-600 rounded-xl px-3 py-2 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 bg-white dark:bg-gray-700 outline-none focus:border-indigo-500 resize-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Tags</label>
+                    <TagInput value={tagsInput} onChange={setTagsInput} suggestions={tagSuggestions} />
+                  </div>
+                </div>
+
+                <button
+                  onClick={saveInfo}
+                  className="w-full py-2 mb-5 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 transition-colors"
+                >
+                  Save
+                </button>
+
+                <div className="pt-4 border-t border-gray-100 dark:border-gray-700">
+                  <button
+                    onClick={deleteCollection}
+                    className="w-full py-3 rounded-xl bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm font-semibold hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors border border-red-100 dark:border-red-800"
+                  >
+                    Delete collection
+                  </button>
+                  <p className="text-xs text-center text-gray-400 dark:text-gray-500 mt-2">Sets inside are kept, not deleted</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}

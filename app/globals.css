@@ -36,6 +36,22 @@
   animation: fadeIn 0.2s ease-out;
 }
 
+/* ── Rich card editor (Tiptap) — mirrors ContentRenderer's output styles ──── */
+.tiptap-card-editor { white-space: pre-wrap; word-break: break-word; }
+.tiptap-card-editor p  { @apply leading-relaxed; }
+.tiptap-card-editor h1 { @apply text-xl font-bold mt-3 mb-1; }
+.tiptap-card-editor h2 { @apply text-lg font-bold mt-3 mb-1; }
+.tiptap-card-editor h3 { @apply text-base font-bold mt-3 mb-0.5; }
+.tiptap-card-editor > :first-child { @apply mt-0; }
+.tiptap-card-editor strong { @apply font-semibold; }
+.tiptap-card-editor code {
+  @apply bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-1.5 py-0.5 rounded text-[0.85em] font-mono;
+}
+.tiptap-card-editor p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  @apply float-left h-0 pointer-events-none text-gray-400 dark:text-gray-500;
+}
+
 /* ── Prism syntax highlighting (always dark-bg context) ─────────────────── */
 pre[class*="language-"], code[class*="language-"] {
   color: #abb2bf;

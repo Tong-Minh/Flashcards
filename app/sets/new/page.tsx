@@ -1,9 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase/client'
+import { getCachedCollections, getCachedSets } from '@/lib/storage'
+import { TagInput } from '@/components/TagInput'
+import type { Collection } from '@/lib/types'
 
 export default function NewSet() {
   const router = useRouter()
@@ -12,6 +15,20 @@ export default function NewSet() {
   const [isPublic, setIsPublic] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [tags, setTags] = useState<string[]>([])
+  const [collectionId, setCollectionId] = useState('')
+  const [collections, setCollections] = useState<Collection[]>([])
+
+  const tagSuggestions = Array.from(new Set(getCachedSets().flatMap(s => s.tags ?? []))).sort()
+
+  useEffect(() => {
+    setCollections(getCachedCollections())
+    const pre = new URLSearchParams(window.location.search).get('collection')
+    if (pre) setCollectionId(pre)
+    supabase.from('collections').select('*').order('name').then(({ data }) => {
+      if (data) setCollections(data)
+    })
+  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -20,7 +37,13 @@ export default function NewSet() {
 
     const { data, error: err } = await supabase
       .from('sets')
-      .insert({ name: name.trim(), description: description.trim() || null, is_public: isPublic })
+      .insert({
+        name: name.trim(),
+        description: description.trim() || null,
+        is_public: isPublic,
+        tags,
+        collection_id: collectionId || null,
+      })
       .select()
       .single()
 
@@ -66,6 +89,29 @@ export default function NewSet() {
             placeholder="What will you be studying?"
             className="w-full border border-gray-300 dark:border-gray-600 rounded-xl px-4 py-3 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
           />
+        </div>
+
+        {collections.length > 0 && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+              Collection <span className="text-gray-400 dark:text-gray-500 font-normal">(optional)</span>
+            </label>
+            <select
+              value={collectionId}
+              onChange={(e) => setCollectionId(e.target.value)}
+              className="w-full border border-gray-300 dark:border-gray-600 rounded-xl px-4 py-3 text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+            >
+              <option value="">None</option>
+              {collections.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+        )}
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+            Tags <span className="text-gray-400 dark:text-gray-500 font-normal">(optional)</span>
+          </label>
+          <TagInput value={tags} onChange={setTags} suggestions={tagSuggestions} />
         </div>
 
         <button

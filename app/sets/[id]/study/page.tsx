@@ -1,12 +1,14 @@
 'use client'
 
-import { Fragment, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { fsrs, createEmptyCard, Rating, State, type Card as FSRSCard, type RecordLog } from 'ts-fsrs'
 import { supabase } from '@/lib/supabase/client'
 import { haptic } from '@/lib/haptic'
-import { ContentRenderer, hasCodeBlock } from '@/components/ContentRenderer'
+import { fetchAllRows, MAX_CARDS_PER_SET } from '@/lib/fetchAll'
+import { ContentRenderer, previewText } from '@/components/ContentRenderer'
+import { ClozeQuestion, FlipCard } from '@/components/CardPreview'
 import {
   cacheCards, getCachedCards, updateCachedProgress,
   queueProgressUpdate, getPendingUpdates, removePendingUpdate,
@@ -17,7 +19,7 @@ import type { FlashcardWithProgress, CardStatus, CardProgress } from '@/lib/type
 const f = fsrs()
 
 type SRSRating  = 1 | 2 | 3 | 4
-type Phase      = 'loading' | 'pre-session' | 'session' | 'done'
+type Phase      = 'loading' | 'pre-session' | 'session' | 'view' | 'done'
 type Order      = 'ordered' | 'random'
 type FlipState  = 'front' | 'flipping' | 'back'
 type CustomMode = 'ahead' | 'more_new' | 'forgotten' | 'by_state'
@@ -87,42 +89,19 @@ function buildQueue(
   return { queue: sorted, dueCount: dueCards.length, newCount: newCards.length }
 }
 
-// ── Fill-in-the-blank renderer ────────────────────────────────────────────────
-
-function ClozeQuestion({ sentence, answer }: { sentence: string; answer?: string }) {
-  const parts = sentence.split('___')
-  const withCode = hasCodeBlock(sentence)
-
-  if (withCode) {
-    return (
-      <div className="text-xl font-medium text-gray-900 dark:text-gray-100 leading-relaxed flex-1">
-        {parts.map((part, i) => (
-          <Fragment key={i}>
-            {part && <ContentRenderer text={part} readOnly />}
-            {i < parts.length - 1 && (
-              answer
-                ? <span className="inline-block bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-300 font-semibold px-2 py-0.5 rounded mx-0.5">{answer}</span>
-                : <span className="inline-block border-b-2 border-gray-400 dark:border-gray-500 w-16 mx-1 align-bottom" />
-            )}
-          </Fragment>
-        ))}
-      </div>
-    )
-  }
-
+function ViewButton({ onClick, label = 'View' }: { onClick: () => void; label?: string }) {
   return (
-    <p className="text-xl font-medium text-gray-900 dark:text-gray-100 leading-relaxed flex-1">
-      {parts.map((part, i) => (
-        <span key={i}>
-          {part}
-          {i < parts.length - 1 && (
-            answer
-              ? <span className="inline-block bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-300 font-semibold px-2 py-0.5 rounded mx-0.5">{answer}</span>
-              : <span className="inline-block border-b-2 border-gray-400 dark:border-gray-500 w-16 mx-1 align-bottom" />
-          )}
-        </span>
-      ))}
-    </p>
+    <button
+      onClick={onClick}
+      title="Flip through every card without affecting stats or scheduling"
+      className="flex items-center gap-1.5 px-5 py-4 rounded-2xl font-semibold text-sm bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+    >
+      <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+      </svg>
+      {label}
+    </button>
   )
 }
 
@@ -165,7 +144,28 @@ export default function Study() {
   const [stateCounts,   setStateCounts]   = useState({ new: 0, learning: 0, needs_review: 0, mastered: 0 })
   const [extraNewCount, setExtraNewCount] = useState(0)
 
+  // View mode — browse cards with no FSRS updates and no session recorded
+  const [viewCards, setViewCards] = useState<FlashcardWithProgress[]>([])
+  const [viewIndex, setViewIndex] = useState(0)
+
   useEffect(() => { syncPending().then(loadCards) }, [setId])
+
+  useEffect(() => {
+    if (phase !== 'view') return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowRight') setViewIndex(i => Math.min(i + 1, viewCards.length - 1))
+      else if (e.key === 'ArrowLeft') setViewIndex(i => Math.max(i - 1, 0))
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [phase, viewCards.length])
+
+  function startView() {
+    if (allCards.length === 0) return
+    setViewCards(order === 'random' ? [...allCards].sort(() => Math.random() - 0.5) : allCards)
+    setViewIndex(0)
+    setPhase('view')
+  }
 
   async function syncPending() {
     if (!navigator.onLine) return
@@ -198,15 +198,15 @@ export default function Study() {
 
     if (navigator.onLine) {
       try {
-        const { data } = await supabase
+        const data = await fetchAllRows<FlashcardWithProgress>(() => supabase
           .from('flashcards')
           .select('*, progress:card_progress(*)')
           .eq('set_id', setId)
+          .order('position', { ascending: true, nullsFirst: false })
           .order('created_at', { ascending: true })
-        if (data) {
-          cards = data.map(c => ({ ...c, progress: Array.isArray(c.progress) ? (c.progress[0] ?? null) : c.progress }))
-          cacheCards(setId, cards)
-        }
+          .order('id', { ascending: true }), MAX_CARDS_PER_SET)
+        cards = data.map(c => ({ ...c, progress: Array.isArray(c.progress) ? (c.progress[0] ?? null) : c.progress }))
+        cacheCards(setId, cards)
       } catch { setIsOffline(true) }
     } else {
       setIsOffline(true)
@@ -526,6 +526,48 @@ export default function Study() {
     )
   }
 
+  // ── View mode ──────────────────────────────────────────────────────────────
+  if (phase === 'view') {
+    const viewCard = viewCards[viewIndex]
+    const atEnd    = viewIndex >= viewCards.length - 1
+    return (
+      <div className="max-w-lg mx-auto px-4 py-6">
+        <div className="flex items-center justify-between mb-4">
+          <button onClick={() => setPhase('pre-session')} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors font-medium">
+            ← Exit
+          </button>
+          <p className="text-sm text-gray-400 dark:text-gray-500">{viewIndex + 1} / {viewCards.length}</p>
+          <span className="w-12 text-right text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">View</span>
+        </div>
+
+        <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full mb-5 overflow-hidden">
+          <div className="h-2 bg-gray-400 dark:bg-gray-500 rounded-full transition-all duration-300" style={{ width: `${((viewIndex + 1) / viewCards.length) * 100}%` }} />
+        </div>
+
+        <div className="mb-5">
+          <FlipCard key={viewCard.id} card={viewCard} />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            onClick={() => setViewIndex(i => i - 1)}
+            disabled={viewIndex === 0}
+            className="py-4 rounded-2xl font-semibold text-base bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          >
+            ← Back
+          </button>
+          <button
+            onClick={() => (atEnd ? setPhase('pre-session') : setViewIndex(i => i + 1))}
+            className="py-4 rounded-2xl font-semibold text-base bg-indigo-600 text-white hover:bg-indigo-700 active:bg-indigo-800 transition-colors"
+          >
+            {atEnd ? 'Finish' : 'Next →'}
+          </button>
+        </div>
+        <p className="text-xs text-center text-gray-400 dark:text-gray-500 mt-4">Viewing only — doesn&apos;t affect your stats or schedule</p>
+      </div>
+    )
+  }
+
   // ── Pre-session ────────────────────────────────────────────────────────────
   if (phase === 'pre-session') {
     const totalToStudy   = dueCount + newCount
@@ -619,17 +661,26 @@ export default function Study() {
                   Continue ({savedSession.queueIds.length} remaining)
                 </button>
               )}
-              <button onClick={() => startSession('new')}
-                className={`w-full py-4 rounded-2xl font-semibold text-base transition-colors ${
-                  savedSession
-                    ? 'bg-white dark:bg-gray-800 text-indigo-600 dark:text-indigo-400 border-2 border-indigo-200 dark:border-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-900/20'
-                    : 'bg-indigo-600 text-white hover:bg-indigo-700 active:bg-indigo-800 shadow-sm'
-                }`}
-              >
-                {savedSession ? 'Start New Session' : `Study Now — ${totalToStudy} card${totalToStudy !== 1 ? 's' : ''}`}
-              </button>
+              <div className="flex gap-3">
+                <button onClick={() => startSession('new')}
+                  className={`flex-1 py-4 rounded-2xl font-semibold text-base transition-colors ${
+                    savedSession
+                      ? 'bg-white dark:bg-gray-800 text-indigo-600 dark:text-indigo-400 border-2 border-indigo-200 dark:border-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-900/20'
+                      : 'bg-indigo-600 text-white hover:bg-indigo-700 active:bg-indigo-800 shadow-sm'
+                  }`}
+                >
+                  {savedSession ? 'Start New Session' : `Study Now — ${totalToStudy} card${totalToStudy !== 1 ? 's' : ''}`}
+                </button>
+                <ViewButton onClick={startView} />
+              </div>
             </div>
           </>
+        )}
+
+        {nothing && allCards.length > 0 && (
+          <div className="flex justify-center mb-5">
+            <ViewButton onClick={startView} label={`View all ${allCards.length} cards`} />
+          </div>
         )}
 
         {/* ── Custom Study ──────────────────────────────────────────────── */}
@@ -827,7 +878,7 @@ export default function Study() {
                         ? 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400'
                         : 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400'
                     }`}>
-                      {isCorrectSelection ? '✓ Correct!' : `✗ Incorrect — you picked: ${selectedOption}`}
+                      {isCorrectSelection ? '✓ Correct!' : `✗ Incorrect — you picked: ${previewText(selectedOption)}`}
                     </div>
                   )}
                   <ContentRenderer text={card.answer} className="text-xl font-semibold text-gray-900 dark:text-gray-100 leading-relaxed flex-1" readOnly />

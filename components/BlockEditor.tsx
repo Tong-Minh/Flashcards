@@ -1,32 +1,63 @@
 'use client'
 
 import { useRef, useState, useEffect } from 'react'
-import katex from 'katex'
-import { ContentRenderer, escapeHtml, highlight, LANG_ALIASES, LANGUAGE_OPTIONS } from '@/components/ContentRenderer'
+import { useEditor, EditorContent, type Editor } from '@tiptap/react'
+import { NodeSelection } from '@tiptap/pm/state'
+import { highlight, LANG_ALIASES, LANGUAGE_OPTIONS } from '@/components/ContentRenderer'
+import { buildExtensions } from '@/components/editor/extensions'
+import { parseMarkup, serializeMarkup } from '@/lib/markup'
 
 // ── Slash commands ─────────────────────────────────────────────────────────────
 
-interface SlashCommand {
-  id: string; label: string; desc: string; icon: string; iconClass?: string
-  blockType?: 'code'
-  template?: string; selectStart?: number; selectEnd?: number
-}
+type CommandKind =
+  | { kind: 'code' }
+  | { kind: 'math' }
+  | { kind: 'heading'; level: 1 | 2 | 3 }
+  | { kind: 'mark'; mark: 'bold' | 'italic' }
+  | { kind: 'color'; color: string }
+
+type SlashCommand = { id: string; label: string; desc: string; icon: string; iconClass?: string } & CommandKind
 
 const SLASH_COMMANDS: SlashCommand[] = [
-  { id: 'code',   label: 'Code block',  desc: 'Syntax-highlighted block', icon: '</>',                        blockType: 'code' },
-  { id: 'math',   label: 'Math',        desc: 'Inline LaTeX equation',    icon: '∑',                          template: '$expression$', selectStart: 1, selectEnd: 11 },
-  { id: 'h1',     label: 'Heading 1',   desc: 'Large title',              icon: 'H1',                         template: '# Heading',    selectStart: 2, selectEnd: 9  },
-  { id: 'h2',     label: 'Heading 2',   desc: 'Section title',            icon: 'H2',                         template: '## Heading',   selectStart: 3, selectEnd: 10 },
-  { id: 'h3',     label: 'Heading 3',   desc: 'Subsection title',         icon: 'H3',                         template: '### Heading',  selectStart: 4, selectEnd: 11 },
-  { id: 'bold',   label: 'Bold',        desc: 'Bold text',                icon: 'B',                          template: '**bold**',     selectStart: 2, selectEnd: 6  },
-  { id: 'italic', label: 'Italic',      desc: 'Italic text',              icon: 'I',                          template: '*italic*',     selectStart: 1, selectEnd: 7  },
-  { id: 'red',    label: 'Red',         desc: 'Red text',   icon: '●', iconClass: 'text-red-500',    template: '[red]text[/red]',       selectStart: 5,  selectEnd: 9  },
-  { id: 'green',  label: 'Green',       desc: 'Green text', icon: '●', iconClass: 'text-green-500',  template: '[green]text[/green]',   selectStart: 7,  selectEnd: 11 },
-  { id: 'blue',   label: 'Blue',        desc: 'Blue text',  icon: '●', iconClass: 'text-blue-500',   template: '[blue]text[/blue]',     selectStart: 6,  selectEnd: 10 },
-  { id: 'yellow', label: 'Yellow',      desc: 'Yellow text',icon: '●', iconClass: 'text-yellow-500', template: '[yellow]text[/yellow]', selectStart: 8,  selectEnd: 12 },
-  { id: 'orange', label: 'Orange',      desc: 'Orange text',icon: '●', iconClass: 'text-orange-500', template: '[orange]text[/orange]', selectStart: 8,  selectEnd: 12 },
-  { id: 'purple', label: 'Purple',      desc: 'Purple text',icon: '●', iconClass: 'text-purple-500', template: '[purple]text[/purple]', selectStart: 8,  selectEnd: 12 },
+  { id: 'code',   label: 'Code block', desc: 'Syntax-highlighted block', icon: '</>', kind: 'code' },
+  { id: 'math',   label: 'Math',       desc: 'Inline LaTeX equation',    icon: '∑',   kind: 'math' },
+  { id: 'h1',     label: 'Heading 1',  desc: 'Large title',              icon: 'H1',  kind: 'heading', level: 1 },
+  { id: 'h2',     label: 'Heading 2',  desc: 'Section title',            icon: 'H2',  kind: 'heading', level: 2 },
+  { id: 'h3',     label: 'Heading 3',  desc: 'Subsection title',         icon: 'H3',  kind: 'heading', level: 3 },
+  { id: 'bold',   label: 'Bold',       desc: 'Bold text',                icon: 'B',   kind: 'mark', mark: 'bold' },
+  { id: 'italic', label: 'Italic',     desc: 'Italic text',              icon: 'I',   kind: 'mark', mark: 'italic' },
+  { id: 'red',    label: 'Red',        desc: 'Red text',    icon: '●', iconClass: 'text-red-500',    kind: 'color', color: 'red' },
+  { id: 'green',  label: 'Green',      desc: 'Green text',  icon: '●', iconClass: 'text-green-500',  kind: 'color', color: 'green' },
+  { id: 'blue',   label: 'Blue',       desc: 'Blue text',   icon: '●', iconClass: 'text-blue-500',   kind: 'color', color: 'blue' },
+  { id: 'yellow', label: 'Yellow',     desc: 'Yellow text', icon: '●', iconClass: 'text-yellow-500', kind: 'color', color: 'yellow' },
+  { id: 'orange', label: 'Orange',     desc: 'Orange text', icon: '●', iconClass: 'text-orange-500', kind: 'color', color: 'orange' },
+  { id: 'purple', label: 'Purple',     desc: 'Purple text', icon: '●', iconClass: 'text-purple-500', kind: 'color', color: 'purple' },
 ]
+
+const TOOLBAR_COLORS = [
+  { color: 'red',    className: 'bg-red-500'    },
+  { color: 'green',  className: 'bg-green-600'  },
+  { color: 'blue',   className: 'bg-blue-500'   },
+  { color: 'yellow', className: 'bg-yellow-500' },
+  { color: 'orange', className: 'bg-orange-500' },
+  { color: 'purple', className: 'bg-purple-500' },
+]
+
+// Toggle a color: same color again removes it, a different color replaces it.
+// With an empty selection this sets the format for the next typed text (stored marks).
+function toggleColor(editor: Editor, color: string) {
+  if (editor.isActive('color', { color })) editor.chain().focus().unsetMark('color').run()
+  else editor.chain().focus().setMark('color', { color }).run()
+}
+
+function applyCommand(editor: Editor, cmd: SlashCommand) {
+  switch (cmd.kind) {
+    case 'math':    editor.chain().focus().insertContent({ type: 'mathInline', attrs: { latex: '' } }).run(); break
+    case 'heading': editor.chain().focus().toggleHeading({ level: cmd.level }).run(); break
+    case 'mark':    editor.chain().focus().toggleMark(cmd.mark).run(); break
+    case 'color':   toggleColor(editor, cmd.color); break
+  }
+}
 
 // ── Block types ────────────────────────────────────────────────────────────────
 
@@ -81,236 +112,173 @@ function autoResize(el: HTMLTextAreaElement | null) {
   el.style.height = `${el.scrollHeight}px`
 }
 
-function renderKatexSafe(expr: string, display: boolean): string {
-  try {
-    return katex.renderToString(expr.trim(), { throwOnError: false, displayMode: display, output: 'html' })
-  } catch {
-    return `<span class="font-mono text-sm">${escapeHtml(expr)}</span>`
-  }
-}
+// ── RichTextBlock ──────────────────────────────────────────────────────────────
 
-// ── MathPopup ──────────────────────────────────────────────────────────────────
-
-interface MathPopupState { expr: string; display: boolean; top: number; left: number }
-
-function MathPopup({ state, onCommit, onClose }: {
-  state: MathPopupState
-  onCommit: (newExpr: string) => void
-  onClose: () => void
-}) {
-  const [value, setValue] = useState(state.expr)
-  const inputRef  = useRef<HTMLInputElement>(null)
-  const cancelRef = useRef(false)
-
-  useEffect(() => { inputRef.current?.focus(); inputRef.current?.select() }, [])
-
-  const preview = value.trim() ? renderKatexSafe(value, state.display) : ''
-
-  return (
-    <div
-      className="absolute z-50 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xl p-3 w-64"
-      style={{ top: state.top, left: state.left }}
-      onMouseDown={e => e.stopPropagation()}
-      onClick={e => e.stopPropagation()}
-    >
-      <p className="text-xs text-gray-400 dark:text-gray-500 font-mono mb-1.5">LaTeX</p>
-      <input
-        ref={inputRef}
-        type="text"
-        value={value}
-        onChange={e => setValue(e.target.value)}
-        onKeyDown={e => {
-          if (e.key === 'Enter')  { e.preventDefault(); onCommit(value) }
-          if (e.key === 'Escape') { e.preventDefault(); cancelRef.current = true; onClose() }
-        }}
-        onBlur={() => { if (!cancelRef.current) onCommit(value) }}
-        className="w-full font-mono text-sm bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-1.5 text-gray-800 dark:text-gray-200 outline-none focus:ring-2 focus:ring-indigo-500 mb-2"
-        spellCheck={false}
-        placeholder="E = mc^2"
-      />
-      {preview && (
-        <div
-          className={`overflow-x-auto${state.display ? ' text-center py-1' : ''}`}
-          dangerouslySetInnerHTML={{ __html: preview }}
-        />
-      )}
-    </div>
-  )
-}
-
-// ── TextBlockArea ──────────────────────────────────────────────────────────────
-
-interface TextBlockAreaProps {
+interface RichTextBlockProps {
   content: string
   placeholder?: string
   minRows: number
   isFirst: boolean
+  singleLine?: boolean
   shouldFocus: boolean
   onFocused: () => void
   onChange: (content: string) => void
   onInsertBlock: (before: string, after: string) => void
 }
 
-function TextBlockArea({
-  content, placeholder, minRows, isFirst,
+type SlashState = { from: number; filter: string; top: number; left: number }
+type ToolbarState = { top: number; left: number }
+
+function RichTextBlock({
+  content, placeholder, minRows, isFirst, singleLine,
   shouldFocus, onFocused, onChange, onInsertBlock,
-}: TextBlockAreaProps) {
-  const taRef        = useRef<HTMLTextAreaElement>(null)
+}: RichTextBlockProps) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const pendingFocus = useRef(content.trim() === '')
+  const lastEmitted  = useRef(content)
+  // The editor captures its callbacks once; route through refs so the latest props are used
+  const onChangeRef      = useRef(onChange)
+  const onInsertBlockRef = useRef(onInsertBlock)
+  onChangeRef.current      = onChange
+  onInsertBlockRef.current = onInsertBlock
+  const [slash,   setSlash]   = useState<SlashState | null>(null)
+  const [selIdx,  setSelIdx]  = useState(0)
+  const [toolbar, setToolbar] = useState<ToolbarState | null>(null)
+  const [, forceRender] = useState(0)
 
-  const [editing, setEditing] = useState(content.trim() === '')
-  const [show, setShow]       = useState(false)
-  const [slashAt, setSlashAt] = useState(-1)
-  const [filter, setFilter]   = useState('')
-  const [selIdx, setSelIdx]   = useState(0)
-  const [mathPopup, setMathPopup] = useState<MathPopupState | null>(null)
+  const commands = singleLine ? SLASH_COMMANDS.filter(c => c.kind !== 'code' && c.kind !== 'heading') : SLASH_COMMANDS
+  const filtered = !slash?.filter
+    ? commands
+    : commands.filter(c => c.id.startsWith(slash.filter) || c.label.toLowerCase().startsWith(slash.filter))
 
-  const filtered = !filter
-    ? SLASH_COMMANDS
-    : SLASH_COMMANDS.filter(c => c.id.startsWith(filter) || c.label.toLowerCase().startsWith(filter))
+  // Key handling runs inside ProseMirror's handler, so it reads the latest menu state through a ref
+  const menuRef = useRef({ slash, filtered, selIdx })
+  menuRef.current = { slash, filtered, selIdx }
 
-  useEffect(() => { if (editing) autoResize(taRef.current) }, [content, editing])
+  function relativeCoords(editor: Editor, pos: number, edge: 'top' | 'bottom') {
+    const c  = editor.view.coordsAtPos(pos)
+    const cr = containerRef.current?.getBoundingClientRect()
+    if (!cr) return { top: 0, left: 0 }
+    return { top: (edge === 'top' ? c.top : c.bottom) - cr.top, left: Math.max(0, Math.min(c.left - cr.left, cr.width - 260)) }
+  }
 
-  useEffect(() => {
-    if (!shouldFocus) return
-    pendingFocus.current = true
-    setEditing(true)
-    onFocused()
-  }, [shouldFocus])
+  function updateMenus(editor: Editor) {
+    const { selection } = editor.state
+    const { $from, empty } = selection
 
-  // Runs after every render — focuses textarea when pending
-  useEffect(() => {
-    if (!pendingFocus.current || !taRef.current) return
-    pendingFocus.current = false
-    taRef.current.focus()
-    const len = taRef.current.value.length
-    taRef.current.setSelectionRange(len, len)
+    // Slash menu: "/" at line start or after whitespace, followed by an optional filter word
+    if (empty && editor.isFocused) {
+      const before = $from.parent.textBetween(0, $from.parentOffset, undefined, '￼')
+      const m = before.match(/(^|\s)\/(\w*)$/)
+      if (m) {
+        const from   = $from.pos - (m[2].length + 1)
+        const filter = m[2].toLowerCase()
+        const { top, left } = relativeCoords(editor, from, 'bottom')
+        if (menuRef.current.slash?.filter !== filter) setSelIdx(0)
+        setSlash({ from, filter, top: top + 4, left })
+      } else {
+        setSlash(null)
+      }
+    } else {
+      setSlash(null)
+    }
+
+    // Selection toolbar: shown below a non-empty text selection (below so it doesn't fight
+    // the native copy/paste bubble on phones, which appears above)
+    if (!empty && editor.isFocused && !(selection instanceof NodeSelection)) {
+      const { top, left } = relativeCoords(editor, selection.to, 'bottom')
+      setToolbar({ top: top + 6, left })
+    } else {
+      setToolbar(null)
+    }
+  }
+
+  const editor = useEditor({
+    immediatelyRender: false,
+    extensions: buildExtensions({ singleLine, placeholder: isFirst ? placeholder : undefined }),
+    content: parseMarkup(content, { singleLine }),
+    editorProps: {
+      attributes: {
+        class: 'tiptap-card-editor focus:outline-none text-gray-900 dark:text-gray-100 leading-relaxed',
+      },
+      handleKeyDown: (_view, event) => {
+        const { slash: s, filtered: f, selIdx: i } = menuRef.current
+        if (s && f.length > 0) {
+          if (event.key === 'ArrowDown') { setSelIdx(Math.min(i + 1, f.length - 1)); return true }
+          if (event.key === 'ArrowUp')   { setSelIdx(Math.max(i - 1, 0)); return true }
+          if (event.key === 'Enter' || event.key === 'Tab') { runSlash(f[i] ?? f[0]); return true }
+          if (event.key === 'Escape')    { setSlash(null); return true }
+        }
+        if (event.key === 'Tab') { editorRef.current?.commands.insertContent('  '); return true }
+        if (event.key === 'Enter' && singleLine) return true
+        return false
+      },
+    },
+    onUpdate: ({ editor }) => {
+      const serial = serializeMarkup(editor.getJSON())
+      lastEmitted.current = serial
+      onChangeRef.current(serial)
+      updateMenus(editor)
+    },
+    onSelectionUpdate: ({ editor }) => { updateMenus(editor); forceRender(n => n + 1) },
+    onTransaction:     () => forceRender(n => n + 1),   // keeps toolbar active-states fresh
+    onFocus:           ({ editor }) => updateMenus(editor),
+    onBlur:            () => { setSlash(null); setToolbar(null) },
   })
 
-  function handleChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
-    const val = e.target.value
-    const pos = e.target.selectionStart ?? val.length
-    onChange(val)
-    const lineStart   = val.lastIndexOf('\n', pos - 2) + 1
-    const lineContent = val.slice(lineStart, pos)
-    const slashMatch  = lineContent.match(/(^|\s)\/(\w*)$/)
-    if (slashMatch) {
-      setSlashAt(lineStart + lineContent.lastIndexOf('/'))
-      setFilter(slashMatch[2].toLowerCase())
-      setSelIdx(0)
-      setShow(true)
-    } else {
-      setShow(false)
-    }
-  }
+  const editorRef = useRef<Editor | null>(null)
+  editorRef.current = editor
 
-  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === 'Tab') {
-      e.preventDefault()
-      if (show && filtered.length > 0) { insert(filtered[selIdx] ?? filtered[0]); return }
-      const el = e.currentTarget
-      const s = el.selectionStart ?? 0, end = el.selectionEnd ?? 0
-      onChange(content.slice(0, s) + '  ' + content.slice(end))
-      setTimeout(() => el.setSelectionRange(s + 2, s + 2), 0)
+  // Content replaced from outside (e.g. the card finished loading): reset without emitting a change
+  useEffect(() => {
+    if (!editor || content === lastEmitted.current) return
+    lastEmitted.current = content
+    editor.commands.setContent(parseMarkup(content, { singleLine }), { emitUpdate: false })
+  }, [content, editor, singleLine])
+
+  useEffect(() => {
+    if (!shouldFocus || !editor) return
+    editor.commands.focus('start')
+    onFocused()
+  }, [shouldFocus, editor])
+
+  function runSlash(cmd: SlashCommand) {
+    const ed = editorRef.current
+    const s  = menuRef.current.slash
+    if (!ed || !s) return
+    setSlash(null)
+    const to = ed.state.selection.from
+    ed.chain().focus().deleteRange({ from: s.from, to }).run()
+
+    if (cmd.kind === 'code') {
+      // Split this text block at the cursor; BlockEditor inserts a code card between the halves
+      const pos    = ed.state.selection.from
+      const before = serializeMarkup(ed.state.doc.cut(0, pos).toJSON()).replace(/\n$/, '')
+      const after  = serializeMarkup(ed.state.doc.cut(pos).toJSON()).replace(/^\n/, '')
+      onInsertBlockRef.current(before, after)
       return
     }
-    if (!show) return
-    if (e.key === 'Escape')    { e.preventDefault(); setShow(false); setFilter(''); setSelIdx(0) }
-    if (e.key === 'ArrowDown') { e.preventDefault(); setSelIdx(i => Math.min(i + 1, filtered.length - 1)) }
-    if (e.key === 'ArrowUp')   { e.preventDefault(); setSelIdx(i => Math.max(i - 1, 0)) }
-    if (e.key === 'Enter')     { e.preventDefault(); if (filtered.length > 0) insert(filtered[selIdx] ?? filtered[0]) }
+    applyCommand(ed, cmd)
   }
 
-  function handleBlur() {
-    setTimeout(() => {
-      setShow(false); setFilter(''); setSelIdx(0)
-      if (content.trim()) setEditing(false)
-    }, 150)
-  }
+  const minHeight = singleLine ? undefined : `${minRows * 1.625}rem`
 
-  function insert(command: SlashCommand) {
-    if (slashAt < 0) return
-    const commandLen = 1 + filter.length
-    setShow(false); setFilter(''); setSelIdx(0)
-
-    if (command.blockType === 'code') {
-      const before = content.slice(0, slashAt).replace(/\n$/, '')
-      const after  = content.slice(slashAt + commandLen).replace(/^\n/, '')
-      onInsertBlock(before, after)
-      return
-    }
-
-    const before = content.slice(0, slashAt)
-    const after  = content.slice(slashAt + commandLen)
-    const next   = before + command.template! + after
-    onChange(next)
-    const start = before.length + command.selectStart!
-    const end   = before.length + command.selectEnd!
-    setTimeout(() => { taRef.current?.focus(); taRef.current?.setSelectionRange(start, end) }, 0)
-  }
-
-  function handleMathClick(expr: string, display: boolean, rect: DOMRect) {
-    const cr = containerRef.current?.getBoundingClientRect()
-    if (!cr) return
-    setMathPopup({
-      expr, display,
-      top:  rect.bottom - cr.top + 4,
-      left: Math.max(0, Math.min(rect.left - cr.left, cr.width - 260)),
-    })
-  }
-
-  function commitMathEdit(newExpr: string) {
-    if (!mathPopup) return
-    const { expr, display } = mathPopup
-    setMathPopup(null)
-    const oldStr = display ? `$$${expr}$$` : `$${expr}$`
-    const newStr = display ? `$$${newExpr}$$` : `$${newExpr}$`
-    if (oldStr !== newStr) onChange(content.split(oldStr).join(newStr))
-  }
-
-  // ── View mode ──
-  if (!editing) {
-    return (
-      <div
-        ref={containerRef}
-        className="relative px-4 cursor-text"
-        style={{ paddingTop: isFirst ? '0.75rem' : '0.5rem', paddingBottom: '0.5rem' }}
-        onClick={() => { setEditing(true); pendingFocus.current = true }}
-      >
-        <ContentRenderer
-          text={content}
-          className="text-gray-900 dark:text-gray-100 leading-relaxed"
-          readOnly
-          onInlineMathClick={handleMathClick}
-        />
-        {mathPopup && (
-          <MathPopup state={mathPopup} onCommit={commitMathEdit} onClose={() => setMathPopup(null)} />
-        )}
-      </div>
-    )
-  }
-
-  // ── Edit mode ──
   return (
-    <div className="relative">
-      <textarea
-        ref={taRef}
-        value={content}
-        onChange={handleChange}
-        onKeyDown={handleKeyDown}
-        onBlur={handleBlur}
-        placeholder={isFirst ? placeholder : undefined}
-        className="w-full bg-transparent text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none resize-none border-none outline-none leading-relaxed px-4"
-        style={{ overflow: 'hidden', minHeight: `${minRows * 1.625}rem`, paddingTop: isFirst ? '0.75rem' : '0.5rem', paddingBottom: '0.5rem' }}
-        rows={minRows}
-      />
+    <div
+      ref={containerRef}
+      className={`relative cursor-text ${singleLine ? '' : 'px-4'}`}
+      style={singleLine ? undefined : { paddingTop: isFirst ? '0.75rem' : '0.5rem', paddingBottom: '0.5rem' }}
+      onClick={e => { if (e.target === e.currentTarget) editor?.commands.focus('end') }}
+    >
+      <EditorContent editor={editor} style={{ minHeight }} />
 
-      {show && filtered.length > 0 && (
-        <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-lg overflow-hidden">
-          {filter && (
+      {slash && filtered.length > 0 && (
+        <div
+          className="absolute z-50 w-64 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-lg overflow-hidden"
+          style={{ top: slash.top, left: slash.left }}
+        >
+          {slash.filter && (
             <div className="px-4 py-1.5 border-b border-gray-100 dark:border-gray-700 text-xs text-gray-400 dark:text-gray-500 font-mono">
-              /{filter}
+              /{slash.filter}
             </div>
           )}
           <div className="max-h-64 overflow-y-auto">
@@ -318,7 +286,7 @@ function TextBlockArea({
               <button
                 key={cmd.id}
                 type="button"
-                onMouseDown={e => { e.preventDefault(); insert(cmd) }}
+                onMouseDown={e => { e.preventDefault(); runSlash(cmd) }}
                 onMouseEnter={() => setSelIdx(i)}
                 className={`w-full flex items-center gap-3 px-4 py-2.5 transition-colors text-left ${i === selIdx ? 'bg-gray-50 dark:bg-gray-700' : 'hover:bg-gray-50 dark:hover:bg-gray-700'}`}
               >
@@ -335,7 +303,67 @@ function TextBlockArea({
           </div>
         </div>
       )}
+
+      {toolbar && editor && (
+        <div
+          className="absolute z-50 flex items-center gap-0.5 bg-gray-900 dark:bg-gray-700 text-white rounded-lg shadow-lg px-1 py-1"
+          style={{ top: toolbar.top, left: toolbar.left }}
+          onMouseDown={e => e.preventDefault()}   // keep the text selection
+        >
+          <ToolbarButton active={editor.isActive('bold')}   onClick={() => editor.chain().focus().toggleBold().run()}   label="Bold"><b>B</b></ToolbarButton>
+          <ToolbarButton active={editor.isActive('italic')} onClick={() => editor.chain().focus().toggleItalic().run()} label="Italic"><i className="font-serif">I</i></ToolbarButton>
+          {!singleLine && ([1, 2, 3] as const).map(level => (
+            <ToolbarButton key={level} active={editor.isActive('heading', { level })} onClick={() => editor.chain().focus().toggleHeading({ level }).run()} label={`Heading ${level}`}>
+              <span className="text-xs font-bold">H{level}</span>
+            </ToolbarButton>
+          ))}
+          <span className="w-px h-5 bg-white/20 mx-0.5" />
+          {TOOLBAR_COLORS.map(({ color, className }) => (
+            <button
+              key={color}
+              type="button"
+              onClick={() => toggleColor(editor, color)}
+              title={color}
+              className={`w-5 h-5 m-0.5 rounded-full ${className} ${editor.isActive('color', { color }) ? 'ring-2 ring-white' : ''}`}
+            />
+          ))}
+          <span className="w-px h-5 bg-white/20 mx-0.5" />
+          <ToolbarButton
+            active={false}
+            label="Make math"
+            onClick={() => {
+              const { from, to } = editor.state.selection
+              const latex = editor.state.doc.textBetween(from, to, ' ')
+              editor.chain().focus().insertContentAt({ from, to }, { type: 'mathInline', attrs: { latex } }).run()
+            }}
+          >
+            ∑
+          </ToolbarButton>
+          <ToolbarButton active={false} label="Clear formatting" onClick={() => editor.chain().focus().unsetAllMarks().run()}>
+            <span className="text-xs">T̸</span>
+          </ToolbarButton>
+        </div>
+      )}
     </div>
+  )
+}
+
+function ToolbarButton({ active, onClick, label, children }: {
+  active: boolean
+  onClick: () => void
+  label: string
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      className={`min-w-[1.75rem] h-7 px-1.5 rounded-md text-sm flex items-center justify-center transition-colors ${active ? 'bg-white/25' : 'hover:bg-white/15'}`}
+    >
+      {children}
+    </button>
   )
 }
 
@@ -371,13 +399,19 @@ function CodeBlockCard({ block, initialEditing, onChange, onDelete, onDragStart,
   const langLabel    = LANGUAGE_OPTIONS.find(o => o.value === resolvedLang)?.label ?? (resolvedLang || 'Plain text')
 
   return (
+    // Darker surround marks the code block as its own clickable, editable region
     <div
       ref={cardRef}
-      className={`mx-3 my-1 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700/50 transition-opacity ${dragging ? 'opacity-40' : ''}`}
+      className={`mx-3 my-1.5 p-1 rounded-xl transition-colors ${
+        editing
+          ? 'bg-indigo-100 dark:bg-indigo-950/60'
+          : 'bg-gray-200/80 hover:bg-gray-300/70 dark:bg-black/40 dark:hover:bg-black/60'
+      } ${dragging ? 'opacity-40' : ''}`}
       draggable
       onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; onDragStart() }}
       onDragEnd={onDragEnd}
     >
+    <div className="rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700/50">
       <div className="px-3 py-1.5 bg-gray-100 dark:bg-gray-800/80 flex items-center gap-2 border-b border-gray-200 dark:border-gray-700/50">
         <div className="flex-shrink-0 cursor-grab active:cursor-grabbing text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 transition-colors">
           <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
@@ -440,6 +474,7 @@ function CodeBlockCard({ block, initialEditing, onChange, onDelete, onDragStart,
         </pre>
       )}
     </div>
+    </div>
   )
 }
 
@@ -452,9 +487,11 @@ interface Props {
   placeholder?: string
   className?: string
   hideHint?: boolean
+  // One-line rich input (multiple-choice options): no code blocks, headings or line breaks
+  singleLine?: boolean
 }
 
-export function BlockEditor({ value, onChange, rows = 3, placeholder, className, hideHint }: Props) {
+export function BlockEditor({ value, onChange, rows = 3, placeholder, className, hideHint, singleLine }: Props) {
   const [blocks, setBlocks] = useState(() => parseBlocks(value))
   const [focusId, setFocusId] = useState<string | null>(null)
   const lastSerial = useRef(value)
@@ -519,6 +556,24 @@ export function BlockEditor({ value, onChange, rows = 3, placeholder, className,
 
   const isDragging = dragIdx !== null
 
+  if (singleLine) {
+    return (
+      <div className={`w-full border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 px-4 py-3 focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-transparent ${className ?? ''}`}>
+        <RichTextBlock
+          content={value}
+          placeholder={placeholder}
+          minRows={1}
+          isFirst
+          singleLine
+          shouldFocus={false}
+          onFocused={() => {}}
+          onChange={serial => { lastSerial.current = serial; onChange(serial) }}
+          onInsertBlock={() => {}}
+        />
+      </div>
+    )
+  }
+
   return (
     <div
       className={`w-full border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-transparent ${className ?? ''}`}
@@ -533,7 +588,7 @@ export function BlockEditor({ value, onChange, rows = 3, placeholder, className,
           />
 
           {block.type === 'text' ? (
-            <TextBlockArea
+            <RichTextBlock
               content={block.content}
               placeholder={placeholder}
               minRows={idx === 0 ? rows : 1}
