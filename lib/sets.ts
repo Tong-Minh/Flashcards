@@ -28,11 +28,4 @@ export const deleteSets       = (ids: string[]) => store.deleteSets(ids)
 // Saves the given order (position = index + 1) for the caller's sets
 export const reorderSets      = (ids: string[]) => store.reorderSets(ids)
 
-// Same order as loadLibrary: manual position, unpositioned (new) sets first, then newest first
-export function sortSets<T extends { position: number | null; created_at: string }>(sets: T[]): T[] {
-  return [...sets].sort((a, b) =>
-    a.position === b.position ? b.created_at.localeCompare(a.created_at)
-    : a.position === null ? -1
-    : b.position === null ? 1
-    : a.position - b.position)
-}
+export { sortSets } from './store/sort'

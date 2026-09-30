@@ -5,6 +5,7 @@ import { ItemIcon } from '@/components/ItemIcon'
 import { noOrphan } from '@/lib/text'
 import type { SetWithStats } from '@/lib/sets'
 import { paths } from '@/lib/paths'
+import { IS_DESKTOP } from '@/lib/platform'
 
 export function timeAgo(iso: string | null): string {
   if (!iso) return 'Never'
@@ -45,7 +46,7 @@ export function SetCard({ set, selecting, selected, onToggle, handle }: {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <h2 className="font-semibold text-gray-900 dark:text-gray-100 text-base leading-snug text-pretty">{noOrphan(set.name)}</h2>
-              {!set.is_public && (
+              {!IS_DESKTOP && !set.is_public && (
                 <span className="text-xs text-gray-400 bg-gray-100 dark:bg-gray-700 dark:text-gray-400 px-1.5 py-0.5 rounded-full">Private</span>
               )}
             </div>

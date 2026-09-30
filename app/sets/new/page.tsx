@@ -11,13 +11,14 @@ import { IconPicker } from '@/components/IconPicker'
 import { suggestIcon } from '@/lib/icons'
 import type { Collection } from '@/lib/types'
 import { paths } from '@/lib/paths'
+import { IS_DESKTOP } from '@/lib/platform'
 
 export default function NewSet() {
   const router = useRouter()
   const currentUser = useUser()
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
-  const [isPublic, setIsPublic] = useState(true)
+  const [isPublic, setIsPublic] = useState(!IS_DESKTOP)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [tags, setTags] = useState<string[]>([])
@@ -131,23 +132,26 @@ export default function NewSet() {
           <TagInput value={tags} onChange={setTags} suggestions={tagSuggestions} />
         </div>
 
-        <button
-          type="button"
-          onClick={() => setIsPublic(v => !v)}
-          className="w-full flex items-center justify-between px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
-        >
-          <div className="text-left">
-            <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
-              {isPublic ? 'Public' : 'Private'}
-            </p>
-            <p className="text-xs text-gray-400 dark:text-gray-500">
-              {isPublic ? 'Friends and anyone you share it with can study this' : 'Only visible to you'}
-            </p>
-          </div>
-          <div className={`w-11 h-6 rounded-full transition-colors relative flex-shrink-0 ${isPublic ? 'bg-indigo-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
-            <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${isPublic ? 'translate-x-5' : 'translate-x-0.5'}`} />
-          </div>
-        </button>
+        {/* Sharing is web-only */}
+        {!IS_DESKTOP && (
+          <button
+            type="button"
+            onClick={() => setIsPublic(v => !v)}
+            className="w-full flex items-center justify-between px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+          >
+            <div className="text-left">
+              <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                {isPublic ? 'Public' : 'Private'}
+              </p>
+              <p className="text-xs text-gray-400 dark:text-gray-500">
+                {isPublic ? 'Friends and anyone you share it with can study this' : 'Only visible to you'}
+              </p>
+            </div>
+            <div className={`w-11 h-6 rounded-full transition-colors relative flex-shrink-0 ${isPublic ? 'bg-indigo-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
+              <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${isPublic ? 'translate-x-5' : 'translate-x-0.5'}`} />
+            </div>
+          </button>
+        )}
 
         {error && (
           <p className="text-red-500 dark:text-red-400 text-sm bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg px-4 py-3">{error}</p>

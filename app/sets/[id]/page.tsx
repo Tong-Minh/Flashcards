@@ -33,6 +33,7 @@ import { exportCards, downloadText } from '@/lib/cardFormat'
 import { TYPE_BADGES } from '@/lib/cardTypes'
 import type { CardStatus, Collection, FlashcardSet, FlashcardWithProgress, SetStudyStats } from '@/lib/types'
 import { paths } from '@/lib/paths'
+import { IS_DESKTOP } from '@/lib/platform'
 
 const PAGE_SIZE = 50
 
@@ -433,7 +434,7 @@ export default function SetDetail() {
         name={set?.name}
         description={set?.description}
         tags={set?.tags}
-        badge={set && !set.is_public && (
+        badge={!IS_DESKTOP && set && !set.is_public && (
           <span className="text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-full">Private</span>
         )}
         actions={<>
@@ -946,23 +947,26 @@ export default function SetDetail() {
                     suggestions={Array.from(new Set(getCachedSets().flatMap(s => s.tags ?? []))).sort()}
                   />
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setIsPublicInput(v => !v)}
-                  className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600/50 transition-colors"
-                >
-                  <div className="text-left">
-                    <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
-                      {isPublicInput ? 'Public' : 'Private'}
-                    </p>
-                    <p className="text-xs text-gray-400 dark:text-gray-500">
-                      {isPublicInput ? 'Friends and anyone you share it with can study this' : 'Only visible to you'}
-                    </p>
-                  </div>
-                  <div className={`w-10 h-5 rounded-full transition-colors relative flex-shrink-0 ${isPublicInput ? 'bg-indigo-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
-                    <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${isPublicInput ? 'translate-x-5' : 'translate-x-0.5'}`} />
-                  </div>
-                </button>
+                {/* Sharing is web-only */}
+                {!IS_DESKTOP && (
+                  <button
+                    type="button"
+                    onClick={() => setIsPublicInput(v => !v)}
+                    className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600/50 transition-colors"
+                  >
+                    <div className="text-left">
+                      <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                        {isPublicInput ? 'Public' : 'Private'}
+                      </p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500">
+                        {isPublicInput ? 'Friends and anyone you share it with can study this' : 'Only visible to you'}
+                      </p>
+                    </div>
+                    <div className={`w-10 h-5 rounded-full transition-colors relative flex-shrink-0 ${isPublicInput ? 'bg-indigo-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
+                      <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${isPublicInput ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                    </div>
+                  </button>
+                )}
               </div>
 
               {/* FSRS — daily new cards */}

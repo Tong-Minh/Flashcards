@@ -4,6 +4,9 @@ import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
 import type { User } from '@supabase/supabase-js'
+import { IS_DESKTOP } from '@/lib/platform'
+import { openLibrary, pickLibraryFolder } from '@/lib/store/desktop'
+import { LOCAL_USER_ID } from '@/lib/store/localStore'
 
 const UserContext = createContext<User | null>(null)
 
@@ -12,6 +15,58 @@ const RETURN_KEY = 'fc_return_to'
 export const useUser = () => useContext(UserContext)
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
+  // The desktop app has no accounts: everything in the library folder is yours
+  if (IS_DESKTOP) return <LibraryGate>{children}</LibraryGate>
+  return <WebAuthGuard>{children}</WebAuthGuard>
+}
+
+// Stands in for the signed-in user on desktop, so ownership checks (set.user_id === user.id) pass
+const LOCAL_USER = { id: LOCAL_USER_ID, email: '', user_metadata: { full_name: 'My library' } } as unknown as User
+
+// Opens the remembered library folder, or asks for one on first launch
+function LibraryGate({ children }: { children: React.ReactNode }) {
+  const [ready,   setReady]   = useState(false)
+  const [checked, setChecked] = useState(false)
+
+  useEffect(() => {
+    setReady(openLibrary())
+    setChecked(true)
+  }, [])
+
+  async function choose() {
+    const root = await pickLibraryFolder()
+    if (root && openLibrary(root)) setReady(true)
+  }
+
+  if (!checked) return null
+  if (!ready) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center px-4">
+        <div className="w-full max-w-md text-center">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/icon.svg" alt="" className="w-16 h-16 mx-auto mb-5" />
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Welcome to Flashcards</h1>
+          <p className="text-gray-500 dark:text-gray-400 mt-2 mb-6 text-pretty">
+            Choose a folder to keep your cards in. Pick an empty folder to start a new library, or a folder
+            that already has one.
+          </p>
+          <button
+            onClick={choose}
+            className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-indigo-700 active:bg-indigo-800 transition-colors"
+          >
+            Choose folder
+          </button>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-4">
+            Tip: a folder inside OneDrive or Dropbox gets backed up automatically.
+          </p>
+        </div>
+      </div>
+    )
+  }
+  return <UserContext.Provider value={LOCAL_USER}>{children}</UserContext.Provider>
+}
+
+function WebAuthGuard({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const router = useRouter()

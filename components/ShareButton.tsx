@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Share2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
+import { IS_DESKTOP } from '@/lib/platform'
 
 // Shares a set or collection link through the native share sheet (or copies it). Recipients can
 // only open public items, so a private one is made public first, with the owner's confirmation.
@@ -16,6 +17,9 @@ export function ShareButton({ kind, id, name, isPublic, isOwner, privateSetCount
   privateSetCount?: number
   onMadePublic?: () => void
 }) {
+  // Sharing needs the web app's server; IS_DESKTOP is a build-time constant
+  if (IS_DESKTOP) return null
+  // eslint-disable-next-line react-hooks/rules-of-hooks
   const [copied, setCopied] = useState(false)
 
   async function share() {

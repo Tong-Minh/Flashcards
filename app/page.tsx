@@ -12,6 +12,8 @@ import { SetOrganizer } from '@/components/SetOrganizer'
 import FriendsTab from '@/components/FriendsTab'
 import DiscoverTab from '@/components/DiscoverTab'
 import { SearchBar } from '@/components/SearchBar'
+import { DownloadLibraryButton } from '@/components/LibraryControls'
+import { IS_DESKTOP } from '@/lib/platform'
 import type { Collection } from '@/lib/types'
 
 async function signOut() {
@@ -32,7 +34,8 @@ function HomePage() {
   const params      = useSearchParams()
   // The tab lives in the URL so the desktop sidebar can link to it
   const tabParam    = params.get('tab')
-  const tab: Tab    = tabParam === 'discover' || tabParam === 'friends' ? tabParam : 'mine'
+  // The desktop app only has your own library
+  const tab: Tab    = !IS_DESKTOP && (tabParam === 'discover' || tabParam === 'friends') ? tabParam : 'mine'
   const setTab      = (t: Tab) => router.replace(t === 'mine' ? '/' : `/?tab=${t}`, { scroll: false })
   const [sets,        setSets]        = useState<SetWithStats[]>([])
   const [collections, setCollections] = useState<Collection[]>([])
@@ -141,7 +144,8 @@ function HomePage() {
               </svg>
             )}
           </button>
-          <button
+          {!IS_DESKTOP && <DownloadLibraryButton className="lg:hidden p-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors disabled:opacity-50" />}
+          {!IS_DESKTOP && <button
             onClick={signOut}
             className="lg:hidden p-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors"
             title="Sign out"
@@ -149,12 +153,12 @@ function HomePage() {
             <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h6a2 2 0 012 2v1" />
             </svg>
-          </button>
+          </button>}
         </div>
       </div>
 
       {/* Tab bar */}
-      <div className="flex border-b border-gray-200 dark:border-gray-700 mb-5 lg:hidden">
+      <div className={`flex border-b border-gray-200 dark:border-gray-700 mb-5 lg:hidden ${IS_DESKTOP ? 'hidden' : ''}`}>
         {(Object.keys(TAB_LABELS) as Tab[]).map(t => (
           <button
             key={t}

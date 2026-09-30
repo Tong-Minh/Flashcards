@@ -16,6 +16,7 @@ import { ShareButton } from '@/components/ShareButton'
 import { DetailHeader, SettingsButton } from '@/components/DetailHeader'
 import { PublicSetCard, type PublicSet } from '@/components/PublicSetCard'
 import type { Collection } from '@/lib/types'
+import { IS_DESKTOP } from '@/lib/platform'
 
 export default function CollectionDetail() {
   const { id } = useRouteIds()
@@ -338,21 +339,24 @@ export default function CollectionDetail() {
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Tags</label>
                     <TagInput value={tagsInput} onChange={setTagsInput} suggestions={tagSuggestions} />
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setIsPublicInput(v => !v)}
-                    className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600/50 transition-colors"
-                  >
-                    <div className="text-left">
-                      <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{isPublicInput ? 'Shared' : 'Private'}</p>
-                      <p className="text-xs text-gray-400 dark:text-gray-500">
-                        {isPublicInput ? 'Anyone with the link can see its public sets' : 'Only visible to you'}
-                      </p>
-                    </div>
-                    <div className={`w-10 h-5 rounded-full transition-colors relative flex-shrink-0 ${isPublicInput ? 'bg-indigo-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
-                      <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${isPublicInput ? 'translate-x-5' : 'translate-x-0.5'}`} />
-                    </div>
-                  </button>
+                  {/* Sharing is web-only */}
+                  {!IS_DESKTOP && (
+                    <button
+                      type="button"
+                      onClick={() => setIsPublicInput(v => !v)}
+                      className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600/50 transition-colors"
+                    >
+                      <div className="text-left">
+                        <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{isPublicInput ? 'Shared' : 'Private'}</p>
+                        <p className="text-xs text-gray-400 dark:text-gray-500">
+                          {isPublicInput ? 'Anyone with the link can see its public sets' : 'Only visible to you'}
+                        </p>
+                      </div>
+                      <div className={`w-10 h-5 rounded-full transition-colors relative flex-shrink-0 ${isPublicInput ? 'bg-indigo-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
+                        <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${isPublicInput ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                      </div>
+                    </button>
+                  )}
                 </div>
 
                 <button

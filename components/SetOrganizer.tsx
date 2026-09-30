@@ -19,6 +19,7 @@ import { SetCard, CollectionCard } from '@/components/SetCard'
 import { MoveSheet } from '@/components/MoveSheet'
 import { UndoToast, type Toast } from '@/components/UndoToast'
 import type { Collection } from '@/lib/types'
+import { IS_DESKTOP } from '@/lib/platform'
 
 const COLLECTION_DROP = 'collection:'
 
@@ -281,9 +282,11 @@ export function SetOrganizer({
             ) : (
               <>
                 <BarButton onClick={() => setShowMove(true)} disabled={busy} primary>Move</BarButton>
-                <BarButton onClick={() => setVisibility(!allPublic)} disabled={busy}>
-                  {allPublic ? 'Make private' : 'Make public'}
-                </BarButton>
+                {!IS_DESKTOP && (
+                  <BarButton onClick={() => setVisibility(!allPublic)} disabled={busy}>
+                    {allPublic ? 'Make private' : 'Make public'}
+                  </BarButton>
+                )}
                 <BarButton onClick={remove} disabled={busy} danger>Delete</BarButton>
               </>
             )}

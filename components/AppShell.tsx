@@ -12,6 +12,7 @@ import { getCachedCollections, COLLECTIONS_EVENT } from '@/lib/storage'
 import type { Collection } from '@/lib/types'
 import { paths } from '@/lib/paths'
 import { IS_DESKTOP } from '@/lib/platform'
+import { DesktopLibraryFooter, DownloadLibraryButton } from '@/components/LibraryControls'
 
 // Pages that get the whole screen: signing in, and studying (focus mode)
 function isBare(pathname: string) {
@@ -55,6 +56,15 @@ function Sidebar() {
   const tab = pathname === '/' ? params.get('tab') ?? 'mine' : null
   const name   = (user?.user_metadata?.full_name as string | undefined) ?? user?.email ?? ''
   const avatar = user?.user_metadata?.avatar_url as string | undefined
+  const themeButton = (
+    <button
+      onClick={toggle}
+      className="p-1.5 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 dark:text-gray-500 dark:hover:text-gray-200 dark:hover:bg-gray-700 transition-colors"
+      title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+    >
+      {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
+    </button>
+  )
 
   return (
     <aside className="hidden lg:flex fixed inset-y-0 left-0 z-30 w-64 flex-col bg-white dark:bg-gray-800/60 border-r border-gray-200 dark:border-gray-800">
@@ -75,8 +85,11 @@ function Sidebar() {
 
       <nav className="px-3 mt-4 space-y-0.5">
         <NavItem href="/"               active={tab === 'mine'}     icon={<Library size={18} />}>My Sets</NavItem>
-        <NavItem href="/?tab=discover"  active={tab === 'discover'} icon={<Compass size={18} />}>Discover</NavItem>
-        <NavItem href="/?tab=friends"   active={tab === 'friends'}  icon={<Users size={18} />}>Friends</NavItem>
+        {/* Social features need the web app's server */}
+        {!IS_DESKTOP && <>
+          <NavItem href="/?tab=discover"  active={tab === 'discover'} icon={<Compass size={18} />}>Discover</NavItem>
+          <NavItem href="/?tab=friends"   active={tab === 'friends'}  icon={<Users size={18} />}>Friends</NavItem>
+        </>}
       </nav>
 
       <div className="flex items-center justify-between px-5 mt-6 mb-1">
@@ -114,27 +127,26 @@ function Sidebar() {
         })}
       </div>
 
-      <div className="flex items-center gap-2 px-3 py-3 border-t border-gray-200 dark:border-gray-700/70">
-        {avatar
-          // eslint-disable-next-line @next/next/no-img-element
-          ? <img src={avatar} alt="" className="w-8 h-8 rounded-full flex-shrink-0" referrerPolicy="no-referrer" />
-          : <div className="w-8 h-8 rounded-full flex-shrink-0 bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 flex items-center justify-center text-sm font-semibold">{name.charAt(0).toUpperCase()}</div>}
-        <p className="flex-1 min-w-0 truncate text-sm font-medium text-gray-700 dark:text-gray-200">{name}</p>
-        <button
-          onClick={toggle}
-          className="p-1.5 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 dark:text-gray-500 dark:hover:text-gray-200 dark:hover:bg-gray-700 transition-colors"
-          title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-        >
-          {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
-        </button>
-        <button
-          onClick={() => supabase.auth.signOut()}
-          className="p-1.5 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 dark:text-gray-500 dark:hover:text-gray-200 dark:hover:bg-gray-700 transition-colors"
-          title="Sign out"
-        >
-          <LogOut size={17} />
-        </button>
-      </div>
+      {IS_DESKTOP ? (
+        <DesktopLibraryFooter themeButton={themeButton} />
+      ) : (
+        <div className="flex items-center gap-1 px-3 py-3 border-t border-gray-200 dark:border-gray-700/70">
+          {avatar
+            // eslint-disable-next-line @next/next/no-img-element
+            ? <img src={avatar} alt="" className="w-8 h-8 rounded-full flex-shrink-0 mr-1" referrerPolicy="no-referrer" />
+            : <div className="w-8 h-8 rounded-full flex-shrink-0 mr-1 bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 flex items-center justify-center text-sm font-semibold">{name.charAt(0).toUpperCase()}</div>}
+          <p className="flex-1 min-w-0 truncate text-sm font-medium text-gray-700 dark:text-gray-200">{name}</p>
+          <DownloadLibraryButton />
+          {themeButton}
+          <button
+            onClick={() => supabase.auth.signOut()}
+            className="p-1.5 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 dark:text-gray-500 dark:hover:text-gray-200 dark:hover:bg-gray-700 transition-colors"
+            title="Sign out"
+          >
+            <LogOut size={17} />
+          </button>
+        </div>
+      )}
     </aside>
   )
 }
