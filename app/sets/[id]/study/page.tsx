@@ -9,6 +9,7 @@ import { haptic, hasTextSelection } from '@/lib/haptic'
 import { fetchAllRows, MAX_CARDS_PER_SET } from '@/lib/fetchAll'
 import { ContentRenderer, previewText } from '@/components/ContentRenderer'
 import { ClozeQuestion, FlipCard } from '@/components/CardPreview'
+import { BottomBar, BottomBarSpacer } from '@/components/BottomBar'
 import { TypedAnswerInput, TypedResultBanner, TrueFalseButtons, MatchingBoard, MatchingPairsList } from '@/components/StudyInteractions'
 import { checkTypedAnswer, type TypedResult } from '@/lib/answerCheck'
 import {
@@ -545,22 +546,26 @@ export default function Study() {
           <FlipCard key={viewCard.id} card={viewCard} />
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <button
-            onClick={() => setViewIndex(i => i - 1)}
-            disabled={viewIndex === 0}
-            className="py-4 rounded-2xl font-semibold text-base bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-          >
-            ← Back
-          </button>
-          <button
-            onClick={() => (atEnd ? router.push(`/sets/${setId}`) : setViewIndex(i => i + 1))}
-            className="py-4 rounded-2xl font-semibold text-base bg-indigo-600 text-white hover:bg-indigo-700 active:bg-indigo-800 transition-colors"
-          >
-            {atEnd ? 'Finish' : 'Next →'}
-          </button>
-        </div>
-        <p className="text-xs text-center text-gray-400 dark:text-gray-500 mt-4">Viewing only — doesn&apos;t affect your stats or schedule</p>
+        <p className="text-xs text-center text-gray-400 dark:text-gray-500">Viewing only — doesn&apos;t affect your stats or schedule</p>
+        <BottomBarSpacer />
+
+        <BottomBar>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={() => setViewIndex(i => i - 1)}
+              disabled={viewIndex === 0}
+              className="py-4 rounded-2xl font-semibold text-base bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            >
+              ← Back
+            </button>
+            <button
+              onClick={() => (atEnd ? router.push(`/sets/${setId}`) : setViewIndex(i => i + 1))}
+              className="py-4 rounded-2xl font-semibold text-base bg-indigo-600 text-white hover:bg-indigo-700 active:bg-indigo-800 transition-colors"
+            >
+              {atEnd ? 'Finish' : 'Next →'}
+            </button>
+          </div>
+        </BottomBar>
       </div>
     )
   }
@@ -943,7 +948,10 @@ export default function Study() {
         )}
       </div>
 
-      {/* Actions */}
+      <BottomBarSpacer />
+
+      {/* Actions, pinned to the bottom so they're in thumb reach and don't move as cards change size */}
+      <BottomBar>
       {showBack ? (
         <div className="grid grid-cols-4 gap-2 fade-in">
           <button onClick={() => rate(Rating.Again)}
@@ -982,6 +990,7 @@ export default function Study() {
           </button>
         )
       )}
+      </BottomBar>
     </div>
   )
 }
