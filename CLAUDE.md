@@ -18,6 +18,9 @@ Mobile-first flashcard PWA with FSRS spaced repetition. Next.js 15 (App Router) 
   - `components/ContentRenderer.tsx` renders markup read-only (Prism + KaTeX).
   - `components/BlockEditor.tsx` is the WYSIWYG editor. It splits text around code fences into text blocks (Tiptap editors, extensions in `components/editor/`) and code cards. Users never see raw markup while editing. `singleLine` mode is used for multiple-choice options.
   - The editor emits changes only on real edits (`setContent(..., { emitUpdate: false })` on load), so opening a card never rewrites its stored text. Keep it that way: MC correctness is a string comparison between `answer` and `options[i]`.
+  - A single newline touching a code fence is a separator, not a blank line. The editor stores it as `lead`/`trail` flags on text blocks, and the renderer strips it. Both must keep treating it that way, or gaps appear around code blocks.
+- **Card display:** `components/CardPreview.tsx` has `FlipCard` (tap to flip, optional swipe-to-dismiss), used by the Cards-tab preview modal and study View mode. Its `card-enter` animation must only play on mount; re-applying it after a flip causes a double rotation.
+- **View mode:** the set page's View button opens `/sets/[id]/study?mode=view`. It browses every card in set order.
 
 ## Data model (Supabase, `public` schema)
 
@@ -32,10 +35,11 @@ Schema changes go through Supabase migrations (the Supabase MCP server is config
 
 ## Gotchas
 
-- **PostgREST caps every response at 1000 rows.** Never `select` flashcards without paging. Use `fetchAllRows()` from `lib/fetchAll.ts`.
+- **PostgREST caps every response at 1000 rows.** Never `select` flashcards without paging. Use `fetchAllRows()` from `lib/fetchAll.ts`. For totals, use `count: 'exact', head: true` queries instead of downloading rows; `lib/sets.ts` does this for home-page stats.
 - Sets are capped at `MAX_CARDS_PER_SET` (3000, in `lib/fetchAll.ts`). Enforce it anywhere cards are inserted.
 - Card order is `position asc nulls last, created_at asc`. Newly created cards have `position = null`.
 - "View" mode on the study page must never write `card_progress` or `study_sessions`.
+- Cards use CSS transform animations, which trap `position: fixed` descendants. Overlays opened from inside a card (code fullscreen, math popup) must `createPortal` to `document.body` and stop event propagation, because React events still bubble through portals to the card's flip handler.
 
 ## Conventions
 

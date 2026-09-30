@@ -13,8 +13,9 @@ type CommandKind =
   | { kind: 'code' }
   | { kind: 'math' }
   | { kind: 'heading'; level: 1 | 2 | 3 }
-  | { kind: 'mark'; mark: 'bold' | 'italic' }
+  | { kind: 'mark'; mark: 'bold' | 'italic' | 'code' }
   | { kind: 'color'; color: string }
+  | { kind: 'clear' }
 
 type SlashCommand = { id: string; label: string; desc: string; icon: string; iconClass?: string } & CommandKind
 
@@ -26,12 +27,14 @@ const SLASH_COMMANDS: SlashCommand[] = [
   { id: 'h3',     label: 'Heading 3',  desc: 'Subsection title',         icon: 'H3',  kind: 'heading', level: 3 },
   { id: 'bold',   label: 'Bold',       desc: 'Bold text',                icon: 'B',   kind: 'mark', mark: 'bold' },
   { id: 'italic', label: 'Italic',     desc: 'Italic text',              icon: 'I',   kind: 'mark', mark: 'italic' },
+  { id: 'inline', label: 'Inline code', desc: 'Code within a sentence',  icon: '`',   kind: 'mark', mark: 'code' },
   { id: 'red',    label: 'Red',        desc: 'Red text',    icon: '●', iconClass: 'text-red-500',    kind: 'color', color: 'red' },
   { id: 'green',  label: 'Green',      desc: 'Green text',  icon: '●', iconClass: 'text-green-500',  kind: 'color', color: 'green' },
   { id: 'blue',   label: 'Blue',       desc: 'Blue text',   icon: '●', iconClass: 'text-blue-500',   kind: 'color', color: 'blue' },
   { id: 'yellow', label: 'Yellow',     desc: 'Yellow text', icon: '●', iconClass: 'text-yellow-500', kind: 'color', color: 'yellow' },
   { id: 'orange', label: 'Orange',     desc: 'Orange text', icon: '●', iconClass: 'text-orange-500', kind: 'color', color: 'orange' },
   { id: 'purple', label: 'Purple',     desc: 'Purple text', icon: '●', iconClass: 'text-purple-500', kind: 'color', color: 'purple' },
+  { id: 'clear',  label: 'Clear formatting', desc: 'Back to plain text', icon: 'T̸', kind: 'clear' },
 ]
 
 const TOOLBAR_COLORS = [
@@ -56,12 +59,25 @@ function applyCommand(editor: Editor, cmd: SlashCommand) {
     case 'heading': editor.chain().focus().toggleHeading({ level: cmd.level }).run(); break
     case 'mark':    editor.chain().focus().toggleMark(cmd.mark).run(); break
     case 'color':   toggleColor(editor, cmd.color); break
+    case 'clear':   clearFormatting(editor); break
   }
+}
+
+// Plain text from here on: drop marks on the selection and the ones that would carry into the
+// next typed text (stored marks), and turn a heading line back into a paragraph.
+function clearFormatting(editor: Editor) {
+  editor.chain().focus()
+    .unsetAllMarks()
+    .command(({ tr }) => { tr.setStoredMarks([]); return true })
+    .run()
+  if (editor.isActive('heading')) editor.chain().focus().setParagraph().run()
 }
 
 // ── Block types ────────────────────────────────────────────────────────────────
 
-type TextBlock = { id: string; type: 'text'; content: string }
+// `lead` / `trail`: the text had a newline separating it from an adjacent code fence. That
+// newline is structural, not a blank line, so it's kept out of the editor and re-added on save.
+type TextBlock = { id: string; type: 'text'; content: string; lead?: boolean; trail?: boolean }
 type CodeBlock = { id: string; type: 'code'; lang: string; content: string }
 type Block = TextBlock | CodeBlock
 
@@ -82,12 +98,20 @@ function parseBlocks(text: string): Block[] {
   }
   if (last < text.length) blocks.push({ id: uid(), type: 'text', content: text.slice(last) })
   if (blocks.length === 0) blocks.push({ id: uid(), type: 'text', content: text })
+
+  blocks.forEach((b, i) => {
+    if (b.type !== 'text') return
+    if (blocks[i + 1]?.type === 'code' && b.content.endsWith('\n'))   { b.content = b.content.slice(0, -1); b.trail = true }
+    if (blocks[i - 1]?.type === 'code' && b.content.startsWith('\n')) { b.content = b.content.slice(1);     b.lead  = true }
+  })
   return blocks
 }
 
+const rawText = (b: TextBlock) => `${b.lead ? '\n' : ''}${b.content}${b.trail ? '\n' : ''}`
+
 function serializeBlocks(blocks: Block[]): string {
   return blocks.map(b =>
-    b.type === 'code' ? `\`\`\`${b.lang}\n${b.content}\n\`\`\`` : b.content
+    b.type === 'code' ? `\`\`\`${b.lang}\n${b.content}\n\`\`\`` : rawText(b)
   ).join('')
 }
 
@@ -96,7 +120,9 @@ function mergeTextBlocks(blocks: Block[]): Block[] {
   for (const b of blocks) {
     const prev = out[out.length - 1]
     if (b.type === 'text' && prev?.type === 'text') {
-      out[out.length - 1] = { ...prev, content: prev.content + b.content }
+      // Separators between the two halves become real text; the outer ones stay separators
+      const inner = `${prev.content}${prev.trail ? '\n' : ''}${b.lead ? '\n' : ''}${b.content}`
+      out[out.length - 1] = { ...prev, content: inner, trail: b.trail }
     } else {
       out.push(b)
     }
@@ -312,6 +338,7 @@ function RichTextBlock({
         >
           <ToolbarButton active={editor.isActive('bold')}   onClick={() => editor.chain().focus().toggleBold().run()}   label="Bold"><b>B</b></ToolbarButton>
           <ToolbarButton active={editor.isActive('italic')} onClick={() => editor.chain().focus().toggleItalic().run()} label="Italic"><i className="font-serif">I</i></ToolbarButton>
+          <ToolbarButton active={editor.isActive('code')}   onClick={() => editor.chain().focus().toggleCode().run()}   label="Inline code"><span className="font-mono text-xs">&lt;/&gt;</span></ToolbarButton>
           {!singleLine && ([1, 2, 3] as const).map(level => (
             <ToolbarButton key={level} active={editor.isActive('heading', { level })} onClick={() => editor.chain().focus().toggleHeading({ level }).run()} label={`Heading ${level}`}>
               <span className="text-xs font-bold">H{level}</span>
@@ -530,9 +557,9 @@ export function BlockEditor({ value, onChange, rows = 3, placeholder, className,
     const afterId2 = uid()
     const next = [
       ...blocks.slice(0, idx),
-      { ...blocks[idx] as TextBlock, content: before },
+      { ...blocks[idx] as TextBlock, content: before, trail: before !== '' },
       { id: newId, type: 'code' as const, lang: '', content: '' },
-      { id: afterId2, type: 'text' as const, content: after },
+      { id: afterId2, type: 'text' as const, content: after, lead: after !== '' },
       ...blocks.slice(idx + 1),
     ]
     const serial = serializeBlocks(next)
@@ -591,7 +618,7 @@ export function BlockEditor({ value, onChange, rows = 3, placeholder, className,
             <RichTextBlock
               content={block.content}
               placeholder={placeholder}
-              minRows={idx === 0 ? rows : 1}
+              minRows={blocks.length === 1 ? rows : 1}
               isFirst={idx === 0}
               shouldFocus={focusId === block.id}
               onFocused={() => setFocusId(null)}

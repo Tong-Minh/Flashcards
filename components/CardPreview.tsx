@@ -60,6 +60,8 @@ interface FlipCardProps {
 export function FlipCard({ card, onSwipeAway, className = '' }: FlipCardProps) {
   const [showBack, setShowBack] = useState(false)
   const [flipping, setFlipping] = useState(false)
+  // The enter animation must only play on mount; re-applying it after a flip replays a rotation
+  const [entered,  setEntered]  = useState(false)
   const [drag,     setDrag]     = useState<{ x: number; y: number } | null>(null)
   const start   = useRef<{ x: number; y: number } | null>(null)
   const moved   = useRef(false)
@@ -70,6 +72,7 @@ export function FlipCard({ card, onSwipeAway, className = '' }: FlipCardProps) {
   function flip() {
     if (flipping) return
     haptic(20)
+    setEntered(true)
     setFlipping(true)
     timers.current.push(setTimeout(() => setShowBack(b => !b), 150))
     timers.current.push(setTimeout(() => setFlipping(false), 300))
@@ -120,7 +123,7 @@ export function FlipCard({ card, onSwipeAway, className = '' }: FlipCardProps) {
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={() => { start.current = null; setDrag(null) }}
-        className={`${flipping ? 'card-flip' : 'card-enter'} bg-white dark:bg-gray-800 rounded-2xl shadow-md border border-gray-100 dark:border-gray-700 p-6 min-h-[260px] flex flex-col cursor-pointer ${className}`}
+        className={`${flipping ? 'card-flip' : entered ? '' : 'card-enter'} bg-white dark:bg-gray-800 rounded-2xl shadow-md border border-gray-100 dark:border-gray-700 p-6 min-h-[260px] flex flex-col cursor-pointer ${className}`}
       >
         <p className={`text-xs font-medium uppercase tracking-wide mb-3 ${showBack ? 'text-indigo-400' : 'text-gray-400 dark:text-gray-500'}`}>
           {showBack ? 'Answer' : card.type === 'multiple_choice' ? 'Multiple Choice' : card.type === 'fill_blank' ? 'Fill in the blank' : 'Question'}

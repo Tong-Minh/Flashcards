@@ -350,7 +350,11 @@ export function ContentRenderer({ text, className, readOnly, onCodeLangChange, o
             />
           )
         }
-        return seg.text.trim() ? renderTextBlock(seg.text, i, onInlineMathClick) : null
+        // The newline touching a code fence is a separator, not a blank line
+        const text = seg.text
+          .replace(segments[i - 1]?.type === 'code' ? /^\n/ : /^(?!)/, '')
+          .replace(segments[i + 1]?.type === 'code' ? /\n$/ : /^(?!)/, '')
+        return text.trim() ? renderTextBlock(text, i, onInlineMathClick) : null
       })}
     </div>
   )

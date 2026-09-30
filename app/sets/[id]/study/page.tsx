@@ -89,22 +89,6 @@ function buildQueue(
   return { queue: sorted, dueCount: dueCards.length, newCount: newCards.length }
 }
 
-function ViewButton({ onClick, label = 'View' }: { onClick: () => void; label?: string }) {
-  return (
-    <button
-      onClick={onClick}
-      title="Flip through every card without affecting stats or scheduling"
-      className="flex items-center gap-1.5 px-5 py-4 rounded-2xl font-semibold text-sm bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-    >
-      <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-      </svg>
-      {label}
-    </button>
-  )
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function Study() {
@@ -144,9 +128,10 @@ export default function Study() {
   const [stateCounts,   setStateCounts]   = useState({ new: 0, learning: 0, needs_review: 0, mastered: 0 })
   const [extraNewCount, setExtraNewCount] = useState(0)
 
-  // View mode — browse cards with no FSRS updates and no session recorded
-  const [viewCards, setViewCards] = useState<FlashcardWithProgress[]>([])
+  // View mode (opened from the set page via ?mode=view) — browse every card in set order
+  // with no FSRS updates and no session recorded
   const [viewIndex, setViewIndex] = useState(0)
+  const viewCards = allCards
 
   useEffect(() => { syncPending().then(loadCards) }, [setId])
 
@@ -159,13 +144,6 @@ export default function Study() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [phase, viewCards.length])
-
-  function startView() {
-    if (allCards.length === 0) return
-    setViewCards(order === 'random' ? [...allCards].sort(() => Math.random() - 0.5) : allCards)
-    setViewIndex(0)
-    setPhase('view')
-  }
 
   async function syncPending() {
     if (!navigator.onLine) return
@@ -244,7 +222,8 @@ export default function Study() {
     })
     setExtraNewCount(Math.max(0, cards.filter(c => isNew(c.progress)).length - n))
 
-    setPhase(cards.length === 0 ? 'done' : 'pre-session')
+    const viewMode = new URLSearchParams(window.location.search).get('mode') === 'view'
+    setPhase(cards.length === 0 ? 'done' : viewMode ? 'view' : 'pre-session')
   }
 
   // ── Custom queue builders ─────────────────────────────────────────────────
@@ -533,7 +512,7 @@ export default function Study() {
     return (
       <div className="max-w-lg mx-auto px-4 py-6">
         <div className="flex items-center justify-between mb-4">
-          <button onClick={() => setPhase('pre-session')} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors font-medium">
+          <button onClick={() => router.push(`/sets/${setId}`)} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors font-medium">
             ← Exit
           </button>
           <p className="text-sm text-gray-400 dark:text-gray-500">{viewIndex + 1} / {viewCards.length}</p>
@@ -557,7 +536,7 @@ export default function Study() {
             ← Back
           </button>
           <button
-            onClick={() => (atEnd ? setPhase('pre-session') : setViewIndex(i => i + 1))}
+            onClick={() => (atEnd ? router.push(`/sets/${setId}`) : setViewIndex(i => i + 1))}
             className="py-4 rounded-2xl font-semibold text-base bg-indigo-600 text-white hover:bg-indigo-700 active:bg-indigo-800 transition-colors"
           >
             {atEnd ? 'Finish' : 'Next →'}
@@ -661,26 +640,17 @@ export default function Study() {
                   Continue ({savedSession.queueIds.length} remaining)
                 </button>
               )}
-              <div className="flex gap-3">
-                <button onClick={() => startSession('new')}
-                  className={`flex-1 py-4 rounded-2xl font-semibold text-base transition-colors ${
-                    savedSession
-                      ? 'bg-white dark:bg-gray-800 text-indigo-600 dark:text-indigo-400 border-2 border-indigo-200 dark:border-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-900/20'
-                      : 'bg-indigo-600 text-white hover:bg-indigo-700 active:bg-indigo-800 shadow-sm'
-                  }`}
-                >
-                  {savedSession ? 'Start New Session' : `Study Now — ${totalToStudy} card${totalToStudy !== 1 ? 's' : ''}`}
-                </button>
-                <ViewButton onClick={startView} />
-              </div>
+              <button onClick={() => startSession('new')}
+                className={`w-full py-4 rounded-2xl font-semibold text-base transition-colors ${
+                  savedSession
+                    ? 'bg-white dark:bg-gray-800 text-indigo-600 dark:text-indigo-400 border-2 border-indigo-200 dark:border-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-900/20'
+                    : 'bg-indigo-600 text-white hover:bg-indigo-700 active:bg-indigo-800 shadow-sm'
+                }`}
+              >
+                {savedSession ? 'Start New Session' : `Study Now — ${totalToStudy} card${totalToStudy !== 1 ? 's' : ''}`}
+              </button>
             </div>
           </>
-        )}
-
-        {nothing && allCards.length > 0 && (
-          <div className="flex justify-center mb-5">
-            <ViewButton onClick={startView} label={`View all ${allCards.length} cards`} />
-          </div>
         )}
 
         {/* ── Custom Study ──────────────────────────────────────────────── */}

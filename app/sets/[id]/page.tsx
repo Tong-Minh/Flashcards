@@ -360,6 +360,19 @@ export default function SetDetail() {
             Study
           </button>
         )}
+        {cards.length > 0 && (
+          <Link
+            href={`/sets/${id}/study?mode=view`}
+            title="Flip through every card without affecting stats or scheduling"
+            className="flex items-center gap-1.5 px-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl text-sm font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors shadow-sm"
+          >
+            <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            View
+          </Link>
+        )}
         {!isOwner && (
           <div className="relative">
             <button
@@ -461,11 +474,14 @@ export default function SetDetail() {
                   >
                     <div className="flex items-start gap-3">
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                          <span className="text-gray-400 dark:text-gray-500 mr-1">{idx + 1}.</span>
-                          {hasFormattedContent(card.question)
-                            ? <ContentRenderer text={card.question} readOnly className="text-sm font-medium text-gray-900 dark:text-gray-100" />
-                            : previewText(card.question)}
+                        {/* Number in its own column so formatted (block-level) questions start on the same line as plain ones */}
+                        <div className="flex gap-1 text-sm font-medium text-gray-900 dark:text-gray-100">
+                          <span className="flex-shrink-0 text-gray-400 dark:text-gray-500">{idx + 1}.</span>
+                          <div className="flex-1 min-w-0 [&_:is(h1,h2,h3):first-child]:mt-0">
+                            {hasFormattedContent(card.question)
+                              ? <ContentRenderer text={card.question} readOnly className="text-sm font-medium text-gray-900 dark:text-gray-100" />
+                              : previewText(card.question)}
+                          </div>
                         </div>
                         <div className="flex items-center gap-2 mt-1.5">
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${badge.className}`}>
