@@ -65,7 +65,8 @@ export interface Store {
   getCards(setId: string): Promise<FlashcardWithProgress[]>
   getCard(id: string): Promise<Flashcard | null>
   countCards(setId: string): Promise<number>
-  addCards(setId: string, cards: CardDraft[]): Promise<void>
+  // `onProgress` gets the number saved so far (the web saves in chunks; the desktop app all at once)
+  addCards(setId: string, cards: CardDraft[], onProgress?: (added: number) => void): Promise<void>
   updateCard(id: string, draft: CardDraft): Promise<void>
   deleteCards(ids: string[]): Promise<void>
   clearCards(setId: string): Promise<void>

@@ -13,6 +13,16 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.1.9',
+    date: '2026-10-01',
+    title: 'Import progress, more shortcuts',
+    changes: [
+      'Importing from Anki shows a progress bar with the percentage and how many cards are done, so a big deck no longer looks frozen.',
+      'More ` shortcuts: press ` on the home page (new set, new collection, Anki import, search, stats, settings, storage, export and import) and on a collection (new set, add existing, search, stats, settings). On a set, ` then 9 searches its cards.',
+      'Cloud version: delete your account from the ⋯ menu.',
+    ],
+  },
+  {
     version: '0.1.8',
     date: '2026-10-01',
     title: 'Cleaner equations and answers',

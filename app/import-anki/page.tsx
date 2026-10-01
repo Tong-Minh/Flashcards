@@ -30,7 +30,7 @@ export default function ImportAnki() {
   const [error,    setError]    = useState('')
   const [depth,    setDepth]    = useState(99)
   const [skipped,  setSkipped]  = useState<Set<string>>(new Set())
-  const [progress, setProgress] = useState<string | null>(null)
+  const [progress, setProgress] = useState<{ label: string; done: number } | null>(null)
   const [dragOver, setDragOver] = useState(false)
 
   const maxDepth = plan ? Math.max(1, ...plan.decks.map(d => d.path.length)) : 1
@@ -38,6 +38,7 @@ export default function ImportAnki() {
   const chosen   = groups.filter(g => !skipped.has(g.key))
   const cardCount = chosen.reduce((n, g) => n + g.cards.length, 0)
   const samples  = (groups.find(g => !skipped.has(g.key))?.cards ?? []).slice(0, 3)
+  const percent  = progress && cardCount ? Math.min(100, Math.floor((progress.done / (cardCount * 2)) * 100)) : 0
 
   async function read(file: File) {
     setError('')
@@ -98,9 +99,24 @@ export default function ImportAnki() {
         ...(c.occlusion && { occlusion: { ...c.occlusion, image: await withImages(c.occlusion.image) } }),
       })
 
+      // Each card counts twice toward the bar: once prepared (images, audio), once saved. Updates
+      // are spaced out, and pause so the page repaints (a deck without media never waits otherwise).
+      let done = 0
+      let label = ''
+      let shown = 0
+      const advance = async (n: number) => {
+        done += n
+        if (Date.now() - shown < 100) return
+        shown = Date.now()
+        setProgress({ label, done })
+        await new Promise(r => setTimeout(r))
+      }
+
       for (let g = 0; g < chosen.length; g++) {
         const group = chosen[g]
-        setProgress(`Importing ${g + 1} of ${chosen.length}: ${group.name}`)
+        label = chosen.length > 1 ? `Importing ${g + 1} of ${chosen.length}: ${group.name}` : `Importing ${group.name}`
+        shown = 0
+        await advance(0)
         let collectionId: string | null = null
         if (group.collection) {
           collectionId = byName.get(group.collection.toLowerCase()) ?? null
@@ -124,8 +140,12 @@ export default function ImportAnki() {
             color: null,
           })
           const cards: CardDraft[] = []
-          for (const c of group.cards.slice(p * size, (p + 1) * size)) cards.push(await resolve(c))
-          await store.addCards(set.id, cards)
+          for (const c of group.cards.slice(p * size, (p + 1) * size)) {
+            cards.push(await resolve(c))
+            await advance(1)
+          }
+          let saved = 0
+          await store.addCards(set.id, cards, added => { void advance(added - saved); saved = added })
         }
       }
       // The home page refreshes from the store
@@ -260,13 +280,24 @@ export default function ImportAnki() {
             </div>
           )}
 
-          <button
-            onClick={runImport}
-            disabled={!!progress || cardCount === 0}
-            className="w-full bg-indigo-600 text-white py-3.5 rounded-2xl font-semibold hover:bg-indigo-700 active:bg-indigo-800 disabled:opacity-50 transition-colors"
-          >
-            {progress ?? `Import ${cardCount.toLocaleString()} card${cardCount !== 1 ? 's' : ''}`}
-          </button>
+          {progress ? (
+            // The button becomes a progress bar while importing
+            <div className="relative w-full overflow-hidden rounded-2xl bg-indigo-200 dark:bg-indigo-900/60 py-3.5 text-center font-semibold text-white" role="progressbar" aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100}>
+              <div className="absolute inset-y-0 left-0 bg-indigo-600 transition-[width] duration-200" style={{ width: `${percent}%` }} />
+              <span className="relative">{progress.label} · {percent}%</span>
+              <p className="relative text-xs font-medium text-indigo-100 mt-0.5">
+                {Math.min(cardCount, Math.round(progress.done / 2)).toLocaleString()} of {cardCount.toLocaleString()} cards
+              </p>
+            </div>
+          ) : (
+            <button
+              onClick={runImport}
+              disabled={cardCount === 0}
+              className="w-full bg-indigo-600 text-white py-3.5 rounded-2xl font-semibold hover:bg-indigo-700 active:bg-indigo-800 disabled:opacity-50 transition-colors"
+            >
+              {`Import ${cardCount.toLocaleString()} card${cardCount !== 1 ? 's' : ''}`}
+            </button>
+          )}
         </div>
       )}
     </div>

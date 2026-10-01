@@ -152,11 +152,12 @@ export const supabaseStore: Store = {
     return count ?? 0
   },
 
-  async addCards(setId, cards) {
+  async addCards(setId, cards, onProgress) {
     const rows = cards.map(c => ({ set_id: setId, question: c.question, answer: c.answer, options: c.options, pairs: c.pairs, type: c.type, reverse: c.reverse ?? false, occlusion: c.occlusion ?? null }))
     for (let i = 0; i < rows.length; i += INSERT_CHUNK) {
       const { error } = await supabase.from('flashcards').insert(rows.slice(i, i + INSERT_CHUNK))
       if (error) throw i === 0 ? error : new PartialInsertError(i)
+      onProgress?.(Math.min(i + INSERT_CHUNK, rows.length))
     }
   },
 

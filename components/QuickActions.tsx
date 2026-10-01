@@ -10,6 +10,17 @@ export interface QuickAction {
   disabled?: boolean
 }
 
+// The "Search" quick action: focuses the page's search box once it's there (after the menu has
+// closed, or a tab switch has rendered it)
+export function focusSearch(tries = 20) {
+  setTimeout(() => {
+    const box = document.querySelector<HTMLInputElement>('input[type="search"]')
+    if (!box) { if (tries > 0) focusSearch(tries - 1); return }
+    box.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    box.focus({ preventScroll: true })
+  }, 25)
+}
+
 // Keyboard quick actions: ` opens a numbered menu, then a number key runs that action (so ` 1, ` 2 …
 // become shortcuts). Esc or ` again closes it. Keys typed into inputs and editors are ignored.
 export function QuickActions({ actions, enabled = true }: { actions: QuickAction[]; enabled?: boolean }) {

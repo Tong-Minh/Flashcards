@@ -333,7 +333,7 @@ export function createLocalStore(files: Files): LocalStore {
       return sets.get(setId)?.cards.length ?? 0
     },
 
-    async addCards(setId, drafts) {
+    async addCards(setId, drafts, onProgress) {
       await ensure()
       const d = data(setId)
       // Spaced by a millisecond so bulk imports keep their order
@@ -349,6 +349,7 @@ export function createLocalStore(files: Files): LocalStore {
         cardSet.set(card.id, setId)
       })
       await writeCards(setId)
+      onProgress?.(drafts.length)
     },
 
     async updateCard(id, draft) {

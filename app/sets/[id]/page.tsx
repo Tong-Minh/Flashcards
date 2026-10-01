@@ -22,7 +22,7 @@ import { ShareButton } from '@/components/ShareButton'
 import { DetailHeader, SettingsButton } from '@/components/DetailHeader'
 import { SearchBar } from '@/components/SearchBar'
 import { SetPickerSheet } from '@/components/SetPickerSheet'
-import { QuickActions, type QuickAction } from '@/components/QuickActions'
+import { QuickActions, focusSearch, type QuickAction } from '@/components/QuickActions'
 import { useLongPress } from '@/lib/useLongPress'
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable'
@@ -506,11 +506,14 @@ export default function SetDetail() {
     { label: 'Select cards', description: 'Move, suspend, reset or delete cards', run: () => setSelecting(true), disabled: noCards },
     { label: 'Settings',     description: 'Name, icon, collection, sharing',   run: () => setShowSettings(true) },
     { label: 'Stats',        description: 'Forecast, retention and history',   run: () => router.push(paths.stats({ set: id })) },
+    { label: 'Search cards', description: 'Text, or #12 for card 12',          run: focusSearch, disabled: noCards },
   ] : [
     { label: 'Study',          run: () => router.push(paths.study(id)), disabled: noCards },
     { label: 'View',           run: () => router.push(paths.study(id, true)), disabled: noCards },
     { label: 'Duplicate set',  description: 'Save your own copy to study & edit', run: forkSet },
     { label: 'Export as .txt', run: exportSet, disabled: noCards },
+    { label: 'Search cards',   description: 'Text, or #12 for card 12', run: focusSearch, disabled: noCards },
+    { label: 'Stats',          description: 'Forecast, retention and history', run: () => router.push(paths.stats({ set: id })) },
   ]
 
   return (

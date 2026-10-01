@@ -13,6 +13,7 @@ import { SearchBar } from '@/components/SearchBar'
 import { AppMenu } from '@/components/AppMenu'
 import { itemMatcher } from '@/lib/search'
 import { NewMenu } from '@/components/NewMenu'
+import { QuickActions, focusSearch, type QuickAction } from '@/components/QuickActions'
 import { IS_DESKTOP } from '@/lib/platform'
 import type { Collection } from '@/lib/types'
 import { BarChart3 } from 'lucide-react'
@@ -79,6 +80,19 @@ function HomePage() {
     : flat ? sets.filter(matches)
     : sets.filter(s => !s.collection_id || !collectionIds.has(s.collection_id))
 
+  // ` then a number (fixed order, the same in both apps)
+  const quickActions: QuickAction[] = [
+    { label: 'New set',          description: 'A deck of cards to study',         run: () => router.push('/sets/new') },
+    { label: 'New collection',   description: 'A folder to group sets together',  run: () => router.push('/collections/new') },
+    { label: 'Import from Anki', description: 'An .apkg deck or a text export',   run: () => router.push('/import-anki') },
+    { label: 'Search',           description: 'Sets and collections, or #tag',    run: () => { if (tab !== 'mine') setTab('mine'); focusSearch() } },
+    { label: 'Stats',            description: 'Forecast, retention and history',  run: () => router.push('/stats') },
+    { label: 'Study settings',   description: 'Target retention, new day, FSRS',  run: () => router.push('/settings') },
+    { label: 'Storage',          description: 'Space each set and collection takes', run: () => router.push('/storage') },
+    { label: 'Export library',   description: 'Sets, progress and history as a zip', run: () => router.push('/library/export') },
+    { label: 'Import library',   description: 'Add sets from a library zip',      run: () => router.push('/library/import') },
+  ]
+
   const TAB_LABELS: Record<Tab, string> = {
     mine:     'Library',
     discover: 'Discover',
@@ -87,6 +101,7 @@ function HomePage() {
 
   return (
     <div className="max-w-lg lg:max-w-6xl mx-auto px-4 py-6 lg:px-8 lg:py-8">
+      <QuickActions actions={quickActions} />
       {/* Header. On desktop the sidebar has the app name, tabs and the ⋯ menu, so the heading is the tab */}
       <div className="flex items-center justify-between mb-5 lg:mb-6">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 lg:hidden">Flashcards</h1>

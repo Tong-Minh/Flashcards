@@ -48,11 +48,12 @@ export function AppMenu({ up, className = '' }: { up?: boolean; className?: stri
             </button>
             {IS_DESKTOP
               ? link('/uninstall', <Trash2 size={16} />, 'Uninstall Flashcards…')
-              : (
+              : (<>
                 <button onClick={() => { close(); supabase.auth.signOut() }} className={item}>
                   <LogOut size={16} /> Sign out
                 </button>
-              )}
+                {link('/delete-account', <Trash2 size={16} />, 'Delete account…')}
+              </>)}
           </div>
         </>
       )}

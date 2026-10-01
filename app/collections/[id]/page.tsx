@@ -23,6 +23,8 @@ import { normalizeUrl } from '@/lib/links'
 import { itemMatcher } from '@/lib/search'
 import { formatBytes } from '@/lib/media'
 import { SearchBar } from '@/components/SearchBar'
+import { QuickActions, focusSearch, type QuickAction } from '@/components/QuickActions'
+import { paths } from '@/lib/paths'
 
 export default function CollectionDetail() {
   const { id } = useRouteIds()
@@ -193,8 +195,18 @@ export default function CollectionDetail() {
   const toStudy    = sets.reduce((n, s) => n + s.toStudy, 0)
   const tagSuggestions = Array.from(new Set(allSets.flatMap(s => s.tags ?? []))).sort()
 
+  // ` then a number (fixed order)
+  const quickActions: QuickAction[] = [
+    { label: 'New set here',  description: 'A new set in this collection',      run: () => router.push(`/sets/new?collection=${id}`) },
+    { label: 'Add existing',  description: 'Move sets you have into it',        run: () => setShowPicker(true) },
+    { label: 'Search sets',   description: 'Name, description, or #tag',        run: focusSearch, disabled: sets.length === 0 },
+    { label: 'Stats',         description: 'Forecast, retention and history',   run: () => router.push(paths.stats({ collection: id })) },
+    { label: 'Settings',      description: 'Name, icon, sharing',               run: () => setShowSettings(true) },
+  ]
+
   return (
     <div className="max-w-lg lg:max-w-6xl mx-auto px-4 py-6 lg:px-8 lg:py-8">
+      <QuickActions actions={quickActions} enabled={!showSettings && !showPicker} />
       <DetailHeader
         kind="collection"
         backHref="/"
