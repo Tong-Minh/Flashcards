@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Apple, Download, Monitor } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
+import { INVITE_KEY } from '@/components/AuthGuard'
 
 const RELEASES_PAGE  = 'https://github.com/Tong-Minh/Flashcards/releases/latest'
 const LATEST_RELEASE = 'https://api.github.com/repos/Tong-Minh/Flashcards/releases/latest'
@@ -11,6 +12,7 @@ const LATEST_RELEASE = 'https://api.github.com/repos/Tong-Minh/Flashcards/releas
 // bring decks in, and signing in to the cloud version (for the owner and friends)
 export default function Login() {
   const [loading,   setLoading]   = useState(false)
+  const [invite,    setInvite]    = useState('')
   const [downloads, setDownloads] = useState({ windows: RELEASES_PAGE, mac: RELEASES_PAGE })
 
   useEffect(() => {
@@ -25,6 +27,8 @@ export default function Login() {
 
   async function signInWithGoogle() {
     setLoading(true)
+    // Checked after Google brings you back (AuthGuard's MembershipGate)
+    try { if (invite.trim()) sessionStorage.setItem(INVITE_KEY, invite.trim()) } catch {}
     await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin } })
   }
 
@@ -67,9 +71,16 @@ export default function Login() {
           <section className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm p-6 flex flex-col">
             <h2 className="font-semibold text-gray-900 dark:text-gray-100">Cloud version</h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 mb-4 text-pretty">
-              A private version for me and my friends: your sets sync across devices and work on your phone. If you’ve been invited, sign in.
+              A private version for me and my friends: your sets sync across devices and work on your phone.
             </p>
             <div className="flex-1" />
+            <input
+              type="password"
+              value={invite}
+              onChange={e => setInvite(e.target.value)}
+              placeholder="Invite password (first time only)"
+              className="w-full mb-2 border border-gray-300 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-700 outline-none focus:border-indigo-500"
+            />
             <button
               onClick={signInWithGoogle}
               disabled={loading}

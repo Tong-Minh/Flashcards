@@ -130,5 +130,91 @@ function WebAuthGuard({ children }: { children: React.ReactNode }) {
     return null
   }
 
+  if (user && pathname !== '/login') return <MembershipGate user={user}>{children}</MembershipGate>
   return <UserContext.Provider value={user}>{children}</UserContext.Provider>
+}
+
+// The invite password typed on the front page, used once the Google sign-in comes back
+export const INVITE_KEY = 'fc_invite'
+const memberKey = (id: string) => `fc_member_${id}`
+
+// The cloud version is invite-only: an account has to join with the invite password once (checked by
+// the database's join_with_invite, which also enforces it: only members can create sets). Members are
+// remembered on the device so the app opens instantly and offline.
+function MembershipGate({ user, children }: { user: User; children: React.ReactNode }) {
+  const [state,    setState]    = useState<'checking' | 'member' | 'join'>(() => {
+    try { return localStorage.getItem(memberKey(user.id)) === '1' ? 'member' : 'checking' } catch { return 'checking' }
+  })
+  const [password, setPassword] = useState('')
+  const [busy,     setBusy]     = useState(false)
+  const [error,    setError]    = useState('')
+
+  const welcome = () => {
+    try { localStorage.setItem(memberKey(user.id), '1') } catch {}
+    setState('member')
+  }
+
+  async function join(pw: string): Promise<boolean> {
+    const { data, error } = await supabase.rpc('join_with_invite', { invite_password: pw })
+    if (error) { setError(error.message.includes('Too many') ? error.message : 'Could not check the password. Try again.'); return false }
+    if (data === true) { welcome(); return true }
+    setError('That’s not the invite password.')
+    return false
+  }
+
+  useEffect(() => {
+    if (state === 'member') return
+    let alive = true
+    ;(async () => {
+      const { data, error } = await supabase.from('profiles').select('member').eq('id', user.id).maybeSingle()
+      if (!alive) return
+      // Couldn't check (offline, or the database not set up for it): let the app open; the database
+      // still refuses non-members
+      if (error) { setState('member'); return }
+      if (data?.member) { welcome(); return }
+      // Typed on the front page before signing in with Google
+      let pending: string | null = null
+      try { pending = sessionStorage.getItem(INVITE_KEY); sessionStorage.removeItem(INVITE_KEY) } catch {}
+      if (pending && await join(pending)) return
+      if (alive) setState('join')
+    })()
+    return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user.id])
+
+  if (state === 'member') return <UserContext.Provider value={user}>{children}</UserContext.Provider>
+  if (state === 'checking') {
+    return <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center text-gray-400 text-sm">Loading…</div>
+  }
+  return (
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center px-4">
+      <form
+        onSubmit={async e => { e.preventDefault(); if (!password.trim()) return; setBusy(true); setError(''); await join(password.trim()); setBusy(false) }}
+        className="w-full max-w-sm bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm p-6 text-center"
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/icon.svg" alt="" className="w-12 h-12 mx-auto mb-3" />
+        <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Invite only</h1>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 mb-4 text-pretty">
+          The cloud version is for friends. Enter the invite password to join, or get the free desktop app instead.
+        </p>
+        <input
+          type="password"
+          value={password}
+          onChange={e => setPassword(e.target.value)}
+          placeholder="Invite password"
+          autoFocus
+          className="w-full border border-gray-300 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-700 outline-none focus:border-indigo-500"
+        />
+        {error && <p className="text-sm text-red-600 dark:text-red-400 mt-2">{error}</p>}
+        <button type="submit" disabled={busy || !password.trim()} className="mt-3 w-full bg-indigo-600 text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-indigo-700 transition-colors disabled:opacity-50">
+          {busy ? 'Checking…' : 'Join'}
+        </button>
+        <div className="flex justify-between mt-4 text-xs">
+          <a href="/login" onClick={e => { e.preventDefault(); supabase.auth.signOut() }} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">Sign out</a>
+          <a href="/login" onClick={e => { e.preventDefault(); supabase.auth.signOut() }} className="text-indigo-600 dark:text-indigo-400 hover:underline">Get the desktop app</a>
+        </div>
+      </form>
+    </div>
+  )
 }
