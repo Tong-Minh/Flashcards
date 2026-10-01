@@ -1,4 +1,13 @@
-export type CardType   = 'multiple_choice' | 'open_ended' | 'fill_blank' | 'typed' | 'true_false' | 'matching'
+export type CardType   = 'multiple_choice' | 'open_ended' | 'fill_blank' | 'typed' | 'true_false' | 'matching' | 'image_occlusion'
+
+// An image occlusion card: boxes over an image (positions as 0–1 fractions of its size). Boxes with
+// the same ord are one card to recall; hide_all also covers the other boxes while asking.
+export interface OcclusionShape { x: number; y: number; w: number; h: number; ord: number; ellipse?: boolean }
+export interface Occlusion {
+  image: string   // "images/<file>" in the desktop library
+  mode: 'hide_all' | 'hide_one'
+  shapes: OcclusionShape[]
+}
 export type CardStatus = 'new' | 'learning' | 'mastered' | 'needs_review'
 export type FSRSState  = 0 | 1 | 2 | 3 // New | Learning | Review | Relearning
 
@@ -99,6 +108,8 @@ export interface Flashcard {
   created_at: string
   // Also studied back to front (open-ended and typed cards), with its own progress (ord 1)
   reverse?: boolean
+  // Image occlusion cards: the image and boxes (question = header, answer = back extra)
+  occlusion?: Occlusion | null
 }
 
 export interface CardProgress {
@@ -192,4 +203,5 @@ export interface CardDraft {
   options: string[] | null
   pairs: MatchPair[] | null
   reverse?: boolean
+  occlusion?: Occlusion | null
 }

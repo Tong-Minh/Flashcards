@@ -141,7 +141,9 @@ function cardToLine(card: Pick<Flashcard, 'question' | 'answer' | 'type' | 'opti
   }
 }
 
+// Image occlusion cards are left out: they can't be written as text (a library zip keeps them)
 export function exportCards(cards: Pick<Flashcard, 'question' | 'answer' | 'type' | 'options' | 'pairs' | 'reverse'>[]): string {
+  cards = cards.filter(c => c.type !== 'image_occlusion')
   return cards.map(cardToLine).join('\n') + '\n'
 }
 

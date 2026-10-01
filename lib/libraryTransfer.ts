@@ -49,6 +49,7 @@ export function mediaOf(cards: Flashcard[]): string[] {
   for (const c of cards) {
     const text = [c.question, c.answer, ...(c.options ?? []), ...(c.pairs ?? []).flatMap(p => [p.left, p.right])].join('\n')
     for (const m of text.matchAll(/(?:images|audio)\/[\w.-]+/g)) used.add(m[0])
+    if (c.occlusion?.image) used.add(c.occlusion.image)
   }
   return [...used]
 }

@@ -53,6 +53,14 @@ Mobile-first flashcard PWA with FSRS spaced repetition. Next.js 15 (App Router) 
   - Stats, the due count and the optimizer count directions; the card list and the set size count cards.
   - Set up by the CardForm checkbox, or a `[reverse]` tag in the text format (export writes it).
   - Anki notes whose two templates mirror each other ("Basic (and reversed card)", `isMirrored`) import as one reversed card.
+- **Image occlusion (desktop only):**
+  - `type: 'image_occlusion'` cards carry `occlusion` (`flashcards.occlusion` jsonb): `{ image, mode: 'hide_all' | 'hide_one', shapes: [{ x, y, w, h, ord, ellipse? }] }`, with positions as 0–1 fractions. `question` is an optional header and `answer` the back extra.
+  - Each distinct shape `ord` is a study direction (`cardOrds`), with progress per ord like reversed cards. Unlike them, they are **not** sibling-buried.
+  - `OcclusionImage` draws the image with masks: the asked group orange, then outlined; other groups grey in hide_all. `ord: null` means all groups, as in View mode and the preview.
+  - `OcclusionEditor` (CardForm, desktop) draws, moves, resizes and numbers boxes.
+  - The web hides the type in CardForm, leaves these cards out of study, and badges them "Desktop only". Text export skips them; library zips keep them.
+  - `pruneMedia` and `mediaOf` count `occlusion.image` as used, so anything that scans card text for media must also check it.
+  - Anki: built-in IO notes (`{{cN::image-occlusion:rect:…}}`, `parseOcclusion`) become one card per note, with `oi=1` meaning hide_all. The old Image Occlusion Enhanced add-on (SVG masks) is reported as unsupported.
 - **Study settings and FSRS optimization:**
   - `/settings` (sidebar; the Stats header on phones) holds the user's `StudySettings`: target retention, new-day hour, and FSRS parameters. They're stored with `store.get/saveSettings` (web: `user_settings` table; desktop: `library.json`), and `lib/studySettings.ts` caches them in localStorage (`fc_study_settings`, which `lib/day.ts` also reads for the hour).
   - A set's `desired_retention` overrides the target. The study page builds its scheduler with `scheduler(retentionFor(set, settings), settings)`, so always build schedulers that way, never with a bare `fsrs()`.
@@ -125,7 +133,7 @@ One codebase, two builds, chosen by `NEXT_PUBLIC_TARGET` (`IS_DESKTOP` in `lib/p
 - `collections` — folders that group sets (`name`, `description`, `tags text[]`, `icon`, `color`, `is_public`, `user_id`). A public collection shows only its public sets to others. RLS returns other people's public collections too, so filter by `user_id` when listing your own.
 - `sets` — `name`, `description`, `is_public`, `tags text[]`, `icon`, `color`, `position` (manual home-screen order; set in bulk by the `reorder_sets(ids)` RPC), `collection_id` (nullable, `on delete set null`), `desired_retention` (nullable; personal, so `fork_set` doesn't copy it)
 - `user_settings` — one row per user (`settings jsonb`, a `StudySettings`); own row only
-- `flashcards` — `set_id`, `question`, `answer`, `type` (`open_ended` | `multiple_choice` | `fill_blank` | `typed` | `true_false` | `matching`), `options text[]` (MC choices; extra accepted answers for `typed`), `pairs jsonb` (`[{left, right}]`, matching only), `position`. Type labels and badges live in `lib/cardTypes.ts`.
+- `flashcards` — `set_id`, `question`, `answer`, `type` (`open_ended` | `multiple_choice` | `fill_blank` | `typed` | `true_false` | `matching` | `image_occlusion`), `options text[]` (MC choices; extra accepted answers for `typed`), `pairs jsonb` (`[{left, right}]`, matching only), `position`, `reverse` (also studied back to front), `occlusion jsonb` (image occlusion only). `fork_set` copies all of them. Type labels and badges live in `lib/cardTypes.ts`.
 - `card_progress` — per-user FSRS state per card, plus `suspended` and `buried_until`
 - `review_logs` — one row per rating (own rows only; cascades with the card). Never rolled up: stats and FSRS optimization need every review. `set_id` is where the card was then; `getReviews` joins `flashcards` so moved cards count for their current set.
 - `study_sessions` — one row per completed/exited study session. A nightly pg_cron job (`rollup-old-study-sessions`, 03:17 UTC) runs `rollup_old_sessions()`, which moves sessions older than 90 days into `study_rollups` (one row per user, set and UTC day). Read totals from the `set_study_stats` view (security_invoker; sums both tables per user and set), never from `study_sessions` alone, or older history goes missing. The home cards, set page stats, and `get_friends_leaderboard()` all use it. There is no per-session History UI.

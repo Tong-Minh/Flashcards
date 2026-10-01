@@ -23,11 +23,14 @@ export const MATURE_DAYS = 21
 
 // ── Card directions ──────────────────────────────────────────────────────────
 // A reversed card is studied twice: front to back (ord 0) and back to front (ord 1), each with its
-// own progress. Only open-ended and typed cards can be reversed.
+// own progress. Only open-ended and typed cards can be reversed. Image occlusion cards are studied
+// once per box group.
 
 export const canReverse = (type: CardType) => type === 'open_ended' || type === 'typed'
 
-export function cardOrds(card: Pick<Flashcard, 'type' | 'reverse'>): number[] {
+// An image occlusion card has one direction per box group (its shapes' ords)
+export function cardOrds(card: Pick<Flashcard, 'type' | 'reverse' | 'occlusion'>): number[] {
+  if (card.type === 'image_occlusion') return [...new Set((card.occlusion?.shapes ?? []).map(s => s.ord))].sort((a, b) => a - b)
   return card.reverse && canReverse(card.type) ? [0, 1] : [0]
 }
 

@@ -37,6 +37,7 @@ import { IS_DESKTOP } from '@/lib/platform'
 import { confirmAction, notify } from '@/lib/dialogs'
 import { cachedSettings, RETENTION_CHOICES } from '@/lib/studySettings'
 import { canReverse, cardOrds, progressOf, studyItems } from '@/lib/srs'
+import { isAudioOnly } from '@/lib/markup'
 
 const PAGE_SIZE = 50
 
@@ -782,7 +783,8 @@ export default function SetDetail() {
                       <div className="flex-1 min-w-0 [&_:is(h1,h2,h3):first-child]:mt-0 [&_.card-image]:max-h-40 [&_.card-image]:mx-0">
                         {hasFormattedContent(card.question)
                           ? <ContentRenderer text={card.question} readOnly className="text-sm font-medium text-gray-900 dark:text-gray-100" />
-                          : previewText(card.question) || (card.type === 'matching' ? 'Match the pairs' : '')}
+                          : (card.question.trim() ? previewText(card.question) : '') || (card.type === 'matching' ? 'Match the pairs'
+                            : card.type === 'image_occlusion' ? `Image occlusion · ${cardOrds(card).length} card${cardOrds(card).length !== 1 ? 's' : ''}` : '')}
                       </div>
                     </div>
                     <div className="flex items-center gap-2 mt-1.5">
@@ -799,6 +801,9 @@ export default function SetDetail() {
                       </span>
                       {card.reverse && canReverse(card.type) && (
                         <span className="text-xs font-medium text-indigo-500 dark:text-indigo-400" title="Also studied back to front">⇄ Both ways</span>
+                      )}
+                      {!IS_DESKTOP && (card.type === 'image_occlusion' || isAudioOnly(card.question)) && (
+                        <span className="text-xs font-medium text-gray-400 dark:text-gray-500" title="Needs the desktop app's images or audio; left out of study here">Desktop only</span>
                       )}
                     </div>
                   </div>

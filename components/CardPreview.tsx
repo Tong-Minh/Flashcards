@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { ContentRenderer, hasCodeBlock } from '@/components/ContentRenderer'
+import { OcclusionImage } from '@/components/OcclusionImage'
 import { haptic, hasTextSelection } from '@/lib/haptic'
 import { MatchingPairsList } from '@/components/StudyInteractions'
 import type { Flashcard } from '@/lib/types'
@@ -172,10 +173,18 @@ export function FlipCard({ card, onSwipeAway, className = '' }: FlipCardProps) {
             : card.type === 'typed' ? 'Type the answer'
             : card.type === 'true_false' ? 'True or false?'
             : card.type === 'matching' ? 'Matching'
+            : card.type === 'image_occlusion' ? 'Image occlusion'
             : 'Question'}
         </p>
 
-        {!showBack ? (
+        {card.type === 'image_occlusion' && card.occlusion ? (
+          // Every box at once: covered on the front, uncovered on the back
+          <div className="flex flex-col flex-1">
+            {card.question.trim() && <ContentRenderer text={card.question} className="text-lg font-medium text-gray-900 dark:text-gray-100 leading-relaxed mb-1" readOnly />}
+            <OcclusionImage occlusion={card.occlusion} ord={null} revealed={showBack} />
+            {showBack && card.answer.trim() && <ContentRenderer text={card.answer} className="mt-3 text-base text-gray-700 dark:text-gray-300 leading-relaxed" readOnly />}
+          </div>
+        ) : !showBack ? (
           <div className="flex flex-col flex-1">
             {card.type === 'fill_blank'
               ? <ClozeQuestion sentence={card.question} />

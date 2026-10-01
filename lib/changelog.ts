@@ -13,28 +13,17 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
-    version: '0.1.7',
-    date: '2026-10-01',
-    title: 'Audio',
-    changes: [
-      'Desktop: cards can play sound clips. Drag an mp3, m4a, wav… into a card, or type /audio.',
-      'Clips play when a card appears and the answer’s when you reveal it, like Anki (turn this off in Study settings). Press R to replay, or use the ▶ button.',
-      'Anki decks with audio now import it (before, clips were left out).',
-      'The web app shows a placeholder for audio, and leaves out cards whose question is only audio.',
-    ],
-  },
-  {
     version: '0.1.6',
     date: '2026-10-01',
-    title: 'Reversed cards, and moving your library anywhere',
+    title: 'Reversed cards, audio, image occlusion, and moving your library anywhere',
     changes: [
-      'Export and Import (bottom of the sidebar) now work in every direction: web ⇄ desktop, and between Windows and Mac. Pick all or some sets; the zip carries cards, progress, review history, stats and settings (and images from the desktop app).',
-      'Importing only adds what’s missing and keeps your newer progress, so you can import the same zip again safely. On the web, sets over 3,000 cards are split into parts.',
-      'New option when making a card: “Also study it back to front”. You then also see the answer and recall the question, scheduled on its own.',
-      'The two directions of a card never come up on the same day.',
-      'Reversed cards show “⇄ Both ways” in the card list.',
-      'Imports: start a line with [reverse] (the AI prompt knows it). Anki “Basic (and reversed card)” notes import as one card studied both ways.',
-      'Stats counts each direction as a card.',
+      'New option when making a card: “Also study it back to front”. You then also see the answer and recall the question, scheduled on its own; the two directions never come up on the same day. Reversed cards show “⇄ Both ways” in the card list.',
+      'Desktop: image occlusion cards. Pick an image, drag boxes over the labels, and number them; each number is a card. Choose “hide all, guess one” or “hide one, guess one”.',
+      'Desktop: cards can play sound clips. Drag an mp3, m4a, wav… into a card, or type /audio. Clips play when a card appears and the answer’s when you reveal it (turn this off in Study settings); press R to replay.',
+      'Export and Import (bottom of the sidebar) now work in every direction: web ⇄ desktop, and between Windows and Mac. Pick all or some sets; the zip carries cards, progress, review history, stats and settings (and images and audio from the desktop app). Importing only adds what’s missing and keeps your newer progress, so importing again is safe.',
+      'Anki imports bring in audio, image occlusion notes, and “Basic (and reversed card)” notes as one card studied both ways. Text imports: start a line with [reverse].',
+      'The web app shows placeholders for images and audio, and leaves out of study the cards that need the desktop app (marked “Desktop only”).',
+      'Stats counts each direction or box group as a card.',
       'Fixed: two people studying the same public set could not both save progress on its cards.',
     ],
   },

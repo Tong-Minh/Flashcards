@@ -68,7 +68,7 @@ const progressRow = (cardId: string, ord: number, p: CardProgress) => ({
 
 const cardRow = (c: Flashcard, setId: string) => ({
   id: c.id, set_id: setId, question: c.question, answer: c.answer, type: c.type, options: c.options, pairs: c.pairs,
-  position: c.position, created_at: c.created_at, reverse: c.reverse ?? false,
+  position: c.position, created_at: c.created_at, reverse: c.reverse ?? false, occlusion: c.occlusion ?? null,
 })
 
 // Adds a library zip's contents to the user's web library. Nothing there is removed or overwritten;

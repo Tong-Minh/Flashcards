@@ -315,8 +315,9 @@ export function createLocalStore(files: Files): LocalStore {
       const d = sets.get(setId)
       if (!d) return []
       return [...d.cards].sort(compareCards).map<FlashcardWithProgress>(c => {
-        const reverse = d.progress[progressKey(c.id, 1)]
-        return { ...c, progress: d.progress[c.id] ?? null, ...(reverse && { extraProgress: { 1: reverse } }) }
+        const extra: Record<number, CardProgress> = {}
+        for (const key of progressKeys(d, c.id)) if (key !== c.id) extra[Number(key.slice(c.id.length + 1))] = d.progress[key]
+        return { ...c, progress: d.progress[c.id] ?? null, ...(Object.keys(extra).length && { extraProgress: extra }) }
       })
     },
 
@@ -341,6 +342,7 @@ export function createLocalStore(files: Files): LocalStore {
           id: uuid(), set_id: setId, type: draft.type, question: draft.question, answer: draft.answer,
           options: draft.options, pairs: draft.pairs, position: null, created_at: new Date(start + i).toISOString(),
           ...(draft.reverse && { reverse: true }),
+          ...(draft.occlusion && { occlusion: draft.occlusion }),
         }
         d.cards.push(card)
         cardSet.set(card.id, setId)
@@ -532,6 +534,7 @@ export function createLocalStore(files: Files): LocalStore {
         for (const c of d.cards) {
           const text = [c.question, c.answer, ...(c.options ?? []), ...(c.pairs ?? []).flatMap(p => [p.left, p.right])].join('\n')
           for (const m of text.matchAll(/(?:images|audio)\/[\w.-]+/g)) used.add(m[0])
+          if (c.occlusion?.image) used.add(c.occlusion.image)
         }
       }
       let removed = 0

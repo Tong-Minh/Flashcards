@@ -5,6 +5,9 @@ import { BlockEditor } from '@/components/BlockEditor'
 import { TYPE_LABELS, CARD_TYPES } from '@/lib/cardTypes'
 import type { CardDraft, CardType, MatchPair } from '@/lib/types'
 import { canReverse } from '@/lib/srs'
+import { IS_DESKTOP } from '@/lib/platform'
+import { OcclusionEditor } from '@/components/OcclusionEditor'
+import type { Occlusion } from '@/lib/types'
 
 export type { CardDraft } from '@/lib/types'
 
@@ -47,6 +50,7 @@ export function CardForm({ initial, submitLabel, onSubmit, autoFocus }: {
     while (rows.length < 3) rows.push({ left: '', right: '', id: rowId() })
     return rows
   })
+  const [occlusion,    setOcclusion]    = useState<Occlusion | null>(init?.occlusion ?? null)
   // Also study it back to front (open-ended and typed cards)
   const [reverse,      setReverse]      = useState(init?.reverse ?? false)
   const [saving,       setSaving]       = useState(false)
@@ -91,6 +95,10 @@ export function CardForm({ initial, submitLabel, onSubmit, autoFocus }: {
             new Set(filled.map(p => p.right.trim())).size !== filled.length) return 'Each term and each match must be unique.'
         return { type, question: q, answer: '', options: null, pairs: filled.map(p => ({ left: p.left.trim(), right: p.right.trim() })) }
       }
+      case 'image_occlusion':
+        if (!occlusion?.image) return 'Choose an image.'
+        if (!occlusion.shapes.length) return 'Drag over the image to add at least one box.'
+        return { type, question: q, answer: answer.trim(), options: null, pairs: null, occlusion }
       default:
         if (!q) return 'Please enter a question.'
         if (!answer.trim()) return 'Please enter an answer.'
@@ -113,7 +121,8 @@ export function CardForm({ initial, submitLabel, onSubmit, autoFocus }: {
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
       <div className="grid grid-cols-3 gap-1.5">
-        {CARD_TYPES.map(t => (
+        {/* Image occlusion needs the desktop app's image storage */}
+        {CARD_TYPES.filter(t => IS_DESKTOP || t !== 'image_occlusion' || type === t).map(t => (
           <button
             key={t}
             type="button"
@@ -134,15 +143,17 @@ export function CardForm({ initial, submitLabel, onSubmit, autoFocus }: {
           {type === 'fill_blank' ? 'Sentence (use ___ for the blank)'
             : type === 'true_false' ? 'Statement'
             : type === 'matching' ? <>Instructions <span className="text-gray-400 dark:text-gray-500 font-normal">(optional)</span></>
+            : type === 'image_occlusion' ? <>Header <span className="text-gray-400 dark:text-gray-500 font-normal">(optional, shown above the image)</span></>
             : 'Question'}
         </label>
         <BlockEditor
           value={question}
           onChange={setQuestion}
           autoFocus={autoFocus}
-          rows={type === 'matching' ? 1 : 3}
+          rows={type === 'matching' || type === 'image_occlusion' ? 1 : 3}
           placeholder={
-            type === 'fill_blank' ? 'The capital of France is ___'
+            type === 'image_occlusion' ? 'Name the parts of the heart'
+            : type === 'fill_blank' ? 'The capital of France is ___'
             : type === 'true_false' ? 'The Pacific is the largest ocean.'
             : type === 'matching' ? 'Match each country to its capital'
             : 'What is the capital of France?'
@@ -150,10 +161,21 @@ export function CardForm({ initial, submitLabel, onSubmit, autoFocus }: {
         />
       </div>
 
-      {(type === 'open_ended' || type === 'fill_blank' || type === 'typed') && (
+      {type === 'image_occlusion' && (
+        <div>
+          <label className={label}>Image and boxes</label>
+          {IS_DESKTOP
+            ? <OcclusionEditor value={occlusion} onChange={setOcclusion} />
+            : <p className="text-sm text-gray-500 dark:text-gray-400">Image occlusion cards are edited in the desktop app.</p>}
+        </div>
+      )}
+
+      {(type === 'open_ended' || type === 'fill_blank' || type === 'typed' || type === 'image_occlusion') && (
         <div>
           <label className={label}>
-            {type === 'fill_blank' ? 'Answer (fills the blank)' : type === 'typed' ? 'Answer to type' : 'Answer'}
+            {type === 'fill_blank' ? 'Answer (fills the blank)' : type === 'typed' ? 'Answer to type'
+              : type === 'image_occlusion' ? <>Back extra <span className="text-gray-400 dark:text-gray-500 font-normal">(optional, shown with the answer)</span></>
+              : 'Answer'}
           </label>
           <BlockEditor
             value={answer}

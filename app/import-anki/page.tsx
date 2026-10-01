@@ -95,6 +95,7 @@ export default function ImportAnki() {
         ...c,
         question: await withImages(c.question),
         answer: await withImages(c.answer),
+        ...(c.occlusion && { occlusion: { ...c.occlusion, image: await withImages(c.occlusion.image) } }),
       })
 
       for (let g = 0; g < chosen.length; g++) {
@@ -145,6 +146,7 @@ export default function ImportAnki() {
     if (r.imagesDropped) notes.push(IS_DESKTOP ? `${r.imagesDropped} image${r.imagesDropped !== 1 ? 's' : ''} left out (web links or missing)` : `${r.imagesDropped} image${r.imagesDropped !== 1 ? 's' : ''} left out (images need the desktop app)`)
     if (r.audio) notes.push(`${r.audio} audio clip${r.audio !== 1 ? 's' : ''} included`)
     if (r.audioDropped) notes.push(IS_DESKTOP ? `${r.audioDropped} audio clip${r.audioDropped !== 1 ? 's' : ''} left out (missing)` : `${r.audioDropped} audio clip${r.audioDropped !== 1 ? 's' : ''} left out (audio needs the desktop app)`)
+    if (r.occlusionShapesSkipped) notes.push(`${r.occlusionShapesSkipped} image occlusion box${r.occlusionShapesSkipped !== 1 ? 'es' : ''} left out (text labels or an old format)`)
     if (r.reversed) notes.push(`${r.reversed} card${r.reversed !== 1 ? 's' : ''} studied both ways (Anki's reversed cards, merged)`)
     if (r.tables) notes.push(`${r.tables} table${r.tables !== 1 ? 's' : ''} turned into text lines`)
     for (const [why, n] of Object.entries(r.unsupported)) notes.push(`${n} ${why} card${n !== 1 ? 's' : ''} skipped (not supported)`)

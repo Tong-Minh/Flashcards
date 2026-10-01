@@ -1,5 +1,5 @@
 // Turns an Anki collection into the app's cards, grouped by deck. Every card starts as new.
-import type { CardDraft } from '@/lib/types'
+import type { CardDraft, OcclusionShape } from '@/lib/types'
 import { normalizeTag } from '@/lib/sets'
 import type { AnkiCollection } from './apkg'
 import { emptyReport, hiddenSelectors, htmlToMarkup, htmlToText, type ConvertReport } from './html'
@@ -17,7 +17,7 @@ export interface ImportPlan {
   // Images the cards use, referenced in their markup as "anki-media/<index>"
   mediaNames: string[]
   media: Map<string, () => Promise<Uint8Array>>
-  report: ConvertReport & { cards: number; skippedEmpty: number; reversed: number; unsupported: Record<string, number> }
+  report: ConvertReport & { cards: number; skippedEmpty: number; reversed: number; occlusionShapesSkipped: number; unsupported: Record<string, number> }
 }
 
 export const MEDIA_PREFIX = 'anki-media/'
@@ -29,6 +29,31 @@ function templateFields(fmt: string): Set<string> {
   const names = new Set<string>()
   for (const m of fmt.matchAll(/\{\{\s*[#^/]?\s*(?:[^{}:]+:)*([^{}]+?)\s*\}\}/g)) names.add(m[1])
   return names
+}
+
+// Anki's built-in image occlusion field: {{cN::image-occlusion:rect:left=.1:top=.2:width=.3:height=.1:oi=1}}
+// per box, positions as fractions of the image. cN is the card (box group); oi=1 ("occlude
+// inactive") means hide all, guess one. Ellipses keep their shape; polygons become their bounding
+// box; text labels and pixel positions (very old versions) are skipped.
+export function parseOcclusion(text: string): { shapes: OcclusionShape[]; hideAll: boolean; skipped: number } {
+  const shapes: OcclusionShape[] = []
+  let hideAll = false, skipped = 0
+  for (const m of text.matchAll(/\{\{c(\d+)::image-occlusion:(\w+):([^}]*?)\}\}/g)) {
+    const ord = Number(m[1]) - 1
+    const props = Object.fromEntries(m[3].split(':').map(kv => kv.split('=')).filter(kv => kv.length === 2).map(([k, v]) => [k.trim(), v.trim()]))
+    if (props.oi === '1') hideAll = true
+    let box: { x: number; y: number; w: number; h: number } | null = null
+    if (m[2] === 'rect' || m[2] === 'ellipse') {
+      box = { x: Number(props.left), y: Number(props.top), w: Number(props.width), h: Number(props.height) }
+    } else if (m[2] === 'polygon' && props.points) {
+      const pts = props.points.trim().split(/\s+/).map(p => p.split(',').map(Number))
+      const xs = pts.map(p => p[0]), ys = pts.map(p => p[1])
+      box = { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) }
+    }
+    if (!box || [box.x, box.y, box.w, box.h].some(n => !Number.isFinite(n) || n < 0 || n > 1) || box.w <= 0 || box.h <= 0) { skipped++; continue }
+    shapes.push({ ...box, ord, ...(m[2] === 'ellipse' && { ellipse: true }) })
+  }
+  return { shapes, hideAll, skipped }
 }
 
 // Template fields that are Anki's own, not the note's
@@ -60,7 +85,7 @@ function splitInfoNote(front: string, fieldTexts: string[]): [string, string] | 
 }
 
 export function planImport(col: AnkiCollection, { media }: { media: boolean }): ImportPlan {
-  const report = { ...emptyReport(), cards: 0, skippedEmpty: 0, reversed: 0, unsupported: {} as Record<string, number> }
+  const report = { ...emptyReport(), cards: 0, skippedEmpty: 0, reversed: 0, occlusionShapesSkipped: 0, unsupported: {} as Record<string, number> }
   const mediaNames: string[] = []
   // Images and audio: "anki-media/<index>" until the import saves them (desktop app only)
   const mediaSrc = (name: string) => {
@@ -72,6 +97,8 @@ export function planImport(col: AnkiCollection, { media }: { media: boolean }): 
   const hiddenByModel = new Map<number, ReturnType<typeof hiddenSelectors>>()
 
   const byDeck = new Map<number, { cards: CardDraft[]; tagCounts: Map<string, number> }>()
+  // Image occlusion notes already turned into a card (Anki has one card per box group)
+  const occlusionNotes = new Set<number>()
 
   for (const card of col.cards) {
     const note  = col.notes.get(card.nid)
@@ -86,10 +113,30 @@ export function planImport(col: AnkiCollection, { media }: { media: boolean }): 
 
     const unsupported = (why: string) => { report.unsupported[why] = (report.unsupported[why] ?? 0) + 1 }
     const tmpl0 = model.templates[0]
-    if (/image.?occlusion/i.test(model.name) || model.templates.some(t => /image-occlusion:/i.test(t.qfmt))) { unsupported('Image Occlusion'); continue }
-
     let draft: CardDraft | null = null
-    if (model.cloze) {
+    const field = (name: string) => fields[model.fields.find(f => f.toLowerCase() === name.toLowerCase()) ?? ''] ?? ''
+    if (model.fields.some(f => /^question mask$/i.test(f))) {
+      // The old Image Occlusion Enhanced add-on keeps its masks as separate SVG images
+      unsupported('Image Occlusion Enhanced (old add-on)')
+      continue
+    } else if (/image.?occlusion/i.test(model.name) || model.templates.some(t => /image-occlusion:/i.test(t.qfmt))) {
+      // Anki's built-in image occlusion: one card of ours per note, with a direction per box group
+      if (occlusionNotes.has(note.id)) continue
+      occlusionNotes.add(note.id)
+      const occlusionField = (tmpl0 && clozeField(tmpl0.qfmt)) ?? 'Occlusion'
+      const parsed = parseOcclusion(fields[occlusionField] ?? field('Occlusion'))
+      const imageName = field('Image').match(/<img[^>]*\ssrc\s*=\s*["']([^"']+)["']/i)?.[1]
+      let decoded = imageName ?? ''
+      try { decoded = decodeURIComponent(decoded) } catch {}
+      const image = imageName ? mediaSrc(decoded) : null
+      if (!image || !parsed.shapes.length) { unsupported(media ? 'Image Occlusion (no usable image or boxes)' : 'Image Occlusion (needs the desktop app)'); continue }
+      if (parsed.skipped) report.occlusionShapesSkipped += parsed.skipped
+      const extra = [field('Back Extra'), field('Comments')].map(md).filter(Boolean).join('\n\n')
+      draft = {
+        type: 'image_occlusion', question: md(field('Header')), answer: extra, options: null, pairs: null,
+        occlusion: { image, mode: parsed.hideAll ? 'hide_all' : 'hide_one', shapes: parsed.shapes },
+      }
+    } else if (model.cloze) {
       const name  = (tmpl0 && clozeField(tmpl0.qfmt)) ?? model.fields[0]
       const allParts = parseCloze(fields[name] ?? '')
       const n        = card.ord + 1

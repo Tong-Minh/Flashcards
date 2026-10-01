@@ -9,6 +9,7 @@ import { haptic, hasTextSelection } from '@/lib/haptic'
 import { store } from '@/lib/store'
 import { ContentRenderer, previewText } from '@/components/ContentRenderer'
 import { ClozeQuestion, FlipCard } from '@/components/CardPreview'
+import { OcclusionImage } from '@/components/OcclusionImage'
 import { BottomBar, BottomBarSpacer } from '@/components/BottomBar'
 import { TypedAnswerInput, TypedResultBanner, TrueFalseButtons, MatchingBoard, MatchingPairsList } from '@/components/StudyInteractions'
 import { checkTypedAnswer, type TypedResult } from '@/lib/answerCheck'
@@ -46,7 +47,7 @@ const itemKey = (c: { id: string; ord: number }) => progressKey(c.id, c.ord)
 function toItems(cards: FlashcardWithProgress[]): StudyItem[] {
   return studyItems(cards)
     .map(({ card, ord, progress }) => ({ ...card, ord, progress }))
-    .filter(item => IS_DESKTOP || !isAudioOnly(cardFace(item, item.ord).question))
+    .filter(item => IS_DESKTOP || (item.type !== 'image_occlusion' && !isAudioOnly(cardFace(item, item.ord).question)))
 }
 
 // What Undo puts back: the card's progress and the session as they were before the action
@@ -603,9 +604,11 @@ export default function Study() {
     }
 
     // The other direction of a reversed card waits until tomorrow (Anki's sibling burying), so the
-    // answer you just saw isn't the next question
-    const siblings = queue.slice(1).filter((c, i, all) =>
-      c.id === card.id && c.ord !== card.ord && all.findIndex(o => itemKey(o) === itemKey(c)) === i)
+    // answer you just saw isn't the next question. (An image occlusion card's boxes don't: burying
+    // them would leave one box per image per day.)
+    const siblings = card.reverse ? queue.slice(1).filter((c, i, all) =>
+      c.id === card.id && c.ord !== card.ord && all.findIndex(o => itemKey(o) === itemKey(c)) === i) : []
+    const siblingKeys = new Set(siblings.map(itemKey))
     const until = nextStudyDay().toISOString()
 
     pushUndo({
@@ -623,7 +626,7 @@ export default function Study() {
     setDisplayStats({ ...newStats })
 
     const updatedCard: SessionCard = { ...card, progress: newProgress, _key: card._key + 1 }
-    const rest = queue.slice(1).filter(c => !(c.id === card.id && c.ord !== card.ord))
+    const rest = queue.slice(1).filter(c => !siblingKeys.has(itemKey(c)))
     const newQueue = rating === Rating.Again ? [...rest, updatedCard] : rest
     if (siblings.length) setTotalInSession(t => t - siblings.length)
 
@@ -1026,7 +1029,7 @@ export default function Study() {
   const cardAnimClass = flipState === 'flipping' ? 'card-flip' : ''
   // Tapping flips cards with nothing to answer on the front (others have inputs there); once
   // revealed, every card's back flips to the front with a tap
-  const tapFlips = card.type === 'open_ended' || card.type === 'fill_blank' || showBack
+  const tapFlips = card.type === 'open_ended' || card.type === 'fill_blank' || card.type === 'image_occlusion' || showBack
 
   const intervals = scheduling ? {
     again: formatInterval(scheduling[Rating.Again].card),
@@ -1050,7 +1053,7 @@ export default function Study() {
       return
     }
     if (flipState !== 'front') return
-    if ((key === ' ' || key === 'enter') && (card.type === 'open_ended' || card.type === 'fill_blank')) {
+    if ((key === ' ' || key === 'enter') && (card.type === 'open_ended' || card.type === 'fill_blank' || card.type === 'image_occlusion')) {
       e.preventDefault()
       triggerFlip()
     } else if (card.type === 'multiple_choice' && face.options) {
@@ -1103,9 +1106,15 @@ export default function Study() {
                : card.type === 'typed'        ? 'Type the answer'
                : card.type === 'true_false'   ? 'True or false?'
                : card.type === 'matching'     ? 'Matching'
+               : card.type === 'image_occlusion' ? 'What’s under the orange box?'
                : revealed ? 'Question' : 'Tap to reveal answer'}
             </p>
-            {card.type === 'fill_blank'
+            {card.type === 'image_occlusion' && card.occlusion ? (
+              <div className="flex flex-col flex-1">
+                {face.question.trim() && <ContentRenderer text={face.question} className="text-lg font-medium text-gray-900 dark:text-gray-100 leading-relaxed mb-1" readOnly />}
+                <OcclusionImage occlusion={card.occlusion} ord={card.ord} revealed={false} />
+              </div>
+            ) : card.type === 'fill_blank'
               ? <ClozeQuestion sentence={face.question} />
               : <ContentRenderer
                   text={card.type === 'matching' && !face.question.trim() ? 'Match the pairs' : face.question}
@@ -1145,7 +1154,14 @@ export default function Study() {
           </div>
         ) : (
           <div className="flex flex-col flex-1">
-            {card.type === 'fill_blank' ? (
+            {card.type === 'image_occlusion' && card.occlusion ? (
+              <div className="flex flex-col flex-1">
+                <p className="text-xs font-medium text-indigo-400 uppercase tracking-wide mb-3">Answer</p>
+                {face.question.trim() && <ContentRenderer text={face.question} className="text-lg font-medium text-gray-900 dark:text-gray-100 leading-relaxed mb-1" readOnly />}
+                <OcclusionImage occlusion={card.occlusion} ord={card.ord} revealed />
+                {face.answer.trim() && <ContentRenderer text={face.answer} className="mt-3 text-base text-gray-700 dark:text-gray-300 leading-relaxed" readOnly />}
+              </div>
+            ) : card.type === 'fill_blank' ? (
               <div className="flex flex-col flex-1">
                 <p className="text-xs font-medium text-indigo-400 uppercase tracking-wide mb-3">Answer</p>
                 <ClozeQuestion sentence={face.question} answer={face.answer} />
@@ -1248,7 +1264,7 @@ export default function Study() {
           </button>
         </div>
       ) : (
-        (card.type === 'open_ended' || card.type === 'fill_blank') && (
+        (card.type === 'open_ended' || card.type === 'fill_blank' || card.type === 'image_occlusion') && (
           <button onClick={triggerFlip}
             className="w-full py-4 rounded-2xl bg-indigo-600 text-white font-semibold text-base hover:bg-indigo-700 active:bg-indigo-800 transition-colors"
           >
