@@ -16,7 +16,7 @@ export type SetPatch = Partial<SetInput> & Pick<FlashcardSet, 'desired_retention
 export type CollectionInput = Pick<Collection, 'name'> & Partial<Pick<Collection, 'description' | 'tags' | 'icon' | 'color'>>
 export type CollectionPatch = Partial<Pick<Collection, 'name' | 'description' | 'tags' | 'icon' | 'color' | 'is_public'>>
 // FSRS fields saved after a review (the row's id and card are implied)
-export type ProgressFields = Omit<CardProgress, 'id' | 'card_id'>
+export type ProgressFields = Omit<CardProgress, 'id' | 'card_id' | 'ord'>
 export interface SessionInput {
   cards_studied: number
   correct_count: number
@@ -68,11 +68,12 @@ export interface Store {
   moveCards(ids: string[], destSetId: string): Promise<void>
   reorderCards(changes: { id: string; position: number }[]): Promise<void>
 
-  saveProgress(cardId: string, progress: ProgressFields): Promise<void>
-  // Back to New. Also how an undone first review is removed.
-  resetProgress(cardIds: string[]): Promise<void>
-  // Cards with no progress yet get a New row carrying the flag
-  setSuspended(cardIds: string[], suspended: boolean): Promise<void>
+  // `ord` is the direction (1 = a reversed card's back to front); progress is kept per direction
+  saveProgress(cardId: string, progress: ProgressFields, ord?: number): Promise<void>
+  // Back to New: every direction, or just `ord`. Also how an undone first review is removed.
+  resetProgress(cardIds: string[], ord?: number): Promise<void>
+  // Directions with no progress yet get a New row carrying the flag
+  setSuspended(items: { cardId: string; ord: number }[], suspended: boolean): Promise<void>
   recordSession(setId: string, session: SessionInput): Promise<void>
   getSetStats(setId: string): Promise<SetStudyStats | null>
 

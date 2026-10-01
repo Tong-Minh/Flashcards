@@ -21,7 +21,7 @@ export default function EditCard() {
   async function loadCard() {
     const c = await store.getCard(cardId).catch(() => null)
     if (!c) { router.push(paths.set(setId)); return }
-    setCard({ type: c.type, question: c.question, answer: c.answer, options: c.options, pairs: c.pairs })
+    setCard({ type: c.type, question: c.question, answer: c.answer, options: c.options, pairs: c.pairs, reverse: c.reverse ?? false })
   }
 
   async function save(next: CardDraft): Promise<string | null> {

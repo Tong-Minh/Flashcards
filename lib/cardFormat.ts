@@ -1,4 +1,5 @@
 import type { CardType, Flashcard, MatchPair } from './types'
+import { canReverse } from './srs'
 
 // Tab-separated text format shared by import and export: one card per line, fields separated by
 // tabs, and line breaks inside a field written as a literal \n.
@@ -7,6 +8,7 @@ import type { CardType, Flashcard, MatchPair } from './types'
 //   question ⇥ correct ⇥ wrong ⇥ wrong …     multiple choice (4+ fields)
 //   [type] question ⇥ answer ⇥ alt …         type the answer (extra fields are also accepted)
 //   [match] instructions ⇥ a = b ⇥ c = d …   matching
+//   [reverse] question ⇥ answer              also studied back to front (open-ended and [type] cards)
 // A blank-line-separated format (question line, then answer lines) is also accepted on import.
 
 export interface ParsedCard {
@@ -15,6 +17,7 @@ export interface ParsedCard {
   options: string[] | null
   pairs: MatchPair[] | null
   type: CardType
+  reverse?: boolean
 }
 
 const TYPE_PREFIX  = /^\[type\]\s*/i
@@ -36,7 +39,16 @@ function trueFalse(answer: string): 'True' | 'False' | null {
 // A field that is nothing but one fenced code block
 const isCodeOnly = (s: string | undefined) => !!s && /^```[\s\S]*```$/.test(s.trim()) && s.split('```').length === 3
 
+// "[reverse]" among a line's leading tags (alone or with [type]) also studies the card back to front
 function parseLine(fields: string[]): ParsedCard | null {
+  const tags = fields[0]?.match(/^(?:\s*\[\w+\])*\s*/)?.[0] ?? ''
+  const reverse = /\[reversed?\]/i.test(tags)
+  const cleaned = reverse ? [tags.replace(/\[reversed?\]\s*/i, '') + fields[0].slice(tags.length), ...fields.slice(1)] : fields
+  const card = parseFields(cleaned)
+  return card && reverse && canReverse(card.type) ? { ...card, reverse: true } : card
+}
+
+function parseFields(fields: string[]): ParsedCard | null {
   // AIs (and an old version of our own prompt) sometimes give a question's code its own column:
   // question ⇥ code ⇥ answer. The code belongs to the question. Cards whose options or answer are
   // code blocks aren't affected: the column after the code would be code too, or missing.
@@ -112,7 +124,8 @@ function escapeField(s: string): string {
   return s.replace(/\t/g, '    ').replace(/\r?\n/g, '\\n')
 }
 
-function cardToLine(card: Pick<Flashcard, 'question' | 'answer' | 'type' | 'options' | 'pairs'>): string {
+function cardToLine(card: Pick<Flashcard, 'question' | 'answer' | 'type' | 'options' | 'pairs' | 'reverse'>): string {
+  const rev = card.reverse && canReverse(card.type) ? '[reverse] ' : ''
   const q = escapeField(card.question)
   switch (card.type) {
     case 'multiple_choice': {
@@ -120,15 +133,15 @@ function cardToLine(card: Pick<Flashcard, 'question' | 'answer' | 'type' | 'opti
       return [q, escapeField(card.answer), ...wrong.map(escapeField)].join('\t')
     }
     case 'typed':
-      return [`[type] ${q}`, escapeField(card.answer), ...(card.options ?? []).map(escapeField)].join('\t')
+      return [`[type] ${rev}${q}`, escapeField(card.answer), ...(card.options ?? []).map(escapeField)].join('\t')
     case 'matching':
       return [`[match] ${q}`, ...(card.pairs ?? []).map(p => `${escapeField(p.left)} = ${escapeField(p.right)}`)].join('\t')
     default:
-      return [q, escapeField(card.answer)].join('\t')
+      return [rev + q, escapeField(card.answer)].join('\t')
   }
 }
 
-export function exportCards(cards: Pick<Flashcard, 'question' | 'answer' | 'type' | 'options' | 'pairs'>[]): string {
+export function exportCards(cards: Pick<Flashcard, 'question' | 'answer' | 'type' | 'options' | 'pairs' | 'reverse'>[]): string {
   return cards.map(cardToLine).join('\n') + '\n'
 }
 

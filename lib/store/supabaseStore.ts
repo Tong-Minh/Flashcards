@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase/client'
 import { fetchAllRows, MAX_CARDS_PER_SET } from '@/lib/fetchAll'
-import type { Collection, Flashcard, FlashcardSet, FlashcardWithProgress, ReviewLog, SetStudyStats, StudySettings } from '@/lib/types'
+import type { CardProgress, Collection, Flashcard, FlashcardSet, FlashcardWithProgress, ReviewLog, SetStudyStats, StudySettings } from '@/lib/types'
 import { PartialInsertError, type SetWithStats, type Store } from './types'
 
 // Id lists go in the query string, so bulk edits are chunked to stay well under URL length limits
@@ -40,7 +40,7 @@ export const supabaseStore: Store = {
       const [total, mastered] = await Promise.all([
         supabase.from('flashcards').select('id', { count: 'exact', head: true }).eq('set_id', setId),
         supabase.from('card_progress').select('id, flashcards!inner(set_id)', { count: 'exact', head: true })
-          .eq('status', 'mastered').eq('flashcards.set_id', setId),
+          .eq('status', 'mastered').eq('ord', 0).eq('flashcards.set_id', setId),
       ])
       if (total.error) throw total.error
       if (mastered.error) throw mastered.error
@@ -134,8 +134,12 @@ export const supabaseStore: Store = {
       .order('position', { ascending: true, nullsFirst: false })
       .order('created_at', { ascending: true })
       .order('id', { ascending: true }), MAX_CARDS_PER_SET)
-    // The embedded relation comes back as an array
-    return rows.map(c => ({ ...c, progress: Array.isArray(c.progress) ? (c.progress[0] ?? null) : c.progress }))
+    // The embedded relation comes back as an array, one row per direction (ord)
+    return rows.map(c => {
+      const all = (Array.isArray(c.progress) ? c.progress : c.progress ? [c.progress] : []) as CardProgress[]
+      const extra = Object.fromEntries(all.filter(p => (p.ord ?? 0) > 0).map(p => [p.ord!, p]))
+      return { ...c, progress: all.find(p => (p.ord ?? 0) === 0) ?? null, ...(Object.keys(extra).length && { extraProgress: extra }) }
+    })
   },
 
   async getCard(id) {
@@ -149,7 +153,7 @@ export const supabaseStore: Store = {
   },
 
   async addCards(setId, cards) {
-    const rows = cards.map(c => ({ set_id: setId, question: c.question, answer: c.answer, options: c.options, pairs: c.pairs, type: c.type }))
+    const rows = cards.map(c => ({ set_id: setId, question: c.question, answer: c.answer, options: c.options, pairs: c.pairs, type: c.type, reverse: c.reverse ?? false }))
     for (let i = 0; i < rows.length; i += INSERT_CHUNK) {
       const { error } = await supabase.from('flashcards').insert(rows.slice(i, i + INSERT_CHUNK))
       if (error) throw i === 0 ? error : new PartialInsertError(i)
@@ -180,9 +184,10 @@ export const supabaseStore: Store = {
     }))
   },
 
-  async saveProgress(cardId, p) {
+  async saveProgress(cardId, p, ord = 0) {
     await check(supabase.from('card_progress').upsert({
       card_id:        cardId,
+      ord,
       correct_count:  p.correct_count,
       status:         p.status,
       last_reviewed:  p.last_reviewed,
@@ -198,17 +203,24 @@ export const supabaseStore: Store = {
       last_review:    p.last_review,
       ...(p.suspended    !== undefined && { suspended:    p.suspended }),
       ...(p.buried_until !== undefined && { buried_until: p.buried_until }),
-    }, { onConflict: 'user_id,card_id' }))
+    }, { onConflict: 'user_id,card_id,ord' }))
   },
 
-  resetProgress(cardIds) {
-    return eachChunk(cardIds, chunk => supabase.from('card_progress').delete().in('card_id', chunk))
+  resetProgress(cardIds, ord) {
+    return eachChunk(cardIds, chunk => {
+      const q = supabase.from('card_progress').delete().in('card_id', chunk)
+      return ord === undefined ? q : q.eq('ord', ord)
+    })
   },
 
-  // Upserting only the flag: cards without progress get a row with the column defaults (New)
-  setSuspended(cardIds, suspended) {
-    return eachChunk(cardIds, chunk => supabase.from('card_progress')
-      .upsert(chunk.map(card_id => ({ card_id, suspended })), { onConflict: 'user_id,card_id' }))
+  // Upserting only the flag: directions without progress get a row with the column defaults (New)
+  async setSuspended(items, suspended) {
+    for (let i = 0; i < items.length; i += 200) {
+      await check(supabase.from('card_progress').upsert(
+        items.slice(i, i + 200).map(({ cardId, ord }) => ({ card_id: cardId, ord, suspended })),
+        { onConflict: 'user_id,card_id,ord' },
+      ))
+    }
   },
 
   async logReview(r) {
@@ -226,7 +238,7 @@ export const supabaseStore: Store = {
     type Row = Omit<ReviewLog, 'set_id'> & { flashcards: { set_id: string } | { set_id: string }[] }
     const rows = await fetchAllRows<Row>(() => {
       let q = supabase.from('review_logs')
-        .select('id, card_id, rating, state, elapsed_days, last_scheduled_days, scheduled_days, stability, difficulty, review_ms, reviewed_at, flashcards!inner(set_id)')
+        .select('id, card_id, ord, rating, state, elapsed_days, last_scheduled_days, scheduled_days, stability, difficulty, review_ms, reviewed_at, flashcards!inner(set_id)')
       if (setIds) q = q.in('flashcards.set_id', setIds)
       return q.order('reviewed_at').order('id')
     })

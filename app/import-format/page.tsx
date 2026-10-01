@@ -93,6 +93,15 @@ Bats are blind.	False`}</pre>
           <pre className="bg-gray-50 rounded-xl p-4 text-xs leading-relaxed overflow-x-auto border border-gray-100">{`[match] Match each country to its capital	France = Paris	Japan = Tokyo	Peru = Lima`}</pre>
         </section>
 
+        <section className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+          <h2 className="font-semibold text-gray-900 text-base mb-1">Both directions (tab separated)</h2>
+          <p className="text-gray-500 mb-3">
+            Start an open-ended or <code className="bg-gray-100 px-1 rounded text-xs font-mono">[type]</code> card with <code className="bg-gray-100 px-1 rounded text-xs font-mono">[reverse]</code> to also study it back to front: you see the answer and recall the question. Each direction is scheduled on its own, and they never come up on the same day.
+          </p>
+          <pre className="bg-gray-50 rounded-xl p-4 text-xs leading-relaxed overflow-x-auto border border-gray-100">{`[reverse] el perro	the dog
+[type] [reverse] la casa	the house`}</pre>
+        </section>
+
         {/* Rich formatting */}
         <section className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
           <h2 className="font-semibold text-gray-900 text-base mb-1">Rich formatting</h2>

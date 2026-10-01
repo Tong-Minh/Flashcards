@@ -1,4 +1,5 @@
 import { sortSets } from './sort'
+import { progressKey } from '@/lib/srs'
 import type {
   CardProgress, Collection, Flashcard, FlashcardSet, FlashcardWithProgress, ReviewLog, SetStudyStats, StudyHistoryEntry,
   StudySettings,
@@ -10,7 +11,7 @@ import type { SetWithStats, Store } from './types'
 //   library.json              { version, collections }
 //   sets/<id>/set.json        the set (plus stats carried over from the web app, if imported)
 //   sets/<id>/cards.json      its cards
-//   sets/<id>/progress.json   { [cardId]: FSRS progress }
+//   sets/<id>/progress.json   { [cardId]: FSRS progress } (a reversed card's back to front: "<cardId>:1")
 //   sets/<id>/sessions.json   completed study sessions
 //   reviews/<YYYY-MM>.json    every rating that month (the review log), for all sets
 // Folders are named by set id, so renaming a set never moves files. Reviews are kept by month, not
@@ -172,6 +173,11 @@ export function createLocalStore(files: Files): LocalStore {
     }
   }
 
+  // Every direction's progress key for a card ("<id>", "<id>:1", …)
+  const progressKeys = (d: SetData, cardId: string) =>
+    Object.keys(d.progress).filter(k => k === cardId || k.startsWith(`${cardId}:`))
+  const deleteProgress = (d: SetData, cardId: string) => { for (const k of progressKeys(d, cardId)) delete d.progress[k] }
+
   // Groups card ids by the set they're in
   function bySet(cardIds: string[]) {
     const groups = new Map<string, Set<string>>()
@@ -304,7 +310,10 @@ export function createLocalStore(files: Files): LocalStore {
       await ensure()
       const d = sets.get(setId)
       if (!d) return []
-      return [...d.cards].sort(compareCards).map<FlashcardWithProgress>(c => ({ ...c, progress: d.progress[c.id] ?? null }))
+      return [...d.cards].sort(compareCards).map<FlashcardWithProgress>(c => {
+        const reverse = d.progress[progressKey(c.id, 1)]
+        return { ...c, progress: d.progress[c.id] ?? null, ...(reverse && { extraProgress: { 1: reverse } }) }
+      })
     },
 
     async getCard(id) {
@@ -327,6 +336,7 @@ export function createLocalStore(files: Files): LocalStore {
         const card: Flashcard = {
           id: uuid(), set_id: setId, type: draft.type, question: draft.question, answer: draft.answer,
           options: draft.options, pairs: draft.pairs, position: null, created_at: new Date(start + i).toISOString(),
+          ...(draft.reverse && { reverse: true }),
         }
         d.cards.push(card)
         cardSet.set(card.id, setId)
@@ -348,7 +358,7 @@ export function createLocalStore(files: Files): LocalStore {
       for (const [setId, group] of bySet(ids)) {
         const d = data(setId)
         d.cards = d.cards.filter(c => !group.has(c.id))
-        for (const id of group) { delete d.progress[id]; cardSet.delete(id) }
+        for (const id of group) { deleteProgress(d, id); cardSet.delete(id) }
         await Promise.all([writeCards(setId), writeProgress(setId)])
       }
     },
@@ -370,8 +380,7 @@ export function createLocalStore(files: Files): LocalStore {
         const src = data(setId)
         for (const card of src.cards.filter(c => group.has(c.id))) {
           dest.cards.push({ ...card, set_id: destSetId, position: null })
-          if (src.progress[card.id]) dest.progress[card.id] = src.progress[card.id]
-          delete src.progress[card.id]
+          for (const key of progressKeys(src, card.id)) { dest.progress[key] = src.progress[key]; delete src.progress[key] }
           cardSet.set(card.id, destSetId)
         }
         src.cards = src.cards.filter(c => !group.has(c.id))
@@ -393,29 +402,36 @@ export function createLocalStore(files: Files): LocalStore {
       await Promise.all([...touched].map(writeCards))
     },
 
-    async saveProgress(cardId, fields) {
+    async saveProgress(cardId, fields, ord = 0) {
       await ensure()
       const setId = cardSet.get(cardId)
       if (!setId) throw new Error(`Card ${cardId} not found`)
       const d = data(setId)
-      d.progress[cardId] = { id: d.progress[cardId]?.id ?? uuid(), card_id: cardId, ...fields }
+      const key = progressKey(cardId, ord)
+      d.progress[key] = { id: d.progress[key]?.id ?? uuid(), card_id: cardId, ...fields, ...(ord && { ord }) }
       await writeProgress(setId)
     },
 
-    async resetProgress(cardIds) {
+    async resetProgress(cardIds, ord) {
       await ensure()
       for (const [setId, group] of bySet(cardIds)) {
         const d = data(setId)
-        for (const id of group) delete d.progress[id]
+        for (const id of group) {
+          if (ord === undefined) deleteProgress(d, id)
+          else delete d.progress[progressKey(id, ord)]
+        }
         await writeProgress(setId)
       }
     },
 
-    async setSuspended(cardIds, suspended) {
+    async setSuspended(items, suspended) {
       await ensure()
-      for (const [setId, group] of bySet(cardIds)) {
+      for (const [setId, group] of bySet(items.map(i => i.cardId))) {
         const d = data(setId)
-        for (const id of group) d.progress[id] = { ...(d.progress[id] ?? newProgress(id)), suspended }
+        for (const { cardId, ord } of items.filter(i => group.has(i.cardId))) {
+          const key = progressKey(cardId, ord)
+          d.progress[key] = { ...(d.progress[key] ?? newProgress(cardId)), ...(ord && { ord }), suspended }
+        }
         await writeProgress(setId)
       }
     },

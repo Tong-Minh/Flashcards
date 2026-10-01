@@ -22,7 +22,7 @@ import {
 import type { FlashcardWithProgress, CardStatus, CardProgress, FSRSState, ReviewLog } from '@/lib/types'
 import { paths } from '@/lib/paths'
 import { nextStudyDay } from '@/lib/day'
-import { progressToFSRS } from '@/lib/srs'
+import { cardFace, progressKey, progressToFSRS, studyItems } from '@/lib/srs'
 import { cachedSettings, loadSettings, retentionFor, scheduler } from '@/lib/studySettings'
 import { UndoToast, type Toast } from '@/components/UndoToast'
 import { Ban, EyeOff, Undo2, type LucideIcon } from 'lucide-react'
@@ -33,13 +33,24 @@ type Order      = 'ordered' | 'random'
 type FlipState  = 'front' | 'flipping' | 'back'
 type CustomMode = 'ahead' | 'more_new' | 'forgotten' | 'by_state'
 
-interface SessionCard extends FlashcardWithProgress { _key: number }
+// One direction of a card: `progress` is that direction's (a reversed card is two items, ord 0 and 1)
+interface StudyItem extends FlashcardWithProgress { ord: number }
+interface SessionCard extends StudyItem { _key: number }
+
+const itemKey = (c: { id: string; ord: number }) => progressKey(c.id, c.ord)
+
+function toItems(cards: FlashcardWithProgress[]): StudyItem[] {
+  return studyItems(cards).map(({ card, ord, progress }) => ({ ...card, ord, progress }))
+}
 
 // What Undo puts back: the card's progress and the session as they were before the action
 interface UndoEntry {
   action: 'rate' | 'bury' | 'suspend'
   cardId: string
+  ord: number
   prevProgress: CardProgress | null
+  // The other direction(s) of a reversed card, buried by the rating
+  siblings: { ord: number; prev: CardProgress | null }[]
   prevQueue: SessionCard[]
   prevStats: { cardsStudied: number; correctCount: number; masteredCount: number }
   // The rating counted the card toward today's new-card limit
@@ -87,24 +98,24 @@ function isAvailable(p: CardProgress | null | undefined, now = new Date()): bool
 }
 
 // Progress for a card never studied (to carry a bury or suspend)
-function emptyProgress(cardId: string): CardProgress {
+function emptyProgress(cardId: string, ord = 0): CardProgress {
   const c = createEmptyCard()
   return {
     id: '', card_id: cardId, correct_count: 0, status: 'new', last_reviewed: null, due: c.due.toISOString(),
     stability: 0, difficulty: 0, elapsed_days: 0, scheduled_days: 0, reps: 0, lapses: 0, learning_steps: 0,
-    fsrs_state: 0, last_review: null,
+    fsrs_state: 0, last_review: null, ...(ord && { ord }),
   }
 }
 
 // ── Queue builder ─────────────────────────────────────────────────────────────
 
 function buildQueue(
-  cards: FlashcardWithProgress[],
+  cards: StudyItem[],
   order: Order,
   progressOverrides: Map<string, CardProgress>,
   remainingNew: number,
-): { queue: FlashcardWithProgress[]; dueCount: number; newCount: number } {
-  const resolve = (c: FlashcardWithProgress) => progressOverrides.get(c.id) ?? c.progress
+): { queue: StudyItem[]; dueCount: number; newCount: number } {
+  const resolve = (c: StudyItem) => progressOverrides.get(itemKey(c)) ?? c.progress
   const available = cards.filter(c => isAvailable(resolve(c)))
   const dueCards = available.filter(c => isDue(resolve(c)))
   const newCards  = available.filter(c => isNew(resolve(c))).slice(0, Math.max(0, remainingNew))
@@ -225,8 +236,8 @@ export default function Study() {
           last_reviewed:  u.lastReviewed,
           ...(u.suspended   !== undefined && { suspended:    u.suspended }),
           ...(u.buriedUntil !== undefined && { buried_until: u.buriedUntil }),
-        })
-        removePendingUpdate(u.cardId)
+        }, u.ord ?? 0)
+        removePendingUpdate(u.cardId, u.ord ?? 0)
       } catch {}
     }
   }
@@ -250,7 +261,9 @@ export default function Study() {
     const todayCount = getTodayNewCount(setId)
     const { dailyNewLimit } = getSetSettings(setId)
     const remaining = Math.max(0, dailyNewLimit - todayCount)
-    const { dueCount: d, newCount: n } = buildQueue(cards, 'ordered', new Map(), remaining)
+    // Each direction of a reversed card is studied (and counted) on its own
+    const items = toItems(cards)
+    const { dueCount: d, newCount: n } = buildQueue(items, 'ordered', new Map(), remaining)
 
     setAllCards(cards)
     setDueCount(d)
@@ -261,24 +274,24 @@ export default function Study() {
 
     // ── Custom study stats (suspended and buried cards never come up) ────────────
     const now = new Date()
-    cards = cards.filter(c => isAvailable(c.progress, now))
+    const available = items.filter(c => isAvailable(c.progress, now))
     setAheadCounts([1, 3, 7].map(days => ({
       days,
-      count: cards.filter(c => {
+      count: available.filter(c => {
         const p = c.progress
         if (!p || (p.fsrs_state ?? 0) === 0) return false
         const due = new Date(p.due)
         return due > now && due <= new Date(now.getTime() + days * 86400000)
       }).length,
     })))
-    setForgottenCount(cards.filter(c => (c.progress?.lapses ?? 0) > 0).length)
+    setForgottenCount(available.filter(c => (c.progress?.lapses ?? 0) > 0).length)
     setStateCounts({
-      new:          cards.filter(c => isNew(c.progress)).length,
-      learning:     cards.filter(c => c.progress?.status === 'learning').length,
-      needs_review: cards.filter(c => c.progress?.status === 'needs_review').length,
-      mastered:     cards.filter(c => c.progress?.status === 'mastered').length,
+      new:          available.filter(c => isNew(c.progress)).length,
+      learning:     available.filter(c => c.progress?.status === 'learning').length,
+      needs_review: available.filter(c => c.progress?.status === 'needs_review').length,
+      mastered:     available.filter(c => c.progress?.status === 'mastered').length,
     })
-    setExtraNewCount(Math.max(0, cards.filter(c => isNew(c.progress)).length - n))
+    setExtraNewCount(Math.max(0, available.filter(c => isNew(c.progress)).length - n))
 
     const viewMode = new URLSearchParams(window.location.search).get('mode') === 'view'
     setPhase(cards.length === 0 ? 'done' : viewMode ? 'view' : 'pre-session')
@@ -286,9 +299,9 @@ export default function Study() {
 
   // ── Custom queue builders ─────────────────────────────────────────────────
 
-  function getCustomQueue(mode: CustomMode, param?: number | string): FlashcardWithProgress[] {
+  function getCustomQueue(mode: CustomMode, param?: number | string): StudyItem[] {
     const now = new Date()
-    const pool = allCards.filter(c => isAvailable(c.progress, now))
+    const pool = toItems(allCards).filter(c => isAvailable(c.progress, now))
     switch (mode) {
       case 'ahead': {
         const days = param as number
@@ -360,9 +373,10 @@ export default function Study() {
     progressMap.current = new Map()
 
     if (type === 'continue' && savedSession) {
-      const cardMap = new Map(allCards.map(c => [c.id, c]))
+      // Saved by item key ("<card id>" or "<card id>:<ord>")
+      const itemMap = new Map(toItems(allCards).map(c => [itemKey(c), c]))
       const restored = savedSession.queueIds
-        .map(id => cardMap.get(id)).filter(Boolean) as FlashcardWithProgress[]
+        .map(key => itemMap.get(key)).filter(Boolean) as StudyItem[]
       const valid = restored.filter(c => !isCompleted(c.progress) && isAvailable(c.progress))
       setOrder(savedSession.order)
       setTotalInSession(valid.length + savedSession.stats.cardsStudied)
@@ -373,7 +387,7 @@ export default function Study() {
       clearSavedSession(setId)
       countedNewIds.current = new Set()
       const remaining = Math.max(0, getSetSettings(setId).dailyNewLimit - getTodayNewCount(setId))
-      const { queue: q } = buildQueue(allCards, order, progressMap.current, remaining)
+      const { queue: q } = buildQueue(toItems(allCards), order, progressMap.current, remaining)
       setTotalInSession(q.length)
       setQueue(q.map(c => ({ ...c, _key: 0 })))
       statsRef.current = { cardsStudied: 0, correctCount: 0, masteredCount: 0 }
@@ -390,7 +404,7 @@ export default function Study() {
   async function handleExit() {
     if (queue.length > 0) {
       saveSessionState(setId, {
-        queueIds: queue.map(c => c.id),
+        queueIds: queue.map(itemKey),
         stats: statsRef.current,
         order,
         savedAt: new Date().toISOString(),
@@ -412,6 +426,9 @@ export default function Study() {
     }).catch(() => {})
   }
 
+  // An item's progress as of now in this session
+  const currentProgress = (c: StudyItem) => progressMap.current.get(itemKey(c)) ?? c.progress ?? null
+
   // Shows the other side. The first time, it reveals the answer: ratings appear and the intervals
   // are worked out. After that, Space or a tap flips back and forth.
   function triggerFlip() {
@@ -426,27 +443,26 @@ export default function Study() {
       setShowBack(toBack)
       const card = queue[0]
       if (toBack && !revealed && card) {
-        const current = progressMap.current.get(card.id) ?? card.progress
-        setScheduling(fsrsRef.current.repeat(progressToFSRS(current), new Date()))
+        setScheduling(fsrsRef.current.repeat(progressToFSRS(currentProgress(card)), new Date()))
         setRevealed(true)
       }
     }, 150)
     setTimeout(() => setFlipState(toBack ? 'back' : 'front'), 300)
   }
 
-  // Saves a card's progress, or queues it while offline
-  async function saveCardProgress(cardId: string, p: CardProgress) {
-    progressMap.current.set(cardId, p)
-    updateCachedProgress(setId, cardId, p)
+  // Saves one direction's progress, or queues it while offline
+  async function saveCardProgress(cardId: string, ord: number, p: CardProgress) {
+    progressMap.current.set(progressKey(cardId, ord), p)
+    updateCachedProgress(setId, cardId, p, ord)
     if (!store.remote || navigator.onLine) {
       try {
-        const { id: _id, card_id: _cardId, ...fields } = p
-        await store.saveProgress(cardId, fields)
+        const { id: _id, card_id: _cardId, ord: _ord, ...fields } = p
+        await store.saveProgress(cardId, fields, ord)
         return
       } catch {}
     }
     queueProgressUpdate({
-      cardId, setId,
+      cardId, setId, ord,
       correctCount:  p.correct_count,
       status:        p.status,
       lastReviewed:  p.last_reviewed ?? new Date().toISOString(),
@@ -465,13 +481,16 @@ export default function Study() {
     })
   }
 
-  // Takes a card back to having no progress (undoing its first review)
-  async function clearCardProgress(cardId: string) {
-    progressMap.current.delete(cardId)
-    updateCachedProgress(setId, cardId, null)
-    removePendingUpdate(cardId)
-    if (!store.remote || navigator.onLine) await store.resetProgress([cardId]).catch(() => {})
+  // Takes a direction back to having no progress (undoing its first review)
+  async function clearCardProgress(cardId: string, ord: number) {
+    progressMap.current.delete(progressKey(cardId, ord))
+    updateCachedProgress(setId, cardId, null, ord)
+    removePendingUpdate(cardId, ord)
+    if (!store.remote || navigator.onLine) await store.resetProgress([cardId], ord).catch(() => {})
   }
+
+  const restoreProgress = (cardId: string, ord: number, prev: CardProgress | null) =>
+    prev ? saveCardProgress(cardId, ord, prev) : clearCardProgress(cardId, ord)
 
   async function saveReview(review: ReviewLog) {
     if (!store.remote || navigator.onLine) {
@@ -507,11 +526,12 @@ export default function Study() {
     haptic(30)
 
     const now = new Date()
-    const current = progressMap.current.get(card.id) ?? card.progress ?? null
+    const key = itemKey(card)
+    const current = currentProgress(card)
 
-    const countedNew = isNew(current) && !countedNewIds.current.has(card.id)
+    const countedNew = isNew(current) && !countedNewIds.current.has(key)
     if (countedNew) {
-      countedNewIds.current.add(card.id)
+      countedNewIds.current.add(key)
       incrementTodayNewCount(setId)
       setTodayNewCount(c => c + 1)
     }
@@ -539,11 +559,13 @@ export default function Study() {
       last_review:    now.toISOString(),
       suspended:      false,
       buried_until:   null,
+      ...(card.ord && { ord: card.ord }),
     }
 
     const review: ReviewLog = {
       id:                  crypto.randomUUID(),
       card_id:             card.id,
+      ord:                 card.ord,
       set_id:              setId,
       rating,
       state:               (current?.fsrs_state ?? 0) as FSRSState,
@@ -556,7 +578,17 @@ export default function Study() {
       reviewed_at:         now.toISOString(),
     }
 
-    pushUndo({ action: 'rate', cardId: card.id, prevProgress: current, prevQueue: queue, prevStats: { ...statsRef.current }, countedNew, reviewId: review.id })
+    // The other direction of a reversed card waits until tomorrow (Anki's sibling burying), so the
+    // answer you just saw isn't the next question
+    const siblings = queue.slice(1).filter((c, i, all) =>
+      c.id === card.id && c.ord !== card.ord && all.findIndex(o => itemKey(o) === itemKey(c)) === i)
+    const until = nextStudyDay().toISOString()
+
+    pushUndo({
+      action: 'rate', cardId: card.id, ord: card.ord, prevProgress: current,
+      siblings: siblings.map(s => ({ ord: s.ord, prev: currentProgress(s) })),
+      prevQueue: queue, prevStats: { ...statsRef.current }, countedNew, reviewId: review.id,
+    })
 
     const newStats = {
       cardsStudied:  statsRef.current.cardsStudied  + 1,
@@ -567,11 +599,16 @@ export default function Study() {
     setDisplayStats({ ...newStats })
 
     const updatedCard: SessionCard = { ...card, progress: newProgress, _key: card._key + 1 }
-    const rest = queue.slice(1)
+    const rest = queue.slice(1).filter(c => !(c.id === card.id && c.ord !== card.ord))
     const newQueue = rating === Rating.Again ? [...rest, updatedCard] : rest
+    if (siblings.length) setTotalInSession(t => t - siblings.length)
 
     try {
-      await Promise.all([saveCardProgress(card.id, newProgress), saveReview(review)])
+      await Promise.all([
+        saveCardProgress(card.id, card.ord, newProgress),
+        saveReview(review),
+        ...siblings.map(s => saveCardProgress(card.id, s.ord, { ...(currentProgress(s) ?? emptyProgress(card.id, s.ord)), buried_until: until })),
+      ])
       await advance(newQueue)
     } finally {
       busy.current = false
@@ -585,20 +622,21 @@ export default function Study() {
     if (!card || busy.current) return
     busy.current = true
     haptic(20)
-    const current = progressMap.current.get(card.id) ?? card.progress ?? null
+    const current = currentProgress(card)
+    const base = current ?? emptyProgress(card.id, card.ord)
     const p: CardProgress = action === 'bury'
-      ? { ...(current ?? emptyProgress(card.id)), buried_until: nextStudyDay().toISOString() }
-      : { ...(current ?? emptyProgress(card.id)), suspended: true }
-    pushUndo({ action, cardId: card.id, prevProgress: current, prevQueue: queue, prevStats: { ...statsRef.current }, countedNew: false, reviewId: null })
+      ? { ...base, buried_until: nextStudyDay().toISOString() }
+      : { ...base, suspended: true }
+    pushUndo({ action, cardId: card.id, ord: card.ord, prevProgress: current, siblings: [], prevQueue: queue, prevStats: { ...statsRef.current }, countedNew: false, reviewId: null })
     setTotalInSession(t => t - 1)
     try {
-      await saveCardProgress(card.id, p)
+      await saveCardProgress(card.id, card.ord, p)
       setToast({
         id: Date.now(),
         message: action === 'bury' ? 'Card buried until tomorrow' : 'Card suspended. Unsuspend it from the set’s card list.',
         onUndo: undo,
       })
-      await advance(queue.filter(c => c.id !== card.id))
+      await advance(queue.filter(c => itemKey(c) !== itemKey(card)))
     } finally {
       busy.current = false
     }
@@ -613,18 +651,19 @@ export default function Study() {
     setUndoCount(undoStack.current.length)
     haptic(20)
     try {
-      if (entry.prevProgress) await saveCardProgress(entry.cardId, entry.prevProgress)
-      else await clearCardProgress(entry.cardId)
+      await restoreProgress(entry.cardId, entry.ord, entry.prevProgress)
+      for (const s of entry.siblings) await restoreProgress(entry.cardId, s.ord, s.prev)
       if (entry.reviewId) {
         removePendingReview(entry.reviewId)
         if (!store.remote || navigator.onLine) await store.deleteReview(entry.reviewId).catch(() => {})
       }
       if (entry.countedNew) {
-        countedNewIds.current.delete(entry.cardId)
+        countedNewIds.current.delete(progressKey(entry.cardId, entry.ord))
         decrementTodayNewCount(setId)
         setTodayNewCount(c => Math.max(0, c - 1))
       }
       if (entry.action !== 'rate') setTotalInSession(t => t + 1)
+      if (entry.siblings.length) setTotalInSession(t => t + entry.siblings.length)
       statsRef.current = entry.prevStats
       setDisplayStats({ ...entry.prevStats })
       resetCardUI()
@@ -952,10 +991,12 @@ export default function Study() {
 
   // ── Session ────────────────────────────────────────────────────────────────
   const card = queue[0]
+  // A reversed card's back-to-front direction swaps the faces
+  const face = cardFace(card, card.ord)
   const done = totalInSession - queue.length
   const cardNumber = done + 1
   const progressPct = totalInSession > 0 ? (done / totalInSession) * 100 : 0
-  const isCorrectSelection = selectedOption !== null && selectedOption === card.answer
+  const isCorrectSelection = selectedOption !== null && selectedOption === face.answer
   // Hint toward Again after an auto-checked miss. Only the rating the user taps is recorded.
   const answeredWrong = typed?.result === 'incorrect' || (selectedOption !== null && !isCorrectSelection)
   const cardAnimClass = flipState === 'flipping' ? 'card-flip' : ''
@@ -987,8 +1028,8 @@ export default function Study() {
     if ((key === ' ' || key === 'enter') && (card.type === 'open_ended' || card.type === 'fill_blank')) {
       e.preventDefault()
       triggerFlip()
-    } else if (card.type === 'multiple_choice' && card.options) {
-      const opt = card.options['abcdefghij'.indexOf(key)] ?? card.options[Number(key) - 1]
+    } else if (card.type === 'multiple_choice' && face.options) {
+      const opt = face.options['abcdefghij'.indexOf(key)] ?? face.options[Number(key) - 1]
       if (key.length === 1 && opt !== undefined) { e.preventDefault(); setSelectedOption(opt); triggerFlip() }
     } else if (card.type === 'true_false' && (key === 't' || key === 'f')) {
       e.preventDefault()
@@ -1040,9 +1081,9 @@ export default function Study() {
                : revealed ? 'Question' : 'Tap to reveal answer'}
             </p>
             {card.type === 'fill_blank'
-              ? <ClozeQuestion sentence={card.question} />
+              ? <ClozeQuestion sentence={face.question} />
               : <ContentRenderer
-                  text={card.type === 'matching' && !card.question.trim() ? 'Match the pairs' : card.question}
+                  text={card.type === 'matching' && !face.question.trim() ? 'Match the pairs' : face.question}
                   className={`${card.type === 'matching' ? 'text-base' : 'text-xl lg:text-2xl flex-1'} font-medium text-gray-900 dark:text-gray-100 leading-relaxed`}
                   readOnly
                 />
@@ -1050,7 +1091,7 @@ export default function Study() {
             {card.type === 'typed' && (
               <TypedAnswerInput
                 onSubmit={input => {
-                  const result = checkTypedAnswer(input, card.answer, card.options)
+                  const result = checkTypedAnswer(input, face.answer, face.options)
                   haptic(result === 'incorrect' ? 60 : 20)
                   setTyped({ input, result })
                   triggerFlip()
@@ -1063,9 +1104,9 @@ export default function Study() {
             {card.type === 'matching' && card.pairs && (
               <MatchingBoard pairs={card.pairs} onDone={misses => { setMatchMisses(misses); triggerFlip() }} />
             )}
-            {card.type === 'multiple_choice' && card.options && (
+            {card.type === 'multiple_choice' && face.options && (
               <div className="mt-5 space-y-2">
-                {card.options.map((opt, i) => (
+                {face.options.map((opt, i) => (
                   <button key={i}
                     onClick={e => { e.stopPropagation(); haptic(20); setSelectedOption(opt); triggerFlip() }}
                     className="w-full text-left px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 active:bg-gray-100 dark:active:bg-gray-600 transition-colors font-medium"
@@ -1082,7 +1123,7 @@ export default function Study() {
             {card.type === 'fill_blank' ? (
               <div className="flex flex-col flex-1">
                 <p className="text-xs font-medium text-indigo-400 uppercase tracking-wide mb-3">Answer</p>
-                <ClozeQuestion sentence={card.question} answer={card.answer} />
+                <ClozeQuestion sentence={face.question} answer={face.answer} />
               </div>
             ) : card.type === 'matching' ? (
               <div className="flex flex-col flex-1">
@@ -1102,7 +1143,7 @@ export default function Study() {
               <>
                 <div className="mb-4 pb-4 border-b border-gray-100 dark:border-gray-700">
                   <p className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1">Question</p>
-                  <ContentRenderer text={card.question} className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed" readOnly />
+                  <ContentRenderer text={face.question} className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed" readOnly />
                 </div>
                 <div className="flex flex-col flex-1">
                   <p className="text-xs font-medium text-indigo-400 uppercase tracking-wide mb-2">Answer</p>
@@ -1116,14 +1157,14 @@ export default function Study() {
                       {isCorrectSelection ? '✓ Correct!' : `✗ Incorrect — you picked: ${previewText(selectedOption)}`}
                     </div>
                   )}
-                  <ContentRenderer text={card.answer} className="text-xl lg:text-2xl font-medium text-gray-900 dark:text-gray-100 leading-relaxed flex-1" readOnly />
-                  {card.type === 'typed' && card.options && card.options.length > 0 && (
-                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">Also accepted: {card.options.join(', ')}</p>
+                  <ContentRenderer text={face.answer} className="text-xl lg:text-2xl font-medium text-gray-900 dark:text-gray-100 leading-relaxed flex-1" readOnly />
+                  {card.type === 'typed' && face.options && face.options.length > 0 && (
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">Also accepted: {face.options.join(', ')}</p>
                   )}
-                  {card.type === 'multiple_choice' && card.options && (
+                  {card.type === 'multiple_choice' && face.options && (
                     <div className="mt-4 space-y-1.5">
-                      {card.options.map((opt, i) => {
-                        const isCorrect  = opt === card.answer
+                      {face.options.map((opt, i) => {
+                        const isCorrect  = opt === face.answer
                         const isSelected = opt === selectedOption
                         return (
                           <div key={i} className={`px-4 py-2.5 rounded-xl text-sm flex items-center gap-2 ${

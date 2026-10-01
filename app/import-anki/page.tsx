@@ -138,6 +138,7 @@ export default function ImportAnki() {
     if (imageCount) notes.push(`${imageCount} image${imageCount !== 1 ? 's' : ''} included`)
     if (r.imagesDropped) notes.push(IS_DESKTOP ? `${r.imagesDropped} image${r.imagesDropped !== 1 ? 's' : ''} left out (web links or missing)` : `${r.imagesDropped} image${r.imagesDropped !== 1 ? 's' : ''} left out (images need the desktop app)`)
     if (r.audio) notes.push(`${r.audio} audio clip${r.audio !== 1 ? 's' : ''} left out`)
+    if (r.reversed) notes.push(`${r.reversed} card${r.reversed !== 1 ? 's' : ''} studied both ways (Anki's reversed cards, merged)`)
     if (r.tables) notes.push(`${r.tables} table${r.tables !== 1 ? 's' : ''} turned into text lines`)
     for (const [why, n] of Object.entries(r.unsupported)) notes.push(`${n} ${why} card${n !== 1 ? 's' : ''} skipped (not supported)`)
     if (r.skippedEmpty) notes.push(`${r.skippedEmpty} empty card${r.skippedEmpty !== 1 ? 's' : ''} skipped`)

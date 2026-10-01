@@ -36,6 +36,7 @@ import { paths } from '@/lib/paths'
 import { IS_DESKTOP } from '@/lib/platform'
 import { confirmAction, notify } from '@/lib/dialogs'
 import { cachedSettings, RETENTION_CHOICES } from '@/lib/studySettings'
+import { canReverse, cardOrds, progressOf, studyItems } from '@/lib/srs'
 
 const PAGE_SIZE = 50
 
@@ -243,7 +244,7 @@ export default function SetDetail() {
     setCardBusy(true)
     try {
       await store.resetProgress([...selectedCards])
-      const reset = cards.map(c => (selectedCards.has(c.id) ? { ...c, progress: null } : c))
+      const reset = cards.map(c => (selectedCards.has(c.id) ? { ...c, progress: null, extraProgress: undefined } : c))
       setCards(reset)
       cacheCards(id, reset)
       exitCardSelect()
@@ -254,21 +255,31 @@ export default function SetDetail() {
     }
   }
 
-  // Suspends the selected cards, or unsuspends them if they're all suspended already
+  // Suspends the selected cards (both directions of reversed ones), or unsuspends them if they're
+  // all suspended already
   async function toggleSuspendSelected() {
     const ids = [...selectedCards]
     const suspend = !ids.every(cid => cards.find(c => c.id === cid)?.progress?.suspended)
+    const picked = cards.filter(c => selectedCards.has(c.id))
     setCardBusy(true)
     try {
-      await store.setSuspended(ids, suspend)
+      await store.setSuspended(picked.flatMap(c => cardOrds(c).map(ord => ({ cardId: c.id, ord }))), suspend)
+      const flagged = (p: CardProgress | null, cardId: string, ord: number): CardProgress => ({
+        ...(p ?? {
+          id: '', card_id: cardId, correct_count: 0, status: 'new', last_reviewed: null, due: new Date().toISOString(),
+          stability: 0, difficulty: 0, elapsed_days: 0, scheduled_days: 0, reps: 0, lapses: 0, learning_steps: 0,
+          fsrs_state: 0, last_review: null, ord,
+        }),
+        suspended: suspend,
+      })
       const updated = cards.map(c => {
         if (!selectedCards.has(c.id)) return c
-        const progress: CardProgress = c.progress ?? {
-          id: '', card_id: c.id, correct_count: 0, status: 'new', last_reviewed: null, due: new Date().toISOString(),
-          stability: 0, difficulty: 0, elapsed_days: 0, scheduled_days: 0, reps: 0, lapses: 0, learning_steps: 0,
-          fsrs_state: 0, last_review: null,
+        const extra = cardOrds(c).filter(o => o > 0)
+        return {
+          ...c,
+          progress: flagged(c.progress, c.id, 0),
+          ...(extra.length && { extraProgress: Object.fromEntries(extra.map(o => [o, flagged(progressOf(c, o), c.id, o)])) }),
         }
-        return { ...c, progress: { ...progress, suspended: suspend } }
       })
       setCards(updated)
       cacheCards(id, updated)
@@ -334,7 +345,7 @@ export default function SetDetail() {
     if (!await confirmAction('Reset all FSRS progress for this set? Cards will return to New state.')) return
     await store.resetProgress(cards.map(c => c.id)).catch(() => {})
     resetTodayNewCount(id)
-    const reset = cards.map(c => ({ ...c, progress: null }))
+    const reset = cards.map(c => ({ ...c, progress: null, extraProgress: undefined }))
     setCards(reset)
     cacheCards(id, reset)
     setShowSettings(false)
@@ -396,8 +407,8 @@ export default function SetDetail() {
   const masteryPct  = cards.length > 0 ? Math.round((mastered / cards.length) * 100) : 0
   const now         = new Date()
   const suspendedCount = cards.filter(c => c.progress?.suspended).length
-  const dueToday    = cards.filter(c => {
-    const p = c.progress
+  // Counts each direction of a reversed card
+  const dueToday    = studyItems(cards).filter(({ progress: p }) => {
     if (p?.suspended || (p?.buried_until && new Date(p.buried_until) > now)) return false
     if (!p || (p.fsrs_state ?? 0) === 0) return true
     return new Date(p.due ?? now) <= now
@@ -786,6 +797,9 @@ export default function SetDetail() {
                       <span className="text-xs text-gray-400 dark:text-gray-500">
                         {TYPE_BADGES[card.type]}
                       </span>
+                      {card.reverse && canReverse(card.type) && (
+                        <span className="text-xs font-medium text-indigo-500 dark:text-indigo-400" title="Also studied back to front">⇄ Both ways</span>
+                      )}
                     </div>
                   </div>
                   {selecting && (

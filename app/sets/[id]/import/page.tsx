@@ -27,6 +27,9 @@ Formats (use a real tab character between each column):
 - Multiple choice: Question [TAB] Correct answer [TAB] Wrong option [TAB] Wrong option [TAB] Wrong option
 - True/false:      Statement [TAB] True   (or False)
 - Matching:        [match] Instructions [TAB] Term = Match [TAB] Term = Match [TAB] …   (2–8 pairs, each "left = right")
+- Both directions: [reverse] Term [TAB] Definition   (also quizzes definition → term; works with open-ended and [type] cards, e.g. [type] [reverse] hola [TAB] hello)
+
+Use [reverse] for vocabulary, translations and term/definition pairs where recalling either side is useful; not for questions whose answer doesn't make sense as a prompt.
 
 Use type-the-answer only for short answers (a word, name, number, or term) that someone could type exactly; the check ignores capitalization, accents, and small typos. Use matching for sets of 3–6 related term/definition pairs.
 
@@ -101,7 +104,7 @@ export default function ImportCards() {
     }
 
     try {
-      await store.addCards(setId, preview.map(c => ({ type: c.type, question: c.question, answer: c.answer, options: c.options, pairs: c.pairs })))
+      await store.addCards(setId, preview.map(c => ({ type: c.type, question: c.question, answer: c.answer, options: c.options, pairs: c.pairs, reverse: c.reverse })))
     } catch (err) {
       setError(err instanceof PartialInsertError
         ? `Import stopped partway — ${err.added} of ${preview.length} cards were added. Please try the rest again.`

@@ -13,6 +13,19 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.1.6',
+    date: '2026-10-01',
+    title: 'Reversed cards',
+    changes: [
+      'New option when making a card: “Also study it back to front”. You then also see the answer and recall the question, scheduled on its own.',
+      'The two directions of a card never come up on the same day.',
+      'Reversed cards show “⇄ Both ways” in the card list.',
+      'Imports: start a line with [reverse] (the AI prompt knows it). Anki “Basic (and reversed card)” notes import as one card studied both ways.',
+      'Stats counts each direction as a card.',
+      'Fixed: two people studying the same public set could not both save progress on its cards.',
+    ],
+  },
+  {
     version: '0.1.5',
     date: '2026-10-01',
     title: 'Target retention and FSRS optimization',

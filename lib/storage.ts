@@ -48,9 +48,17 @@ export function getCachedCards(setId: string): FlashcardWithProgress[] {
   try { return JSON.parse(localStorage.getItem(K.cards(setId)) ?? '[]') } catch { return [] }
 }
 
-export function updateCachedProgress(setId: string, cardId: string, progress: CardProgress | null) {
+// ord: the direction (1 = a reversed card's back to front)
+export function updateCachedProgress(setId: string, cardId: string, progress: CardProgress | null, ord = 0) {
   const cards = getCachedCards(setId)
-  cacheCards(setId, cards.map(c => (c.id === cardId ? { ...c, progress } : c)))
+  cacheCards(setId, cards.map(c => {
+    if (c.id !== cardId) return c
+    if (ord === 0) return { ...c, progress }
+    const extra = { ...(c.extraProgress ?? {}) }
+    if (progress) extra[ord] = progress
+    else delete extra[ord]
+    return { ...c, extraProgress: extra }
+  }))
 }
 
 // ── Study stats cache (per set) ───────────────────────────────────────────────
@@ -103,11 +111,13 @@ export interface PendingProgressUpdate {
   lastReview: string
   suspended?: boolean
   buriedUntil?: string | null
+  // The direction (missing = 0)
+  ord?: number
 }
 
 export function queueProgressUpdate(update: PendingProgressUpdate) {
   try {
-    const current = getPendingUpdates().filter(p => p.cardId !== update.cardId)
+    const current = getPendingUpdates().filter(p => p.cardId !== update.cardId || (p.ord ?? 0) !== (update.ord ?? 0))
     localStorage.setItem(K.pending, JSON.stringify([...current, update]))
   } catch {}
 }
@@ -116,9 +126,9 @@ export function getPendingUpdates(): PendingProgressUpdate[] {
   try { return JSON.parse(localStorage.getItem(K.pending) ?? '[]') } catch { return [] }
 }
 
-export function removePendingUpdate(cardId: string) {
+export function removePendingUpdate(cardId: string, ord = 0) {
   try {
-    localStorage.setItem(K.pending, JSON.stringify(getPendingUpdates().filter(p => p.cardId !== cardId)))
+    localStorage.setItem(K.pending, JSON.stringify(getPendingUpdates().filter(p => p.cardId !== cardId || (p.ord ?? 0) !== ord)))
   } catch {}
 }
 

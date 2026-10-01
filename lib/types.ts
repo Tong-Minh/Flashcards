@@ -94,6 +94,8 @@ export interface Flashcard {
   pairs: MatchPair[] | null
   position: number | null
   created_at: string
+  // Also studied back to front (open-ended and typed cards), with its own progress (ord 1)
+  reverse?: boolean
 }
 
 export interface CardProgress {
@@ -117,12 +119,16 @@ export interface CardProgress {
   // desktop libraries don't have them.
   suspended?: boolean
   buried_until?: string | null
+  // Which direction of the card: 0 front to back, 1 back to front (reversed cards). Missing = 0.
+  ord?: number
 }
 
 // One rating (review_logs on the web, reviews/<YYYY-MM>.json on desktop)
 export interface ReviewLog {
   id: string
   card_id: string
+  // The direction studied (see CardProgress.ord)
+  ord: number
   // The set the card was in at the time
   set_id: string | null
   rating: 1 | 2 | 3 | 4
@@ -150,7 +156,10 @@ export interface StudyHistoryEntry {
 }
 
 export interface FlashcardWithProgress extends Flashcard {
+  // Front to back (ord 0)
   progress: CardProgress | null
+  // Other directions, by ord (a reversed card's back to front is 1)
+  extraProgress?: Record<number, CardProgress>
 }
 
 // One row of the set_study_stats view: a user's totals for a set across recent sessions and
@@ -179,4 +188,5 @@ export interface CardDraft {
   answer: string
   options: string[] | null
   pairs: MatchPair[] | null
+  reverse?: boolean
 }

@@ -2,7 +2,7 @@
 // totals recorded before the log existed. Days are study days (starting 4 AM, lib/day.ts).
 import { fsrs, State } from 'ts-fsrs'
 import { studyDayKey, studyDayStart } from '@/lib/day'
-import { MATURE_DAYS, progressToFSRS } from '@/lib/srs'
+import { MATURE_DAYS, progressToFSRS, studyItems } from '@/lib/srs'
 import type { CardProgress, FlashcardWithProgress, ReviewLog, StudyHistoryEntry } from '@/lib/types'
 
 const DAY_MS = 86_400_000
@@ -26,8 +26,9 @@ export function lastDays(n: number, now = new Date()): string[] {
 export interface CardCounts { new: number; learning: number; young: number; mature: number; suspended: number; buried: number; total: number }
 
 export function cardCounts(cards: FlashcardWithProgress[], now = new Date()): CardCounts {
-  const c: CardCounts = { new: 0, learning: 0, young: 0, mature: 0, suspended: 0, buried: 0, total: cards.length }
-  for (const { progress: p } of cards) {
+  // Each direction of a reversed card counts as its own card, like Anki's cards of one note
+  const c: CardCounts = { new: 0, learning: 0, young: 0, mature: 0, suspended: 0, buried: 0, total: studyItems(cards).length }
+  for (const { progress: p } of studyItems(cards)) {
     if (isSuspended(p)) { c.suspended++; continue }
     if (isBuried(p, now)) c.buried++
     const state = p?.fsrs_state ?? State.New
@@ -42,7 +43,7 @@ export function cardCounts(cards: FlashcardWithProgress[], now = new Date()): Ca
 export function forecast(cards: FlashcardWithProgress[], days: number, now = new Date()): number[] {
   const counts = new Array<number>(days).fill(0)
   const today = studyDayStart(now).getTime()
-  for (const { progress: p } of cards) {
+  for (const { progress: p } of studyItems(cards)) {
     if (!p || isSuspended(p) || (p.fsrs_state ?? 0) === State.New) continue
     const i = Math.max(0, Math.floor((studyDayStart(new Date(p.due)).getTime() - today) / DAY_MS + 0.5))
     if (i < days) counts[i]++
@@ -67,7 +68,7 @@ const DAY_LABELS = ['<1d', '1d', '2–3d', '4–7d', '1–2w', '2–4w', '1–2m
 
 // Interval, stability, difficulty and retrievability spreads over studied cards
 export function cardHistograms(cards: FlashcardWithProgress[], now = new Date()) {
-  const studied = cards.map(c => c.progress).filter((p): p is CardProgress => !!p && !isSuspended(p) && (p.fsrs_state ?? 0) !== State.New)
+  const studied = studyItems(cards).map(i => i.progress).filter((p): p is CardProgress => !!p && !isSuspended(p) && (p.fsrs_state ?? 0) !== State.New)
   return {
     interval:       histogram(studied.map(p => p.scheduled_days), DAY_EDGES, DAY_LABELS),
     stability:      histogram(studied.map(p => p.stability), DAY_EDGES, DAY_LABELS),

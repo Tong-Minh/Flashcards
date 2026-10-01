@@ -1,6 +1,7 @@
 import { supabaseStore } from '@/lib/store/supabaseStore'
 import { LIBRARY_VERSION, LOCAL_USER_ID, setPath, type LibraryFile, type SetFile } from '@/lib/store/localStore'
 import type { CardProgress, Flashcard } from '@/lib/types'
+import { progressKey } from '@/lib/srs'
 
 const json = (value: unknown) => JSON.stringify(value, null, 2)
 
@@ -24,8 +25,9 @@ export async function downloadLibraryZip(userId: string, onProgress?: (done: num
     const { totalCards: _t, toStudy: _s, lastStudied: _l, totalSessions: _n, ...plain } = s
     const set: SetFile = { ...plain, user_id: LOCAL_USER_ID, imported_stats: stats }
     const progress: Record<string, CardProgress> = {}
-    const bare: Flashcard[] = cards.map(({ progress: p, ...card }) => {
+    const bare: Flashcard[] = cards.map(({ progress: p, extraProgress, ...card }) => {
       if (p) progress[card.id] = p
+      for (const [ord, extra] of Object.entries(extraProgress ?? {})) progress[progressKey(card.id, Number(ord))] = extra
       return card
     })
     add(setPath(s.id, 'set'), set)

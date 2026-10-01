@@ -36,9 +36,11 @@ const dayNumber = (at: string) => {
 export function trainingItems(reviews: ReviewLog[]): TrainingItems {
   const byCard = new Map<string, ReviewLog[]>()
   for (const r of reviews) {
-    const list = byCard.get(r.card_id)
+    // Each direction of a reversed card is its own history
+    const key = `${r.card_id}:${r.ord ?? 0}`
+    const list = byCard.get(key)
     if (list) list.push(r)
-    else byCard.set(r.card_id, [r])
+    else byCard.set(key, [r])
   }
   const items: { at: string; card: number; reviews: { rating: number; delta: number }[] }[] = []
   let cardNo = 0
@@ -138,9 +140,11 @@ export function evaluate(reviews: ReviewLog[], params: number[] | null): Evaluat
   const scheduler = fsrs(generatorParameters({ enable_fuzz: false, ...(params && { w: params }) }))
   const byCard = new Map<string, ReviewLog[]>()
   for (const r of reviews) {
-    const list = byCard.get(r.card_id)
+    // Each direction of a reversed card is its own history
+    const key = `${r.card_id}:${r.ord ?? 0}`
+    const list = byCard.get(key)
     if (list) list.push(r)
-    else byCard.set(r.card_id, [r])
+    else byCard.set(key, [r])
   }
   let loss = 0, squared = 0, count = 0
   for (const list of byCard.values()) {

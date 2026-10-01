@@ -34,7 +34,7 @@ function splitRows(text: string, sep: string): string[][] {
 }
 
 export function planTextImport(text: string, fileName: string): ImportPlan {
-  const report = { ...emptyReport(), cards: 0, skippedEmpty: 0, unsupported: {} as Record<string, number> }
+  const report = { ...emptyReport(), cards: 0, skippedEmpty: 0, reversed: 0, unsupported: {} as Record<string, number> }
   const headers: Record<string, string> = {}
   const body = text.replace(/^﻿/, '').split(/\r?\n/).filter(line => {
     const h = line.match(/^#([\w ]+):(.*)$/)

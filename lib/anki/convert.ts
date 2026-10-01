@@ -17,7 +17,7 @@ export interface ImportPlan {
   // Images the cards use, referenced in their markup as "anki-media/<index>"
   mediaNames: string[]
   media: Map<string, () => Promise<Uint8Array>>
-  report: ConvertReport & { cards: number; skippedEmpty: number; unsupported: Record<string, number> }
+  report: ConvertReport & { cards: number; skippedEmpty: number; reversed: number; unsupported: Record<string, number> }
 }
 
 export const MEDIA_PREFIX = 'anki-media/'
@@ -29,6 +29,18 @@ function templateFields(fmt: string): Set<string> {
   const names = new Set<string>()
   for (const m of fmt.matchAll(/\{\{\s*[#^/]?\s*(?:[^{}:]+:)*([^{}]+?)\s*\}\}/g)) names.add(m[1])
   return names
+}
+
+// Template fields that are Anki's own, not the note's
+const SPECIAL_FIELDS = new Set(['FrontSide', 'Tags', 'Deck', 'Subdeck', 'Card', 'Type', 'CardFlag'])
+const noteFields = (fmt: string) => new Set([...templateFields(fmt)].filter(n => !SPECIAL_FIELDS.has(n)))
+const sameFields = (a: Set<string>, b: Set<string>) => a.size > 0 && a.size === b.size && [...a].every(n => b.has(n))
+
+// Two templates where each asks what the other answers (Anki's "Basic (and reversed card)")
+function isMirrored(model: AnkiCollection['models'] extends Map<number, infer M> ? M : never): boolean {
+  if (model.cloze || model.templates.length !== 2) return false
+  const [a, b] = model.templates
+  return sameFields(noteFields(a.qfmt), noteFields(b.afmt)) && sameFields(noteFields(b.qfmt), noteFields(a.afmt))
 }
 
 // Bookkeeping fields that aren't card content: "ID", "Source", or values like "LoF-ES-EN-0001"
@@ -48,7 +60,7 @@ function splitInfoNote(front: string, fieldTexts: string[]): [string, string] | 
 }
 
 export function planImport(col: AnkiCollection, { images }: { images: boolean }): ImportPlan {
-  const report = { ...emptyReport(), cards: 0, skippedEmpty: 0, unsupported: {} as Record<string, number> }
+  const report = { ...emptyReport(), cards: 0, skippedEmpty: 0, reversed: 0, unsupported: {} as Record<string, number> }
   const mediaNames: string[] = []
   const imageSrc = (name: string) => {
     if (!images || !col.media.has(name)) return null
@@ -122,6 +134,10 @@ export function planImport(col: AnkiCollection, { images }: { images: boolean })
         }
       }
     } else {
+      // "Basic (and reversed card)": the second card is the first one backwards, so it becomes the
+      // card's back-to-front direction instead of a card of its own
+      const mirrored = isMirrored(model)
+      if (mirrored && card.ord === 1) continue
       const tmpl = model.templates[card.ord] ?? tmpl0
       if (!tmpl) continue
       // Tags aren't rendered into cards (templates often print them for a script to style)
@@ -159,6 +175,7 @@ export function planImport(col: AnkiCollection, { images }: { images: boolean })
         if (!answer) { report.skippedEmpty++; continue }
         draft = { type: 'open_ended', question, answer, options: null, pairs: null }
       }
+      if (mirrored && (draft.type === 'open_ended' || draft.type === 'typed')) { draft.reverse = true; report.reversed++ }
     }
 
     if (!byDeck.has(card.did)) byDeck.set(card.did, { cards: [], tagCounts: new Map() })

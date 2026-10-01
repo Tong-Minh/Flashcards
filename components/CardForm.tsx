@@ -4,6 +4,7 @@ import { useRef, useState } from 'react'
 import { BlockEditor } from '@/components/BlockEditor'
 import { TYPE_LABELS, CARD_TYPES } from '@/lib/cardTypes'
 import type { CardDraft, CardType, MatchPair } from '@/lib/types'
+import { canReverse } from '@/lib/srs'
 
 export type { CardDraft } from '@/lib/types'
 
@@ -46,6 +47,8 @@ export function CardForm({ initial, submitLabel, onSubmit, autoFocus }: {
     while (rows.length < 3) rows.push({ left: '', right: '', id: rowId() })
     return rows
   })
+  // Also study it back to front (open-ended and typed cards)
+  const [reverse,      setReverse]      = useState(init?.reverse ?? false)
   const [saving,       setSaving]       = useState(false)
   const [error,        setError]        = useState('')
   const altRef = useRef<HTMLInputElement>(null)
@@ -101,7 +104,7 @@ export function CardForm({ initial, submitLabel, onSubmit, autoFocus }: {
     const card = build()
     if (typeof card === 'string') { setError(card); return }
     setSaving(true)
-    const err = await onSubmit(card)
+    const err = await onSubmit({ ...card, reverse: canReverse(card.type) && reverse })
     if (err) { setError(err); setSaving(false) }
   }
 
@@ -309,6 +312,23 @@ export function CardForm({ initial, submitLabel, onSubmit, autoFocus }: {
             </button>
           )}
         </div>
+      )}
+
+      {canReverse(type) && (
+        <label className="flex items-start gap-3 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={reverse}
+            onChange={e => setReverse(e.target.checked)}
+            className="mt-0.5 w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500"
+          />
+          <span>
+            <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">Also study it back to front</span>
+            <span className="block text-xs text-gray-400 dark:text-gray-500 text-pretty">
+              Adds a reversed card: you see the answer and recall the question{type === 'typed' ? ' (and type it)' : ''}. Each direction is scheduled on its own.
+            </span>
+          </span>
+        </label>
       )}
 
       {error && (
