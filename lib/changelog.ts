@@ -15,8 +15,10 @@ export const CHANGELOG: Release[] = [
   {
     version: '0.1.6',
     date: '2026-10-01',
-    title: 'Reversed cards',
+    title: 'Reversed cards, and moving your library anywhere',
     changes: [
+      'Export and Import (bottom of the sidebar) now work in every direction: web ⇄ desktop, and between Windows and Mac. Pick all or some sets; the zip carries cards, progress, review history, stats and settings (and images from the desktop app).',
+      'Importing only adds what’s missing and keeps your newer progress, so you can import the same zip again safely. On the web, sets over 3,000 cards are split into parts.',
       'New option when making a card: “Also study it back to front”. You then also see the answer and recall the question, scheduled on its own.',
       'The two directions of a card never come up on the same day.',
       'Reversed cards show “⇄ Both ways” in the card list.',

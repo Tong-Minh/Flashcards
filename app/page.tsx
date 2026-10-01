@@ -12,7 +12,7 @@ import { SetOrganizer } from '@/components/SetOrganizer'
 import FriendsTab from '@/components/FriendsTab'
 import DiscoverTab from '@/components/DiscoverTab'
 import { SearchBar } from '@/components/SearchBar'
-import { DownloadLibraryButton } from '@/components/LibraryControls'
+import { LibraryTransferLinks } from '@/components/LibraryControls'
 import { IS_DESKTOP } from '@/lib/platform'
 import type { Collection } from '@/lib/types'
 import { BarChart3 } from 'lucide-react'
@@ -159,7 +159,7 @@ function HomePage() {
               </svg>
             )}
           </button>
-          {!IS_DESKTOP && <DownloadLibraryButton className="lg:hidden p-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors disabled:opacity-50" />}
+          {!IS_DESKTOP && <span className="lg:hidden flex"><LibraryTransferLinks className="p-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors" /></span>}
           {!IS_DESKTOP && <button
             onClick={signOut}
             className="lg:hidden p-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors"

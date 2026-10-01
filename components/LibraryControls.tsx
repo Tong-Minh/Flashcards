@@ -3,35 +3,21 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { Download, FolderOpen, FileUp, RefreshCw, X } from 'lucide-react'
-import { useUser } from '@/components/AuthGuard'
 import { inTauri } from '@/lib/platform'
 import { notify } from '@/lib/dialogs'
 
 const iconButton = 'p-1.5 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 dark:text-gray-500 dark:hover:text-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-50'
 
-// Web app: downloads all your sets as a zip that the desktop app can import
-export function DownloadLibraryButton({ className = iconButton }: { className?: string }) {
-  const user = useUser()
-  const [busy, setBusy] = useState<string | null>(null)
-
-  async function download() {
-    if (!user || busy) return
-    setBusy('Preparing…')
-    try {
-      const { downloadLibraryZip } = await import('@/lib/libraryZip')
-      await downloadLibraryZip(user.id, (done, total) => setBusy(`Preparing ${done}/${total}…`))
-    } catch {
-      notify('Could not download your library. Please try again.')
-    } finally {
-      setBusy(null)
-    }
-  }
-
-  return (
-    <button onClick={download} disabled={!!busy} className={className} title={busy ?? 'Download my library (for the desktop app)'}>
+// Export and import a library zip (lib/libraryTransfer.ts). Each opens a page that explains it.
+export function LibraryTransferLinks({ className = iconButton }: { className?: string }) {
+  return <>
+    <Link href="/library/export" className={className} title="Export a library (.zip)" aria-label="Export a library">
       <Download size={17} />
-    </button>
-  )
+    </Link>
+    <Link href="/library/import" className={className} title="Import a library (.zip)" aria-label="Import a library">
+      <FileUp size={17} />
+    </Link>
+  </>
 }
 
 // When the app last asked GitHub for an update (kept across sidebar remounts, e.g. after studying)
@@ -97,9 +83,7 @@ export function DesktopLibraryFooter({ themeButton }: { themeButton: ReactNode }
           <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Library</p>
           <p className="truncate text-sm font-medium text-gray-700 dark:text-gray-200">{folderName}</p>
         </Link>
-        <Link href="/library/import" className={iconButton} title="Import a library .zip">
-          <FileUp size={17} />
-        </Link>
+        <LibraryTransferLinks />
         <Link href="/library/folder" className={iconButton} title="Open a different library folder">
           <FolderOpen size={17} />
         </Link>

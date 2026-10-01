@@ -13,7 +13,7 @@ import type { Collection } from '@/lib/types'
 import { paths } from '@/lib/paths'
 import { IS_DESKTOP } from '@/lib/platform'
 import { APP_VERSION } from '@/lib/changelog'
-import { DesktopAppPromo, DesktopLibraryFooter, DownloadLibraryButton } from '@/components/LibraryControls'
+import { DesktopAppPromo, DesktopLibraryFooter, LibraryTransferLinks } from '@/components/LibraryControls'
 
 // Pages that get the whole screen: signing in, studying (focus mode), and the optimizer (its
 // cross-origin isolation would block the sidebar's profile picture)
@@ -154,7 +154,7 @@ function Sidebar() {
             ? <img src={avatar} alt="" className="w-8 h-8 rounded-full flex-shrink-0 mr-1" referrerPolicy="no-referrer" />
             : <div className="w-8 h-8 rounded-full flex-shrink-0 mr-1 bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 flex items-center justify-center text-sm font-semibold">{name.charAt(0).toUpperCase()}</div>}
           <p className="flex-1 min-w-0 truncate text-sm font-medium text-gray-700 dark:text-gray-200">{name}</p>
-          <DownloadLibraryButton />
+          <LibraryTransferLinks />
           {themeButton}
           <button
             onClick={() => supabase.auth.signOut()}

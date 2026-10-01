@@ -1,6 +1,8 @@
 import { inTauri } from '@/lib/platform'
 import { memoryFiles, tauriFiles, type Files } from './files'
-import { createLocalStore, LIBRARY_VERSION, LOCAL_USER_ID, type LibraryFile } from './localStore'
+import { createLocalStore, LIBRARY_VERSION, setPath, type LibraryFile, type SessionRow, type SetFile } from './localStore'
+import { asLocal, mediaOf, newerProgress, type ImportResult, type LibraryBundle, type SetBundle } from '@/lib/libraryTransfer'
+import type { CardProgress, Flashcard, ReviewLog } from '@/lib/types'
 import type { Store } from './types'
 
 // The desktop app's library: a folder the user picks (remembered between launches). Outside the
@@ -75,30 +77,118 @@ export const desktopStore = new Proxy({} as Store, {
   },
 })
 
-// Adds a library exported from the web app (paths → file text, in the folder layout) to the open
-// library. Sets already in it (same id) are skipped, so importing twice doesn't duplicate anything.
-export async function importLibraryFiles(entries: Record<string, string>): Promise<{ added: number; skipped: number }> {
-  const files = currentFiles
-  if (!files) throw new Error('No library folder is open')
-  const existing = new Set(await files.listDirs('sets'))
+// ── Library transfer (lib/libraryTransfer.ts) ────────────────────────────────
 
-  const parse = <T,>(text: string | null | undefined, fallback: T): T => {
-    try { return text ? JSON.parse(text) as T : fallback } catch { return fallback }
+function openFiles(): Files {
+  if (!currentFiles) throw new Error('No library folder is open')
+  return currentFiles
+}
+
+const parseJson = <T,>(text: string | null | undefined, fallback: T): T => {
+  try { return text ? JSON.parse(text) as T : fallback } catch { return fallback }
+}
+
+async function readReviews(files: Files): Promise<Map<string, ReviewLog[]>> {
+  const months = new Map<string, ReviewLog[]>()
+  for (const name of await files.listFiles('reviews')) {
+    if (!/^\d{4}-\d{2}\.json$/.test(name)) continue
+    months.set(name.slice(0, 7), parseJson<ReviewLog[]>(await files.read(`reviews/${name}`), []))
   }
-  const library  = parse<LibraryFile>(await files.read('library.json'), { version: LIBRARY_VERSION, collections: [] })
-  const incoming = parse<LibraryFile>(entries['library.json'], { version: LIBRARY_VERSION, collections: [] })
+  return months
+}
+
+// The open library as a bundle: everything, or just some sets (with the collections, reviews and
+// images they use)
+export async function exportBundle(setIds?: string[]): Promise<LibraryBundle> {
+  const files = openFiles()
+  const library = parseJson<LibraryFile>(await files.read('library.json'), { version: LIBRARY_VERSION, collections: [] })
+  const ids = setIds ?? await files.listDirs('sets')
+  const sets: SetBundle[] = []
+  for (const id of ids) {
+    const set = parseJson<SetFile | null>(await files.read(setPath(id, 'set')), null)
+    if (!set) continue
+    sets.push({
+      set: { ...set, id },
+      cards: parseJson<Flashcard[]>(await files.read(setPath(id, 'cards')), []),
+      progress: parseJson<Record<string, CardProgress>>(await files.read(setPath(id, 'progress')), {}),
+      sessions: parseJson<SessionRow[]>(await files.read(setPath(id, 'sessions')), []),
+    })
+  }
+  const cardIds = new Set(sets.flatMap(s => s.cards.map(c => c.id)))
+  const reviews = [...(await readReviews(files)).values()].flat().filter(r => !setIds || cardIds.has(r.card_id))
+  const collectionIds = new Set(sets.map(s => s.set.collection_id).filter(Boolean))
+  const media: Record<string, Uint8Array> = {}
+  for (const path of mediaOf(sets.flatMap(s => s.cards))) {
+    const bytes = await files.readBytes(path)
+    if (bytes) media[path] = bytes
+  }
+  return {
+    library: { ...library, collections: library.collections.filter(c => !setIds || collectionIds.has(c.id)) },
+    sets,
+    reviews,
+    media,
+  }
+}
+
+// Adds a library zip's contents to the open library without removing or overwriting anything: new
+// collections, sets, cards, reviews and images are added, and for progress the newer review wins
+export async function importBundle(bundle: LibraryBundle): Promise<ImportResult> {
+  const files = openFiles()
+  const existing = new Set(await files.listDirs('sets'))
+  const result: ImportResult = { added: 0, updated: 0, unchanged: 0, split: 0 }
+
+  const library = parseJson<LibraryFile>(await files.read('library.json'), { version: LIBRARY_VERSION, collections: [] })
   const known = new Set(library.collections.map(c => c.id))
-  for (const c of incoming.collections ?? []) if (!known.has(c.id)) library.collections.push({ ...c, user_id: LOCAL_USER_ID })
+  for (const c of bundle.library.collections) if (!known.has(c.id)) library.collections.push({ ...asLocal(c), is_public: false })
+  library.settings ??= bundle.library.settings
   await files.write('library.json', JSON.stringify(library, null, 2))
 
-  const setIds = new Set(Object.keys(entries).map(p => p.match(/^sets\/([^/]+)\//)?.[1]).filter((id): id is string => !!id))
-  let added = 0, skipped = 0
-  for (const id of setIds) {
-    if (existing.has(id)) { skipped++; continue }
-    for (const [path, text] of Object.entries(entries)) if (path.startsWith(`sets/${id}/`)) await files.write(path, text)
-    added++
+  for (const s of bundle.sets) {
+    const id = s.set.id
+    if (!existing.has(id)) {
+      await files.write(setPath(id, 'set'), JSON.stringify({ ...asLocal(s.set), is_public: false }, null, 2))
+      await files.write(setPath(id, 'cards'), JSON.stringify(s.cards, null, 2))
+      await files.write(setPath(id, 'progress'), JSON.stringify(s.progress, null, 2))
+      await files.write(setPath(id, 'sessions'), JSON.stringify(s.sessions, null, 2))
+      result.added++
+      continue
+    }
+    // Already here: add the cards it doesn't have, and take newer progress
+    const cards = parseJson<Flashcard[]>(await files.read(setPath(id, 'cards')), [])
+    const progress = parseJson<Record<string, CardProgress>>(await files.read(setPath(id, 'progress')), {})
+    const have = new Set(cards.map(c => c.id))
+    const newCards = s.cards.filter(c => !have.has(c.id))
+    let progressChanged = false
+    for (const [key, incoming] of Object.entries(s.progress)) {
+      const keep = newerProgress(progress[key], incoming)
+      if (keep !== progress[key]) { progress[key] = keep!; progressChanged = true }
+    }
+    if (newCards.length) await files.write(setPath(id, 'cards'), JSON.stringify([...cards, ...newCards], null, 2))
+    if (progressChanged) await files.write(setPath(id, 'progress'), JSON.stringify(progress, null, 2))
+    if (newCards.length || progressChanged) result.updated++
+    else result.unchanged++
   }
+
+  // Reviews: add the ones this library doesn't have, by month
+  const months = await readReviews(files)
+  const seen = new Set([...months.values()].flat().map(r => r.id))
+  const touched = new Set<string>()
+  for (const r of bundle.reviews) {
+    if (seen.has(r.id)) continue
+    const month = r.reviewed_at.slice(0, 7)
+    months.set(month, [...(months.get(month) ?? []), r])
+    touched.add(month)
+  }
+  for (const month of touched) {
+    const list = months.get(month)!.sort((a, b) => a.reviewed_at.localeCompare(b.reviewed_at))
+    await files.write(`reviews/${month}.json`, JSON.stringify(list, null, 2))
+  }
+
+  for (const [path, bytes] of Object.entries(bundle.media)) {
+    if (!(await files.readBytes(path))) await files.writeBytes(path, bytes)
+  }
+
   // Re-read everything
   current = createLocalStore(files)
-  return { added, skipped }
+  return result
 }
