@@ -12,6 +12,10 @@ It comes in two versions built from the same code:
   offline, and there's no practical limit on set size. Cards can include images (paste, drag, or /image).
   It updates itself from GitHub Releases.
 
+Both have Anki-style studying: undo, bury and suspend, Space to flip, and a **Stats** page (forecast,
+calendar, true retention, answer buttons, intervals) built from a log of every rating. **What's new**
+in the sidebar lists every version.
+
 Both can **import Anki decks** (`.apkg` or a text export) from the **+ New** menu: decks become sets,
 clozes become fill-in-the-blank cards, and math, code, and formatting carry over. Every card starts as new, and
 images come along in the desktop app.

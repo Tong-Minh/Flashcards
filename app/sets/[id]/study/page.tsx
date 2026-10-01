@@ -15,11 +15,16 @@ import { checkTypedAnswer, type TypedResult } from '@/lib/answerCheck'
 import {
   cacheCards, getCachedCards, updateCachedProgress,
   queueProgressUpdate, getPendingUpdates, removePendingUpdate,
+  queueReview, getPendingReviews, removePendingReview,
   saveSessionState, getSavedSession, clearSavedSession,
-  getTodayNewCount, incrementTodayNewCount, getSetSettings,
+  getTodayNewCount, incrementTodayNewCount, decrementTodayNewCount, getSetSettings,
 } from '@/lib/storage'
-import type { FlashcardWithProgress, CardStatus, CardProgress, FSRSState } from '@/lib/types'
+import type { FlashcardWithProgress, CardStatus, CardProgress, FSRSState, ReviewLog } from '@/lib/types'
 import { paths } from '@/lib/paths'
+import { nextStudyDay } from '@/lib/day'
+import { progressToFSRS } from '@/lib/srs'
+import { UndoToast, type Toast } from '@/components/UndoToast'
+import { Ban, EyeOff, Undo2, type LucideIcon } from 'lucide-react'
 const f = fsrs()
 
 type SRSRating  = 1 | 2 | 3 | 4
@@ -30,23 +35,22 @@ type CustomMode = 'ahead' | 'more_new' | 'forgotten' | 'by_state'
 
 interface SessionCard extends FlashcardWithProgress { _key: number }
 
-// ── FSRS helpers ──────────────────────────────────────────────────────────────
-
-function progressToFSRS(p: CardProgress | null | undefined): FSRSCard {
-  if (!p) return createEmptyCard()
-  return {
-    due:            new Date(p.due ?? Date.now()),
-    stability:      p.stability      ?? 0,
-    difficulty:     p.difficulty     ?? 0,
-    elapsed_days:   p.elapsed_days   ?? 0,
-    scheduled_days: p.scheduled_days ?? 0,
-    reps:           p.reps           ?? 0,
-    lapses:         p.lapses         ?? 0,
-    learning_steps: p.learning_steps ?? 0,
-    state:          (p.fsrs_state    ?? 0) as State,
-    last_review:    p.last_review ? new Date(p.last_review) : undefined,
-  }
+// What Undo puts back: the card's progress and the session as they were before the action
+interface UndoEntry {
+  action: 'rate' | 'bury' | 'suspend'
+  cardId: string
+  prevProgress: CardProgress | null
+  prevQueue: SessionCard[]
+  prevStats: { cardsStudied: number; correctCount: number; masteredCount: number }
+  // The rating counted the card toward today's new-card limit
+  countedNew: boolean
+  reviewId: string | null
 }
+
+// The longest a review counts as taking (someone who walked away mid-card)
+const MAX_REVIEW_MS = 5 * 60_000
+
+// ── FSRS helpers ──────────────────────────────────────────────────────────────
 
 function formatInterval(card: FSRSCard): string {
   const mins = Math.round((card.due.getTime() - Date.now()) / 60000)
@@ -77,6 +81,21 @@ function isNew(p: CardProgress | null | undefined): boolean {
   return !p || (p.fsrs_state ?? 0) === State.New
 }
 
+// Not suspended, and not buried until later today
+function isAvailable(p: CardProgress | null | undefined, now = new Date()): boolean {
+  return !p?.suspended && !(p?.buried_until && new Date(p.buried_until) > now)
+}
+
+// Progress for a card never studied (to carry a bury or suspend)
+function emptyProgress(cardId: string): CardProgress {
+  const c = createEmptyCard()
+  return {
+    id: '', card_id: cardId, correct_count: 0, status: 'new', last_reviewed: null, due: c.due.toISOString(),
+    stability: 0, difficulty: 0, elapsed_days: 0, scheduled_days: 0, reps: 0, lapses: 0, learning_steps: 0,
+    fsrs_state: 0, last_review: null,
+  }
+}
+
 // ── Queue builder ─────────────────────────────────────────────────────────────
 
 function buildQueue(
@@ -86,8 +105,9 @@ function buildQueue(
   remainingNew: number,
 ): { queue: FlashcardWithProgress[]; dueCount: number; newCount: number } {
   const resolve = (c: FlashcardWithProgress) => progressOverrides.get(c.id) ?? c.progress
-  const dueCards = cards.filter(c => isDue(resolve(c)))
-  const newCards  = cards.filter(c => isNew(resolve(c))).slice(0, Math.max(0, remainingNew))
+  const available = cards.filter(c => isAvailable(resolve(c)))
+  const dueCards = available.filter(c => isDue(resolve(c)))
+  const newCards  = available.filter(c => isNew(resolve(c))).slice(0, Math.max(0, remainingNew))
   const combined = [...dueCards, ...newCards]
   const sorted = order === 'random' ? combined.sort(() => Math.random() - 0.5) : combined
   return { queue: sorted, dueCount: dueCards.length, newCount: newCards.length }
@@ -122,6 +142,15 @@ export default function Study() {
   const [cardMinHeight,  setCardMinHeight]  = useState<number | null>(null)
   const cardRef = useRef<HTMLDivElement>(null)
   const [cardKey,        setCardKey]        = useState(0)
+  // The answer has been shown: rating is possible, and Space flips between the sides
+  const [revealed,       setRevealed]       = useState(false)
+  const [toast,          setToast]          = useState<Toast | null>(null)
+  const undoStack   = useRef<UndoEntry[]>([])
+  const [undoCount,      setUndoCount]      = useState(0)
+  const busy        = useRef(false)
+  // When the current card appeared, for the review's duration
+  const shownAt     = useRef(Date.now())
+  useEffect(() => { shownAt.current = Date.now() }, [cardKey, phase])
 
   // Regular session stats
   const [dueCount,      setDueCount]      = useState(0)
@@ -149,7 +178,9 @@ export default function Study() {
   const studyKeys = useRef<((e: KeyboardEvent) => void) | null>(null)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return
+      // ⌘Z / Ctrl+Z undo like Z; other shortcuts with modifiers are left to the browser
+      const undoCombo = (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'z'
+      if (e.repeat || ((e.metaKey || e.ctrlKey || e.altKey) && !undoCombo)) return
       const target = e.target as HTMLElement | null
       if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
       studyKeys.current?.(e)
@@ -170,6 +201,9 @@ export default function Study() {
 
   async function syncPending() {
     if (!store.remote || !navigator.onLine) return
+    for (const r of getPendingReviews()) {
+      try { await store.logReview(r); removePendingReview(r.id) } catch {}
+    }
     for (const u of getPendingUpdates().filter(p => p.setId === setId)) {
       try {
         await store.saveProgress(u.cardId, {
@@ -186,6 +220,8 @@ export default function Study() {
           status:         u.status,
           correct_count:  u.correctCount,
           last_reviewed:  u.lastReviewed,
+          ...(u.suspended   !== undefined && { suspended:    u.suspended }),
+          ...(u.buriedUntil !== undefined && { buried_until: u.buriedUntil }),
         })
         removePendingUpdate(u.cardId)
       } catch {}
@@ -217,8 +253,9 @@ export default function Study() {
     setDailyLimit(dailyNewLimit)
     setSavedSession(getSavedSession(setId))
 
-    // ── Custom study stats ────────────────────────────────────────────────────
+    // ── Custom study stats (suspended and buried cards never come up) ────────────
     const now = new Date()
+    cards = cards.filter(c => isAvailable(c.progress, now))
     setAheadCounts([1, 3, 7].map(days => ({
       days,
       count: cards.filter(c => {
@@ -245,11 +282,12 @@ export default function Study() {
 
   function getCustomQueue(mode: CustomMode, param?: number | string): FlashcardWithProgress[] {
     const now = new Date()
+    const pool = allCards.filter(c => isAvailable(c.progress, now))
     switch (mode) {
       case 'ahead': {
         const days = param as number
         const cutoff = new Date(now.getTime() + days * 86400000)
-        return [...allCards]
+        return [...pool]
           .filter(c => {
             const p = c.progress
             if (!p || (p.fsrs_state ?? 0) === 0) return false
@@ -260,19 +298,41 @@ export default function Study() {
       }
       case 'more_new': {
         const n = param as number
-        return allCards.filter(c => isNew(c.progress)).slice(newCount, newCount + n)
+        return pool.filter(c => isNew(c.progress)).slice(newCount, newCount + n)
       }
       case 'forgotten': {
-        return [...allCards]
+        return [...pool]
           .filter(c => (c.progress?.lapses ?? 0) > 0)
           .sort((a, b) => (b.progress?.lapses ?? 0) - (a.progress?.lapses ?? 0))
       }
       case 'by_state': {
         const s = param as string
-        if (s === 'new') return allCards.filter(c => isNew(c.progress))
-        return allCards.filter(c => (c.progress?.status ?? 'new') === s)
+        if (s === 'new') return pool.filter(c => isNew(c.progress))
+        return pool.filter(c => (c.progress?.status ?? 'new') === s)
       }
     }
+  }
+
+  // A fresh card face: front showing, nothing answered
+  function resetCardUI() {
+    setFlipState('front')
+    setShowBack(false)
+    setRevealed(false)
+    setSelectedOption(null)
+    setTyped(null)
+    setMatchMisses(null)
+    setCardMinHeight(null)
+    setScheduling(null)
+  }
+
+  function beginSession() {
+    undoStack.current = []
+    setUndoCount(0)
+    setToast(null)
+    resetCardUI()
+    setCardKey(0)
+    sessionStart.current = Date.now()
+    setPhase('session')
   }
 
   function startCustom(mode: CustomMode, param?: number | string) {
@@ -285,16 +345,7 @@ export default function Study() {
     setQueue(q.map(c => ({ ...c, _key: 0 })))
     statsRef.current = { cardsStudied: 0, correctCount: 0, masteredCount: 0 }
     setDisplayStats({ cardsStudied: 0, correctCount: 0, masteredCount: 0 })
-    setFlipState('front')
-    setShowBack(false)
-    setSelectedOption(null)
-    setTyped(null)
-    setMatchMisses(null)
-    setCardMinHeight(null)
-    setCardKey(0)
-    setScheduling(null)
-    sessionStart.current = Date.now()
-    setPhase('session')
+    beginSession()
   }
 
   // ── Regular session start ─────────────────────────────────────────────────
@@ -306,7 +357,7 @@ export default function Study() {
       const cardMap = new Map(allCards.map(c => [c.id, c]))
       const restored = savedSession.queueIds
         .map(id => cardMap.get(id)).filter(Boolean) as FlashcardWithProgress[]
-      const valid = restored.filter(c => !isCompleted(c.progress))
+      const valid = restored.filter(c => !isCompleted(c.progress) && isAvailable(c.progress))
       setOrder(savedSession.order)
       setTotalInSession(valid.length + savedSession.stats.cardsStudied)
       setQueue(valid.map(c => ({ ...c, _key: 0 })))
@@ -322,17 +373,7 @@ export default function Study() {
       statsRef.current = { cardsStudied: 0, correctCount: 0, masteredCount: 0 }
       setDisplayStats({ cardsStudied: 0, correctCount: 0, masteredCount: 0 })
     }
-
-    setFlipState('front')
-    setShowBack(false)
-    setSelectedOption(null)
-    setTyped(null)
-    setMatchMisses(null)
-    setCardMinHeight(null)
-    setCardKey(0)
-    setScheduling(null)
-    sessionStart.current = Date.now()
-    setPhase('session')
+    beginSession()
   }
 
   function isCompleted(p: CardProgress | null | undefined): boolean {
@@ -365,32 +406,105 @@ export default function Study() {
     }).catch(() => {})
   }
 
+  // Shows the other side. The first time, it reveals the answer: ratings appear and the intervals
+  // are worked out. After that, Space or a tap flips back and forth.
   function triggerFlip() {
-    if (flipState !== 'front') return
-    // Keep the question side's height so a shorter answer doesn't shrink the card; a longer one still grows it
-    setCardMinHeight(cardRef.current?.offsetHeight ?? null)
+    if (flipState === 'flipping') return
+    const toBack = !showBack
+    // While the back shows, keep the front's height so a shorter answer doesn't shrink the card (a
+    // longer one still grows it); back on the front, the card takes its own size again
+    setCardMinHeight(toBack ? cardRef.current?.offsetHeight ?? null : null)
     haptic(20)
     setFlipState('flipping')
     setTimeout(() => {
-      setShowBack(true)
+      setShowBack(toBack)
       const card = queue[0]
-      if (card) {
+      if (toBack && !revealed && card) {
         const current = progressMap.current.get(card.id) ?? card.progress
         setScheduling(f.repeat(progressToFSRS(current), new Date()))
+        setRevealed(true)
       }
     }, 150)
-    setTimeout(() => setFlipState('back'), 300)
+    setTimeout(() => setFlipState(toBack ? 'back' : 'front'), 300)
+  }
+
+  // Saves a card's progress, or queues it while offline
+  async function saveCardProgress(cardId: string, p: CardProgress) {
+    progressMap.current.set(cardId, p)
+    updateCachedProgress(setId, cardId, p)
+    if (!store.remote || navigator.onLine) {
+      try {
+        const { id: _id, card_id: _cardId, ...fields } = p
+        await store.saveProgress(cardId, fields)
+        return
+      } catch {}
+    }
+    queueProgressUpdate({
+      cardId, setId,
+      correctCount:  p.correct_count,
+      status:        p.status,
+      lastReviewed:  p.last_reviewed ?? new Date().toISOString(),
+      due:           p.due,
+      stability:     p.stability,
+      difficulty:    p.difficulty,
+      elapsedDays:   p.elapsed_days,
+      scheduledDays: p.scheduled_days,
+      reps:          p.reps,
+      lapses:        p.lapses,
+      learningSteps: p.learning_steps,
+      fsrsState:     p.fsrs_state,
+      lastReview:    p.last_review ?? new Date().toISOString(),
+      suspended:     p.suspended ?? false,
+      buriedUntil:   p.buried_until ?? null,
+    })
+  }
+
+  // Takes a card back to having no progress (undoing its first review)
+  async function clearCardProgress(cardId: string) {
+    progressMap.current.delete(cardId)
+    updateCachedProgress(setId, cardId, null)
+    removePendingUpdate(cardId)
+    if (!store.remote || navigator.onLine) await store.resetProgress([cardId]).catch(() => {})
+  }
+
+  async function saveReview(review: ReviewLog) {
+    if (!store.remote || navigator.onLine) {
+      try { await store.logReview(review); return } catch {}
+    }
+    queueReview(review)
+  }
+
+  function pushUndo(entry: UndoEntry) {
+    undoStack.current.push(entry)
+    // Enough to step back through a long session, without growing forever
+    if (undoStack.current.length > 50) undoStack.current.shift()
+    setUndoCount(undoStack.current.length)
+  }
+
+  // Moves on to the next card, or ends the session
+  async function advance(newQueue: SessionCard[]) {
+    if (newQueue.length === 0) {
+      await persistSession()
+      clearSavedSession(setId)
+      setPhase('done')
+      return
+    }
+    resetCardUI()
+    setCardKey(k => k + 1)
+    setQueue(newQueue)
   }
 
   async function rate(rating: SRSRating) {
     const card = queue[0]
-    if (!card) return
+    if (!card || busy.current) return
+    busy.current = true
     haptic(30)
 
     const now = new Date()
-    const current = progressMap.current.get(card.id) ?? card.progress
+    const current = progressMap.current.get(card.id) ?? card.progress ?? null
 
-    if (isNew(current) && !countedNewIds.current.has(card.id)) {
+    const countedNew = isNew(current) && !countedNewIds.current.has(card.id)
+    if (countedNew) {
       countedNewIds.current.add(card.id)
       incrementTodayNewCount(setId)
       setTodayNewCount(c => c + 1)
@@ -417,37 +531,26 @@ export default function Study() {
       learning_steps: (next as FSRSCard & { learning_steps?: number }).learning_steps ?? 0,
       fsrs_state:     next.state as 0 | 1 | 2 | 3,
       last_review:    now.toISOString(),
+      suspended:      false,
+      buried_until:   null,
     }
 
-    progressMap.current.set(card.id, newProgress)
-    updateCachedProgress(setId, card.id, newProgress)
+    const review: ReviewLog = {
+      id:                  crypto.randomUUID(),
+      card_id:             card.id,
+      set_id:              setId,
+      rating,
+      state:               (current?.fsrs_state ?? 0) as FSRSState,
+      elapsed_days:        current?.last_review ? Math.max(0, (now.getTime() - new Date(current.last_review).getTime()) / 86_400_000) : 0,
+      last_scheduled_days: current?.scheduled_days ?? 0,
+      scheduled_days:      next.scheduled_days,
+      stability:           next.stability,
+      difficulty:          next.difficulty,
+      review_ms:           Math.min(MAX_REVIEW_MS, now.getTime() - shownAt.current),
+      reviewed_at:         now.toISOString(),
+    }
 
-    let synced = false
-    if (!store.remote || navigator.onLine) {
-      try {
-        const { id: _id, card_id: _cardId, ...fields } = newProgress
-        await store.saveProgress(card.id, fields)
-        synced = true
-      } catch {}
-    }
-    if (!synced) {
-      queueProgressUpdate({
-        cardId: card.id, setId,
-        correctCount:  newProgress.correct_count,
-        status:        newProgress.status,
-        lastReviewed:  newProgress.last_reviewed!,
-        due:           newProgress.due,
-        stability:     newProgress.stability,
-        difficulty:    newProgress.difficulty,
-        elapsedDays:   newProgress.elapsed_days,
-        scheduledDays: newProgress.scheduled_days,
-        reps:          newProgress.reps,
-        lapses:        newProgress.lapses,
-        learningSteps: newProgress.learning_steps,
-        fsrsState:     newProgress.fsrs_state,
-        lastReview:    newProgress.last_review!,
-      })
-    }
+    pushUndo({ action: 'rate', cardId: card.id, prevProgress: current, prevQueue: queue, prevStats: { ...statsRef.current }, countedNew, reviewId: review.id })
 
     const newStats = {
       cardsStudied:  statsRef.current.cardsStudied  + 1,
@@ -461,20 +564,70 @@ export default function Study() {
     const rest = queue.slice(1)
     const newQueue = rating === Rating.Again ? [...rest, updatedCard] : rest
 
-    if (newQueue.length === 0) {
-      await persistSession()
-      clearSavedSession(setId)
-      setPhase('done')
-    } else {
-      setFlipState('front')
-      setShowBack(false)
-      setSelectedOption(null)
-      setTyped(null)
-      setMatchMisses(null)
-      setCardMinHeight(null)
+    try {
+      await Promise.all([saveCardProgress(card.id, newProgress), saveReview(review)])
+      await advance(newQueue)
+    } finally {
+      busy.current = false
+    }
+  }
+
+  // Bury: back at the start of the next study day. Suspend: until unsuspended from the card list.
+  // Either way the card leaves this session.
+  async function setAside(action: 'bury' | 'suspend') {
+    const card = queue[0]
+    if (!card || busy.current) return
+    busy.current = true
+    haptic(20)
+    const current = progressMap.current.get(card.id) ?? card.progress ?? null
+    const p: CardProgress = action === 'bury'
+      ? { ...(current ?? emptyProgress(card.id)), buried_until: nextStudyDay().toISOString() }
+      : { ...(current ?? emptyProgress(card.id)), suspended: true }
+    pushUndo({ action, cardId: card.id, prevProgress: current, prevQueue: queue, prevStats: { ...statsRef.current }, countedNew: false, reviewId: null })
+    setTotalInSession(t => t - 1)
+    try {
+      await saveCardProgress(card.id, p)
+      setToast({
+        id: Date.now(),
+        message: action === 'bury' ? 'Card buried until tomorrow' : 'Card suspended. Unsuspend it from the set’s card list.',
+        onUndo: undo,
+      })
+      await advance(queue.filter(c => c.id !== card.id))
+    } finally {
+      busy.current = false
+    }
+  }
+
+  // Steps back one rating, bury or suspend: the card's progress and the session return to how they
+  // were, and the card is in front of you again
+  async function undo() {
+    const entry = undoStack.current.pop()
+    if (!entry || busy.current) return
+    busy.current = true
+    setUndoCount(undoStack.current.length)
+    haptic(20)
+    try {
+      if (entry.prevProgress) await saveCardProgress(entry.cardId, entry.prevProgress)
+      else await clearCardProgress(entry.cardId)
+      if (entry.reviewId) {
+        removePendingReview(entry.reviewId)
+        if (!store.remote || navigator.onLine) await store.deleteReview(entry.reviewId).catch(() => {})
+      }
+      if (entry.countedNew) {
+        countedNewIds.current.delete(entry.cardId)
+        decrementTodayNewCount(setId)
+        setTodayNewCount(c => Math.max(0, c - 1))
+      }
+      if (entry.action !== 'rate') setTotalInSession(t => t + 1)
+      statsRef.current = entry.prevStats
+      setDisplayStats({ ...entry.prevStats })
+      resetCardUI()
       setCardKey(k => k + 1)
-      setScheduling(null)
-      setQueue(newQueue)
+      setQueue(entry.prevQueue)
+      setPhase('session')
+      setToast({ id: Date.now(), message: entry.action === 'rate' ? 'Rating undone' : entry.action === 'bury' ? 'Unburied' : 'Unsuspended' })
+    } finally {
+      busy.current = false
     }
   }
 
@@ -800,6 +953,9 @@ export default function Study() {
   // Hint toward Again after an auto-checked miss. Only the rating the user taps is recorded.
   const answeredWrong = typed?.result === 'incorrect' || (selectedOption !== null && !isCorrectSelection)
   const cardAnimClass = flipState === 'flipping' ? 'card-flip' : ''
+  // Tapping flips cards with nothing to answer on the front (others have inputs there); once
+  // revealed, every card's back flips to the front with a tap
+  const tapFlips = card.type === 'open_ended' || card.type === 'fill_blank' || showBack
 
   const intervals = scheduling ? {
     again: formatInterval(scheduling[Rating.Again].card),
@@ -808,12 +964,17 @@ export default function Study() {
     easy:  formatInterval(scheduling[Rating.Easy].card),
   } : null
 
-  // Space/Enter reveals, 1–4 rate, A–D pick a multiple-choice option, T/F answer true/false
+  // Space/Enter reveals, then Space flips back and forth; 1–4 rate; A–D pick a multiple-choice option;
+  // T/F answer true/false; Z (or ⌘Z/Ctrl+Z) undoes, - buries, @ suspends (Anki's keys)
   studyKeys.current = e => {
     const key = e.key.toLowerCase()
-    if (showBack) {
+    if (key === 'z') { e.preventDefault(); undo(); return }
+    if (e.key === '-') { e.preventDefault(); setAside('bury'); return }
+    if (e.key === '@') { e.preventDefault(); setAside('suspend'); return }
+    if (revealed) {
       const rating = ({ '1': Rating.Again, '2': Rating.Hard, '3': Rating.Good, '4': Rating.Easy } as Record<string, SRSRating>)[key]
       if (rating !== undefined) { e.preventDefault(); rate(rating) }
+      else if (key === ' ') { e.preventDefault(); triggerFlip() }
       return
     }
     if (flipState !== 'front') return
@@ -833,12 +994,16 @@ export default function Study() {
   return (
     <div className="max-w-lg lg:max-w-3xl mx-auto px-4 py-6 lg:py-10">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <button onClick={handleExit} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors font-medium">
+      <div className="flex items-center gap-2 mb-4">
+        <button onClick={handleExit} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors font-medium flex-shrink-0">
           ← Exit
         </button>
-        <p className="text-sm text-gray-400 dark:text-gray-500">{cardNumber} / {totalInSession}</p>
-        <div className="w-12" />
+        <p className="flex-1 text-center text-sm text-gray-400 dark:text-gray-500 tabular-nums">{cardNumber} / {totalInSession}</p>
+        <div className="flex items-center flex-shrink-0">
+          <StudyAction icon={Undo2}  label="Undo"    kbd="Z" onClick={undo} disabled={undoCount === 0} />
+          <StudyAction icon={EyeOff} label="Bury"    kbd="-" onClick={() => setAside('bury')}    title="Hide until tomorrow" />
+          <StudyAction icon={Ban}    label="Suspend" kbd="@" onClick={() => setAside('suspend')} title="Hide until you unsuspend it" />
+        </div>
       </div>
 
       {/* Progress bar */}
@@ -850,10 +1015,11 @@ export default function Study() {
       <div
         key={cardKey}
         ref={cardRef}
-        className={`${flipState === 'front' ? 'card-enter' : ''} bg-white dark:bg-gray-800 rounded-2xl shadow-md border border-gray-100 dark:border-gray-700 p-6 lg:p-10 mb-5 min-h-[220px] lg:min-h-[340px] flex flex-col ${cardAnimClass}`}
-        onClick={!showBack && (card.type === 'open_ended' || card.type === 'fill_blank') ? () => { if (!hasTextSelection()) triggerFlip() } : undefined}
+        // The enter animation plays only when the card first appears, not when flipping back to the front
+        className={`${flipState === 'front' && !revealed ? 'card-enter' : ''} bg-white dark:bg-gray-800 rounded-2xl shadow-md border border-gray-100 dark:border-gray-700 p-6 lg:p-10 mb-5 min-h-[220px] lg:min-h-[340px] flex flex-col ${cardAnimClass}`}
+        onClick={tapFlips ? () => { if (!hasTextSelection()) triggerFlip() } : undefined}
         style={{
-          cursor: !showBack && (card.type === 'open_ended' || card.type === 'fill_blank') ? 'pointer' : 'default',
+          cursor: tapFlips ? 'pointer' : 'default',
           minHeight: cardMinHeight ?? undefined,
         }}
       >
@@ -865,7 +1031,7 @@ export default function Study() {
                : card.type === 'typed'        ? 'Type the answer'
                : card.type === 'true_false'   ? 'True or false?'
                : card.type === 'matching'     ? 'Matching'
-               : 'Tap to reveal answer'}
+               : revealed ? 'Question' : 'Tap to reveal answer'}
             </p>
             {card.type === 'fill_blank'
               ? <ClozeQuestion sentence={card.question} />
@@ -977,8 +1143,10 @@ export default function Study() {
       <BottomBarSpacer />
 
       {/* Actions, pinned to the bottom so they're in thumb reach and don't move as cards change size */}
+      <UndoToast toast={toast} onDismiss={() => setToast(null)} raised />
+
       <BottomBar>
-      {showBack ? (
+      {revealed ? (
         <div className="grid grid-cols-4 gap-2 fade-in">
           <button onClick={() => rate(Rating.Again)}
             className={`flex flex-col items-center py-3.5 rounded-2xl bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 active:bg-red-200 transition-colors border border-red-100 dark:border-red-900 ${
@@ -1018,6 +1186,24 @@ export default function Study() {
       )}
       </BottomBar>
     </div>
+  )
+}
+
+// A small labeled button in the study header (Undo, Bury, Suspend)
+function StudyAction({ icon: Icon, label, kbd, onClick, disabled, title }: {
+  icon: LucideIcon; label: string; kbd: string; onClick: () => void; disabled?: boolean; title?: string
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={title ? `${title} (${kbd})` : `${label} (${kbd})`}
+      className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-800 hover:bg-gray-100 dark:hover:text-gray-100 dark:hover:bg-gray-800 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+    >
+      <Icon size={15} />
+      {label}
+      <Kbd>{kbd}</Kbd>
+    </button>
   )
 }
 

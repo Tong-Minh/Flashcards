@@ -77,6 +77,21 @@ export function FlipCard({ card, onSwipeAway, className = '' }: FlipCardProps) {
 
   useEffect(() => () => timers.current.forEach(clearTimeout), [])
 
+  // Space flips (view mode and the card preview show one FlipCard at a time)
+  const flipRef = useRef(flip)
+  flipRef.current = flip
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== ' ' || e.repeat || e.metaKey || e.ctrlKey || e.altKey) return
+      if ((e.target as HTMLElement | null)?.closest('input, textarea, select, [contenteditable="true"]')) return
+      // Also keeps Space from pressing a focused button (e.g. Next after clicking it)
+      e.preventDefault()
+      flipRef.current()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   function flip() {
     if (flipping) return
     setMinHeight(showBack ? undefined : cardRef.current?.offsetHeight)

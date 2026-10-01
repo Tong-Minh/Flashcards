@@ -1,6 +1,6 @@
 import { sortSets } from './sort'
 import type {
-  CardProgress, Collection, Flashcard, FlashcardSet, FlashcardWithProgress, SetStudyStats,
+  CardProgress, Collection, Flashcard, FlashcardSet, FlashcardWithProgress, ReviewLog, SetStudyStats, StudyHistoryEntry,
 } from '@/lib/types'
 import type { Files } from './files'
 import type { SetWithStats, Store } from './types'
@@ -11,7 +11,9 @@ import type { SetWithStats, Store } from './types'
 //   sets/<id>/cards.json      its cards
 //   sets/<id>/progress.json   { [cardId]: FSRS progress }
 //   sets/<id>/sessions.json   completed study sessions
-// Folders are named by set id, so renaming a set never moves files.
+//   reviews/<YYYY-MM>.json    every rating that month (the review log), for all sets
+// Folders are named by set id, so renaming a set never moves files. Reviews are kept by month, not
+// by set, so moving a card never rewrites history, and each rating rewrites one month's file.
 
 export const LIBRARY_VERSION = 1
 export const LOCAL_USER_ID   = 'local'
@@ -52,6 +54,18 @@ function parse<T>(text: string | null, fallback: T): T {
 
 const uuid = () => crypto.randomUUID()
 
+const reviewMonth = (r: ReviewLog) => r.reviewed_at.slice(0, 7)
+const reviewPath  = (month: string) => `reviews/${month}.json`
+
+// Progress for a card never studied, to carry a flag like suspended
+function newProgress(cardId: string): CardProgress {
+  return {
+    id: uuid(), card_id: cardId, correct_count: 0, status: 'new', last_reviewed: null, due: new Date().toISOString(),
+    stability: 0, difficulty: 0, elapsed_days: 0, scheduled_days: 0, reps: 0, lapses: 0, learning_steps: 0,
+    fsrs_state: 0, last_review: null,
+  }
+}
+
 const IMAGE_TYPES: Record<string, string> = {
   webp: 'image/webp', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', svg: 'image/svg+xml',
 }
@@ -77,6 +91,27 @@ export function createLocalStore(files: Files): LocalStore {
   let loading: Promise<void> | null = null
   // Object URLs of images already read, by path
   const imageUrls = new Map<string, string>()
+  // Review log months read so far (read on demand: the log can be large)
+  const reviewMonths = new Map<string, ReviewLog[]>()
+  let allMonthsRead = false
+
+  async function month(key: string): Promise<ReviewLog[]> {
+    let list = reviewMonths.get(key)
+    if (!list) {
+      list = parse<ReviewLog[]>(await files.read(reviewPath(key)), [])
+      reviewMonths.set(key, list)
+    }
+    return list
+  }
+
+  async function allReviews(): Promise<ReviewLog[]> {
+    if (!allMonthsRead) {
+      const names = (await files.listFiles('reviews')).filter(n => /^\d{4}-\d{2}\.json$/.test(n))
+      await Promise.all(names.map(n => month(n.slice(0, 7))))
+      allMonthsRead = true
+    }
+    return [...reviewMonths.keys()].sort().flatMap(k => reviewMonths.get(k)!)
+  }
 
   function ensure() {
     loading ??= (async () => {
@@ -153,6 +188,8 @@ export function createLocalStore(files: Files): LocalStore {
     library = { version: LIBRARY_VERSION, collections: [] }
     sets.clear()
     cardSet.clear()
+    reviewMonths.clear()
+    allMonthsRead = false
   }
 
   const api: LocalStore = {
@@ -369,6 +406,52 @@ export function createLocalStore(files: Files): LocalStore {
         for (const id of group) delete d.progress[id]
         await writeProgress(setId)
       }
+    },
+
+    async setSuspended(cardIds, suspended) {
+      await ensure()
+      for (const [setId, group] of bySet(cardIds)) {
+        const d = data(setId)
+        for (const id of group) d.progress[id] = { ...(d.progress[id] ?? newProgress(id)), suspended }
+        await writeProgress(setId)
+      }
+    },
+
+    async logReview(review) {
+      const key = reviewMonth(review)
+      const list = await month(key)
+      list.push(review)
+      await files.write(reviewPath(key), json(list))
+    },
+
+    async deleteReview(id) {
+      for (const [key, list] of reviewMonths) {
+        const i = list.findIndex(r => r.id === id)
+        if (i >= 0) { list.splice(i, 1); await files.write(reviewPath(key), json(list)); return }
+      }
+      if (allMonthsRead) return
+      await allReviews()
+      return api.deleteReview(id)
+    },
+
+    async getReviews(setIds) {
+      await ensure()
+      const wanted = setIds && new Set(setIds)
+      // A card's current set, or the one it was in if it's since been deleted
+      return (await allReviews())
+        .map(r => ({ ...r, set_id: cardSet.get(r.card_id) ?? r.set_id }))
+        .filter(r => !wanted || (r.set_id !== null && wanted.has(r.set_id)))
+        .sort((a, b) => a.reviewed_at.localeCompare(b.reviewed_at))
+    },
+
+    async getStudyHistory(setIds) {
+      await ensure()
+      const out: StudyHistoryEntry[] = []
+      for (const [setId, d] of sets) {
+        if (setIds && !setIds.includes(setId)) continue
+        for (const s of d.sessions) out.push({ set_id: setId, at: s.completed_at, cards: s.cards_studied, correct: s.correct_count, seconds: s.duration_seconds ?? 0 })
+      }
+      return out
     },
 
     async recordSession(setId, s) {

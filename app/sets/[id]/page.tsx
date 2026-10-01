@@ -28,10 +28,10 @@ import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type D
 import { SortableContext, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { restrictToVerticalAxis, restrictToWindowEdges } from '@dnd-kit/modifiers'
 import { SortableRow } from '@/components/SortableRow'
-import { Pencil } from 'lucide-react'
+import { BarChart3, Pencil } from 'lucide-react'
 import { exportCards, downloadText } from '@/lib/cardFormat'
 import { TYPE_BADGES } from '@/lib/cardTypes'
-import type { CardStatus, Collection, FlashcardSet, FlashcardWithProgress, SetStudyStats } from '@/lib/types'
+import type { CardProgress, CardStatus, Collection, FlashcardSet, FlashcardWithProgress, SetStudyStats } from '@/lib/types'
 import { paths } from '@/lib/paths'
 import { IS_DESKTOP } from '@/lib/platform'
 import { confirmAction, notify } from '@/lib/dialogs'
@@ -88,7 +88,7 @@ export default function SetDetail() {
   const [previewCard,  setPreviewCard]  = useState<FlashcardWithProgress | null>(null)
   const [collections,  setCollections]  = useState<Collection[]>([])
   const [cardQuery,    setCardQuery]    = useState('')
-  const [statusFilter, setStatusFilter] = useState<'all' | CardStatus>('all')
+  const [statusFilter, setStatusFilter] = useState<'all' | CardStatus | 'suspended'>('all')
   const [showTransferMenu, setShowTransferMenu] = useState(false)
 
   // Card selection (owner only): long-press a card or tap Select, then move / reset / delete in bulk
@@ -253,6 +253,32 @@ export default function SetDetail() {
     }
   }
 
+  // Suspends the selected cards, or unsuspends them if they're all suspended already
+  async function toggleSuspendSelected() {
+    const ids = [...selectedCards]
+    const suspend = !ids.every(cid => cards.find(c => c.id === cid)?.progress?.suspended)
+    setCardBusy(true)
+    try {
+      await store.setSuspended(ids, suspend)
+      const updated = cards.map(c => {
+        if (!selectedCards.has(c.id)) return c
+        const progress: CardProgress = c.progress ?? {
+          id: '', card_id: c.id, correct_count: 0, status: 'new', last_reviewed: null, due: new Date().toISOString(),
+          stability: 0, difficulty: 0, elapsed_days: 0, scheduled_days: 0, reps: 0, lapses: 0, learning_steps: 0,
+          fsrs_state: 0, last_review: null,
+        }
+        return { ...c, progress: { ...progress, suspended: suspend } }
+      })
+      setCards(updated)
+      cacheCards(id, updated)
+      exitCardSelect()
+    } catch {
+      notify(`Could not ${suspend ? 'suspend' : 'unsuspend'} the cards. Please try again.`)
+    } finally {
+      setCardBusy(false)
+    }
+  }
+
   async function moveSelectedCards(destId: string) {
     const moving = cards.filter(c => selectedCards.has(c.id))
     const dest = getCachedSets().find(s => s.id === destId)
@@ -357,8 +383,10 @@ export default function SetDetail() {
   const mastered    = cards.filter(c => c.progress?.status === 'mastered').length
   const masteryPct  = cards.length > 0 ? Math.round((mastered / cards.length) * 100) : 0
   const now         = new Date()
+  const suspendedCount = cards.filter(c => c.progress?.suspended).length
   const dueToday    = cards.filter(c => {
     const p = c.progress
+    if (p?.suspended || (p?.buried_until && new Date(p.buried_until) > now)) return false
     if (!p || (p.fsrs_state ?? 0) === 0) return true
     return new Date(p.due ?? now) <= now
   }).length
@@ -380,7 +408,7 @@ export default function SetDetail() {
   const filteredCards = cards
     .map((card, idx) => ({ card, idx }))
     .filter(({ card, idx }) =>
-      (statusFilter === 'all' || (card.progress?.status ?? 'new') === statusFilter) &&
+      (statusFilter === 'all' || (statusFilter === 'suspended' ? !!card.progress?.suspended : (card.progress?.status ?? 'new') === statusFilter)) &&
       (!q || idx + 1 === cardNumber ||
         (!!textQuery && [card.question, card.answer, ...(card.options ?? []), ...(card.pairs ?? []).flatMap(p => [p.left, p.right])]
           .some(t => t?.toLowerCase().includes(textQuery)))))
@@ -412,8 +440,9 @@ export default function SetDetail() {
     { label: 'Study',        description: dueToday > 0 ? `${dueToday} due` : 'Nothing due', run: () => router.push(paths.study(id)), disabled: noCards },
     { label: 'View',         description: 'Flip through every card',          run: () => router.push(paths.study(id, true)), disabled: noCards },
     { label: 'Export as .txt',                                                  run: exportSet, disabled: noCards },
-    { label: 'Select cards', description: 'Move, reset or delete cards',       run: () => setSelecting(true), disabled: noCards },
+    { label: 'Select cards', description: 'Move, suspend, reset or delete cards', run: () => setSelecting(true), disabled: noCards },
     { label: 'Settings',     description: 'Name, icon, collection, sharing',   run: () => setShowSettings(true) },
+    { label: 'Stats',        description: 'Forecast, retention and history',   run: () => router.push(paths.stats({ set: id })) },
   ] : [
     { label: 'Study',          run: () => router.push(paths.study(id)), disabled: noCards },
     { label: 'View',           run: () => router.push(paths.study(id, true)), disabled: noCards },
@@ -490,6 +519,9 @@ export default function SetDetail() {
           <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
             <div className="h-full bg-green-400 rounded-full transition-all" style={{ width: `${masteryPct}%` }} />
           </div>
+          <Link href={paths.stats({ set: id })} className="inline-flex items-center gap-1 mt-2 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline">
+            <BarChart3 size={13} /> Forecast, retention and history
+          </Link>
         </div>
       )}
 
@@ -650,8 +682,10 @@ export default function SetDetail() {
             className="mb-2"
           />
           <div className="flex gap-1.5 overflow-x-auto pb-1 mb-3 -mx-4 px-4 lg:mx-0 lg:px-0 lg:flex-wrap">
-            {(['all', 'new', 'learning', 'needs_review', 'mastered'] as const).map(s => {
-              const count = s === 'all' ? cards.length : statusCounts[s] ?? 0
+            {(['all', 'new', 'learning', 'needs_review', 'mastered', 'suspended'] as const).map(s => {
+              const count = s === 'all' ? cards.length : s === 'suspended' ? suspendedCount : statusCounts[s] ?? 0
+              // Only shown once something is suspended
+              if (s === 'suspended' && count === 0 && statusFilter !== 'suspended') return null
               return (
                 <button
                   key={s}
@@ -663,7 +697,7 @@ export default function SetDetail() {
                       : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700'
                   }`}
                 >
-                  {s === 'all' ? 'All' : STATUS_STYLES[s].label} · {count}
+                  {s === 'all' ? 'All' : s === 'suspended' ? 'Suspended' : STATUS_STYLES[s].label} · {count}
                 </button>
               )
             })}
@@ -732,6 +766,11 @@ export default function SetDetail() {
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${badge.className}`}>
                         {badge.label}
                       </span>
+                      {card.progress?.suspended ? (
+                        <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300">Suspended</span>
+                      ) : card.progress?.buried_until && new Date(card.progress.buried_until) > now ? (
+                        <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-gray-100 dark:bg-gray-700/60 text-gray-500 dark:text-gray-400">Buried</span>
+                      ) : null}
                       <span className="text-xs text-gray-400 dark:text-gray-500">
                         {TYPE_BADGES[card.type]}
                       </span>
@@ -855,6 +894,11 @@ export default function SetDetail() {
               ) : [
                 { label: 'Move',  onClick: () => setShowSetPicker(true), cls: 'bg-indigo-600 text-white hover:bg-indigo-700' },
                 { label: 'Reset', onClick: resetSelectedCards,          cls: 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600' },
+                {
+                  label: [...selectedCards].every(cid => cards.find(c => c.id === cid)?.progress?.suspended) ? 'Unsuspend' : 'Suspend',
+                  onClick: toggleSuspendSelected,
+                  cls: 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600',
+                },
                 { label: 'Delete', onClick: deleteSelectedCards,        cls: 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40' },
               ].map(b => (
                 <button

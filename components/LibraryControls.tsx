@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
+import Link from 'next/link'
 import { Download, FolderOpen, FileUp, RefreshCw, X } from 'lucide-react'
 import { useUser } from '@/components/AuthGuard'
 import { inTauri } from '@/lib/platform'
@@ -39,7 +40,6 @@ const UPDATE_RECHECK_MS = 10 * 60 * 1000
 
 // Desktop app: the open library folder, importing a library zip, switching folders, and app updates
 export function DesktopLibraryFooter({ themeButton }: { themeButton: ReactNode }) {
-  const fileInput = useRef<HTMLInputElement>(null)
   const [root,   setRoot]   = useState<string | null>(null)
   const [update, setUpdate] = useState<{ version: string; install: () => Promise<void> } | null>(null)
   const [updating, setUpdating] = useState(false)
@@ -77,23 +77,6 @@ export function DesktopLibraryFooter({ themeButton }: { themeButton: ReactNode }
     }
   }, [])
 
-  async function importZip(file: File) {
-    try {
-      const [{ readLibraryZip }, { importLibraryFiles }] = await Promise.all([import('@/lib/libraryZip'), import('@/lib/store/desktop')])
-      const { added, skipped } = await importLibraryFiles(await readLibraryZip(file))
-      notify(`Imported ${added} set${added !== 1 ? 's' : ''}.${skipped ? ` Skipped ${skipped} that ${skipped === 1 ? 'was' : 'were'} already in this library.` : ''}`)
-      window.location.assign('/')
-    } catch (err) {
-      notify(err instanceof Error ? err.message : 'Could not import that file.')
-    }
-  }
-
-  async function changeFolder() {
-    const { pickLibraryFolder, openLibrary } = await import('@/lib/store/desktop')
-    const picked = await pickLibraryFolder()
-    if (picked && openLibrary(picked)) window.location.assign('/')
-  }
-
   const folderName = root?.split(/[\\/]/).filter(Boolean).pop() ?? 'Library'
 
   return (
@@ -109,26 +92,18 @@ export function DesktopLibraryFooter({ themeButton }: { themeButton: ReactNode }
         </button>
       )}
       <div className="flex items-center gap-1 px-3 py-3">
-        <div className="flex-1 min-w-0 px-1" title={root ?? undefined}>
+        {/* Each opens a page that explains it before doing anything */}
+        <Link href="/library/folder" className="flex-1 min-w-0 px-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700/60 transition-colors" title={root ?? undefined}>
           <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Library</p>
           <p className="truncate text-sm font-medium text-gray-700 dark:text-gray-200">{folderName}</p>
-        </div>
-        <button onClick={() => fileInput.current?.click()} className={iconButton} title="Import a library .zip from the web app">
+        </Link>
+        <Link href="/library/import" className={iconButton} title="Import a library .zip">
           <FileUp size={17} />
-        </button>
-        {inTauri() && (
-          <button onClick={changeFolder} className={iconButton} title="Open a different library folder">
-            <FolderOpen size={17} />
-          </button>
-        )}
+        </Link>
+        <Link href="/library/folder" className={iconButton} title="Open a different library folder">
+          <FolderOpen size={17} />
+        </Link>
         {themeButton}
-        <input
-          ref={fileInput}
-          type="file"
-          accept=".zip,application/zip"
-          className="hidden"
-          onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) importZip(f) }}
-        />
       </div>
     </div>
   )

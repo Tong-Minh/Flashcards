@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
-import { Compass, Library, LogOut, Moon, Plus, Sun, Users } from 'lucide-react'
+import { BarChart3, Compass, Library, LogOut, Moon, Plus, Sun, Users } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
 import { useUser } from '@/components/AuthGuard'
 import { useDarkMode } from '@/components/ThemeProvider'
@@ -12,6 +12,7 @@ import { getCachedCollections, COLLECTIONS_EVENT } from '@/lib/storage'
 import type { Collection } from '@/lib/types'
 import { paths } from '@/lib/paths'
 import { IS_DESKTOP } from '@/lib/platform'
+import { APP_VERSION } from '@/lib/changelog'
 import { DesktopAppPromo, DesktopLibraryFooter, DownloadLibraryButton } from '@/components/LibraryControls'
 
 // Pages that get the whole screen: signing in, and studying (focus mode)
@@ -85,6 +86,7 @@ function Sidebar() {
 
       <nav className="px-3 mt-4 space-y-0.5">
         <NavItem href="/"               active={tab === 'mine'}     icon={<Library size={18} />}>My Sets</NavItem>
+        <NavItem href="/stats"          active={pathname === '/stats'} icon={<BarChart3 size={18} />}>Stats</NavItem>
         {/* Social features need the web app's server */}
         {!IS_DESKTOP && <>
           <NavItem href="/?tab=discover"  active={tab === 'discover'} icon={<Compass size={18} />}>Discover</NavItem>
@@ -128,6 +130,18 @@ function Sidebar() {
       </div>
 
       {!IS_DESKTOP && <DesktopAppPromo />}
+
+      <Link
+        href="/changelog"
+        className={`mx-3 mb-2 px-2 py-1.5 rounded-lg flex items-center justify-between text-xs transition-colors ${
+          pathname === '/changelog'
+            ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300'
+            : 'text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700/60 hover:text-gray-600 dark:hover:text-gray-300'
+        }`}
+      >
+        <span className="font-medium">What’s new</span>
+        <span className="tabular-nums">v{APP_VERSION}</span>
+      </Link>
 
       {IS_DESKTOP ? (
         <DesktopLibraryFooter themeButton={themeButton} />

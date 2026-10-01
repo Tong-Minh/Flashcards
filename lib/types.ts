@@ -90,6 +90,40 @@ export interface CardProgress {
   learning_steps: number
   fsrs_state: FSRSState
   last_review: string | null
+  // Left out of study until unsuspended / until this time (the next study day). Optional: older
+  // desktop libraries don't have them.
+  suspended?: boolean
+  buried_until?: string | null
+}
+
+// One rating (review_logs on the web, reviews/<YYYY-MM>.json on desktop)
+export interface ReviewLog {
+  id: string
+  card_id: string
+  // The set the card was in at the time
+  set_id: string | null
+  rating: 1 | 2 | 3 | 4
+  // FSRS state before the review
+  state: FSRSState
+  // Days since the previous review, and the interval it had scheduled
+  elapsed_days: number
+  last_scheduled_days: number
+  // After the review
+  scheduled_days: number
+  stability: number
+  difficulty: number
+  review_ms: number | null
+  reviewed_at: string
+}
+
+// Study history before the review log existed: one completed session, or one day of rolled-up ones
+export interface StudyHistoryEntry {
+  set_id: string
+  // A session's completion time, or a rolled-up day (YYYY-MM-DD)
+  at: string
+  cards: number
+  correct: number
+  seconds: number
 }
 
 export interface FlashcardWithProgress extends Flashcard {

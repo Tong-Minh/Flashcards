@@ -16,4 +16,7 @@ export const paths = {
     ? desktop('/sets/_/edit/_', id, `&card=${cardId}`)
     : `/sets/${id}/edit/${cardId}`,
   collection: (id: string) => IS_DESKTOP ? desktop('/collections/_', id) : `/collections/${id}`,
+  // One static page in both builds; the scope is in the query string
+  stats:      (scope?: { set?: string; collection?: string }) =>
+    scope?.set ? `/stats?set=${scope.set}` : scope?.collection ? `/stats?collection=${scope.collection}` : '/stats',
 }

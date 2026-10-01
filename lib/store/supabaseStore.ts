@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase/client'
 import { fetchAllRows, MAX_CARDS_PER_SET } from '@/lib/fetchAll'
-import type { Collection, Flashcard, FlashcardSet, FlashcardWithProgress, SetStudyStats } from '@/lib/types'
+import type { Collection, Flashcard, FlashcardSet, FlashcardWithProgress, ReviewLog, SetStudyStats } from '@/lib/types'
 import { PartialInsertError, type SetWithStats, type Store } from './types'
 
 // Id lists go in the query string, so bulk edits are chunked to stay well under URL length limits
@@ -196,11 +196,61 @@ export const supabaseStore: Store = {
       learning_steps: p.learning_steps,
       fsrs_state:     p.fsrs_state,
       last_review:    p.last_review,
+      ...(p.suspended    !== undefined && { suspended:    p.suspended }),
+      ...(p.buried_until !== undefined && { buried_until: p.buried_until }),
     }, { onConflict: 'user_id,card_id' }))
   },
 
   resetProgress(cardIds) {
     return eachChunk(cardIds, chunk => supabase.from('card_progress').delete().in('card_id', chunk))
+  },
+
+  // Upserting only the flag: cards without progress get a row with the column defaults (New)
+  setSuspended(cardIds, suspended) {
+    return eachChunk(cardIds, chunk => supabase.from('card_progress')
+      .upsert(chunk.map(card_id => ({ card_id, suspended })), { onConflict: 'user_id,card_id' }))
+  },
+
+  async logReview(r) {
+    await check(supabase.from('review_logs').insert(r))
+  },
+
+  async deleteReview(id) {
+    await check(supabase.from('review_logs').delete().eq('id', id))
+  },
+
+  async getReviews(setIds) {
+    if (setIds?.length === 0) return []
+    // Joined to the card, so a moved card's reviews count for the set it's in now
+    // (Typed as an array by the client; a many-to-one embed arrives as one object)
+    type Row = Omit<ReviewLog, 'set_id'> & { flashcards: { set_id: string } | { set_id: string }[] }
+    const rows = await fetchAllRows<Row>(() => {
+      let q = supabase.from('review_logs')
+        .select('id, card_id, rating, state, elapsed_days, last_scheduled_days, scheduled_days, stability, difficulty, review_ms, reviewed_at, flashcards!inner(set_id)')
+      if (setIds) q = q.in('flashcards.set_id', setIds)
+      return q.order('reviewed_at').order('id')
+    })
+    return rows.map(({ flashcards, ...r }) => ({ ...r, set_id: (Array.isArray(flashcards) ? flashcards[0] : flashcards)?.set_id ?? null }))
+  },
+
+  async getStudyHistory(setIds) {
+    if (setIds?.length === 0) return []
+    const [sessions, rollups] = await Promise.all([
+      fetchAllRows<{ set_id: string; completed_at: string; cards_studied: number; correct_count: number; duration_seconds: number | null }>(() => {
+        let q = supabase.from('study_sessions').select('set_id, completed_at, cards_studied, correct_count, duration_seconds')
+        if (setIds) q = q.in('set_id', setIds)
+        return q.order('completed_at')
+      }),
+      fetchAllRows<{ set_id: string; day: string; cards_studied: number; correct_count: number; duration_seconds: number }>(() => {
+        let q = supabase.from('study_rollups').select('set_id, day, cards_studied, correct_count, duration_seconds')
+        if (setIds) q = q.in('set_id', setIds)
+        return q.order('day')
+      }),
+    ])
+    return [
+      ...rollups.map(r => ({ set_id: r.set_id, at: r.day, cards: r.cards_studied, correct: r.correct_count, seconds: r.duration_seconds })),
+      ...sessions.map(s => ({ set_id: s.set_id, at: s.completed_at, cards: s.cards_studied, correct: s.correct_count, seconds: s.duration_seconds ?? 0 })),
+    ]
   },
 
   async recordSession(setId, s) {

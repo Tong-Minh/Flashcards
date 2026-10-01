@@ -15,6 +15,8 @@ import { SearchBar } from '@/components/SearchBar'
 import { DownloadLibraryButton } from '@/components/LibraryControls'
 import { IS_DESKTOP } from '@/lib/platform'
 import type { Collection } from '@/lib/types'
+import { BarChart3 } from 'lucide-react'
+import { APP_VERSION } from '@/lib/changelog'
 
 async function signOut() {
   await supabase.auth.signOut()
@@ -103,6 +105,15 @@ function HomePage() {
         <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 lg:hidden">Flashcards</h1>
         <h1 className="hidden lg:block text-2xl font-bold text-gray-900 dark:text-gray-100">{TAB_LABELS[tab]}</h1>
         <div className="flex items-center gap-2">
+          {/* Phones have no sidebar, so Stats lives here */}
+          <Link
+            href="/stats"
+            className="lg:hidden p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+            aria-label="Stats"
+            title="Stats"
+          >
+            <BarChart3 size={20} />
+          </Link>
           {tab === 'mine' && (
             <div className="relative">
               <button
@@ -242,6 +253,10 @@ function HomePage() {
         <div className="lg:max-w-2xl"><FriendsTab currentUser={currentUser} /></div>
       )}
 
+      {/* Phones have no sidebar, so the version history is linked here */}
+      <Link href="/changelog" className="lg:hidden block text-center text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 mt-10">
+        Version {APP_VERSION} · What’s new
+      </Link>
     </div>
   )
 }

@@ -1,5 +1,6 @@
 import type {
-  CardDraft, CardProgress, Collection, Flashcard, FlashcardSet, FlashcardWithProgress, SetStudyStats,
+  CardDraft, CardProgress, Collection, Flashcard, FlashcardSet, FlashcardWithProgress, ReviewLog, SetStudyStats,
+  StudyHistoryEntry,
 } from '@/lib/types'
 
 // A set with the stats shown on the home screen
@@ -68,9 +69,20 @@ export interface Store {
   reorderCards(changes: { id: string; position: number }[]): Promise<void>
 
   saveProgress(cardId: string, progress: ProgressFields): Promise<void>
+  // Back to New. Also how an undone first review is removed.
   resetProgress(cardIds: string[]): Promise<void>
+  // Cards with no progress yet get a New row carrying the flag
+  setSuspended(cardIds: string[], suspended: boolean): Promise<void>
   recordSession(setId: string, session: SessionInput): Promise<void>
   getSetStats(setId: string): Promise<SetStudyStats | null>
+
+  // The review log. Reviews of cards that have since moved count for their current set.
+  logReview(review: ReviewLog): Promise<void>
+  deleteReview(id: string): Promise<void>
+  // All the user's reviews, or those of cards now in `setIds`, oldest first
+  getReviews(setIds?: string[]): Promise<ReviewLog[]>
+  // Session totals (and rolled-up days), for history before the review log
+  getStudyHistory(setIds?: string[]): Promise<StudyHistoryEntry[]>
 
   // Card images (desktop app only). saveImage stores the bytes and returns the path cards use
   // ("images/<hash>.<ext>"); imageUrl gives a URL to display one, or null if it's missing.

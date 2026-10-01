@@ -1,4 +1,5 @@
-import type { FlashcardWithProgress, CardProgress, CardStatus, FlashcardSet, SetStudyStats, Collection } from './types'
+import type { FlashcardWithProgress, CardProgress, CardStatus, FlashcardSet, SetStudyStats, Collection, ReviewLog } from './types'
+import { studyDayKey } from './day'
 
 const K = {
   cards:    (setId: string) => `fc_cards_${setId}`,
@@ -6,6 +7,7 @@ const K = {
   collections: 'fc_collections_v1',
   stats:    (setId: string) => `fc_stats_${setId}`,
   pending:  'fc_pending_v1',
+  pendingReviews: 'fc_pending_reviews_v1',
   session:  (setId: string) => `fc_session_${setId}`,
   settings: (setId: string) => `fc_settings_${setId}`,
 }
@@ -46,7 +48,7 @@ export function getCachedCards(setId: string): FlashcardWithProgress[] {
   try { return JSON.parse(localStorage.getItem(K.cards(setId)) ?? '[]') } catch { return [] }
 }
 
-export function updateCachedProgress(setId: string, cardId: string, progress: CardProgress) {
+export function updateCachedProgress(setId: string, cardId: string, progress: CardProgress | null) {
   const cards = getCachedCards(setId)
   cacheCards(setId, cards.map(c => (c.id === cardId ? { ...c, progress } : c)))
 }
@@ -99,6 +101,8 @@ export interface PendingProgressUpdate {
   learningSteps: number
   fsrsState: number
   lastReview: string
+  suspended?: boolean
+  buriedUntil?: string | null
 }
 
 export function queueProgressUpdate(update: PendingProgressUpdate) {
@@ -118,9 +122,24 @@ export function removePendingUpdate(cardId: string) {
   } catch {}
 }
 
-// ── Daily new-card quota (resets at midnight, per set) ───────────────────────
+// Reviews made offline, sent with the progress queue
+export function queueReview(log: ReviewLog) {
+  try { localStorage.setItem(K.pendingReviews, JSON.stringify([...getPendingReviews(), log])) } catch {}
+}
 
-const todayStr = () => new Date().toISOString().slice(0, 10)
+export function getPendingReviews(): ReviewLog[] {
+  try { return JSON.parse(localStorage.getItem(K.pendingReviews) ?? '[]') } catch { return [] }
+}
+
+export function removePendingReview(id: string) {
+  try {
+    localStorage.setItem(K.pendingReviews, JSON.stringify(getPendingReviews().filter(r => r.id !== id)))
+  } catch {}
+}
+
+// ── Daily new-card quota (resets when the study day starts, 4 AM; per set) ────
+
+const todayStr = () => studyDayKey()
 
 export function getTodayNewCount(setId: string): number {
   try {
@@ -134,6 +153,13 @@ export function getTodayNewCount(setId: string): number {
 export function incrementTodayNewCount(setId: string): void {
   try {
     const count = getTodayNewCount(setId) + 1
+    localStorage.setItem(`fc_daily_${setId}`, JSON.stringify({ date: todayStr(), count }))
+  } catch {}
+}
+
+export function decrementTodayNewCount(setId: string): void {
+  try {
+    const count = Math.max(0, getTodayNewCount(setId) - 1)
     localStorage.setItem(`fc_daily_${setId}`, JSON.stringify({ date: todayStr(), count }))
   } catch {}
 }
