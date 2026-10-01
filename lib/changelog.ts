@@ -26,6 +26,7 @@ export const CHANGELOG: Release[] = [
       'Storage: see how much space each collection and set takes (and, in the desktop app, the app itself).',
       'Desktop: uninstall from the ⋯ menu, keeping or deleting your flashcards.',
       'A new front page explains the app, with downloads for Windows and Mac and how to bring your decks in.',
+      'The cloud version is invite-only: new accounts enter the invite password once to join.',
     ],
   },
   {
