@@ -102,6 +102,8 @@ export function parseMarkup(text: string, opts: { singleLine?: boolean } = {}): 
     } else if (matchImageLine(trimmed)) {
       const image = matchImageLine(trimmed)!
       content.push({ type: 'image', attrs: { src: image.src, alt: image.alt } })
+    } else if (matchAudioLine(trimmed)) {
+      content.push({ type: 'audio', attrs: { src: matchAudioLine(trimmed)!.src } })
     } else if (listLine) {
       // Consecutive lines of the same list kind form one list
       const type = listLine.ordered ? 'orderedList' : 'bulletList'
@@ -127,6 +129,23 @@ export function isMathBlockLine(trimmed: string): boolean {
 export function matchImageLine(trimmed: string): { alt: string; src: string } | null {
   const m = trimmed.match(/^!\[([^\]\n]*)\]\(([^()\s]+)\)$/)
   return m ? { alt: m[1], src: m[2] } : null
+}
+
+// A line that is only [sound](audio/<file>) is an audio clip (desktop app only, like images)
+export function matchAudioLine(trimmed: string): { src: string } | null {
+  const m = trimmed.match(/^\[sound\]\(([^()\s]+)\)$/)
+  return m ? { src: m[1] } : null
+}
+
+// A side that is nothing but audio (and pictures): it can't be studied without the desktop app
+export function isAudioOnly(text: string): boolean {
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean)
+  return lines.some(l => matchAudioLine(l)) && lines.every(l => matchAudioLine(l) || matchImageLine(l))
+}
+
+// The audio clips on a side of a card, in order (for autoplay)
+export function audioClips(text: string): string[] {
+  return text.split('\n').map(l => matchAudioLine(l.trim())?.src).filter((s): s is string => !!s)
 }
 
 // "- item" / "* item" (bullet) or "3. item" (numbered). Escaped "\- " / "3\. " are plain text.
@@ -190,6 +209,8 @@ export function serializeMarkup(doc: JSONContent): string {
         return `$$${block.attrs?.latex ?? ''}$$`
       case 'image':
         return `![${String(block.attrs?.alt ?? '').replace(/[\]\n]/g, '')}](${block.attrs?.src ?? ''})`
+      case 'audio':
+        return `[sound](${block.attrs?.src ?? ''})`
       case 'bulletList':
         return (block.content ?? []).map(item => `- ${serializeInline(item.content?.[0]?.content)}`).join('\n')
       case 'orderedList': {
@@ -202,8 +223,9 @@ export function serializeMarkup(doc: JSONContent): string {
           .replace(/^(\s*)(#{1,3} )/, '$1\\$2')
           .replace(/^(\s*)- /, '$1\\- ')
           .replace(/^(\s*)(\d{1,9})\. /, '$1$2\\. ')
-          // …or an image line
+          // …or an image or audio line
           .replace(/^(\s*)!\[/, '$1!\\[')
+          .replace(/^(\s*)\[sound\]\(/, '$1\\[sound](')
       }
     }
   }).join('\n')

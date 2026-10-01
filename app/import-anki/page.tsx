@@ -15,6 +15,7 @@ import { TYPE_LABELS } from '@/lib/cardTypes'
 import { groupDecks, MEDIA_PREFIX, type ImportPlan } from '@/lib/anki/convert'
 import type { CardDraft } from '@/lib/types'
 
+const AUDIO_EXTS = new Set(['mp3', 'm4a', 'aac', 'ogg', 'oga', 'opus', 'wav', 'webm', 'flac'])
 const IMAGE_TYPES: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml', bmp: 'image/bmp' }
 
 // Imports an Anki deck (.apkg) or an Anki text export (.txt) as new sets. Everything starts as new
@@ -50,7 +51,7 @@ export default function ImportAnki() {
         next = planTextImport(await file.text(), file.name)
       } else {
         const [{ readApkg }, { planImport }] = await Promise.all([import('@/lib/anki/apkg'), import('@/lib/anki/convert')])
-        next = planImport(await readApkg(file), { images: IS_DESKTOP })
+        next = planImport(await readApkg(file), { media: IS_DESKTOP })
       }
       if (next.report.cards === 0) throw new Error('No cards found in that file.')
       setPlan(next)
@@ -70,7 +71,7 @@ export default function ImportAnki() {
       // Reuse collections that already exist with the same name
       const collections = await store.listCollections(user.id)
       const byName = new Map(collections.map(c => [c.name.toLowerCase(), c.id]))
-      const saved = new Map<number, string>()   // media index → saved image path
+      const saved = new Map<number, string>()   // media index → saved image or audio path
 
       async function withImages(text: string): Promise<string> {
         const refs = [...new Set([...text.matchAll(new RegExp(`${MEDIA_PREFIX}(\\d+)`, 'g'))].map(m => Number(m[1])))]
@@ -80,8 +81,13 @@ export default function ImportAnki() {
           const load = plan!.media.get(name)
           if (!load) continue
           const ext = name.split('.').pop()?.toLowerCase() ?? ''
-          const { bytes, ext: outExt } = await prepareImage(new Blob([await load() as BlobPart], { type: IMAGE_TYPES[ext] ?? '' }), name)
-          saved.set(i, await store.saveImage(bytes, outExt))
+          if (AUDIO_EXTS.has(ext)) {
+            // Audio is kept as it is
+            saved.set(i, await store.saveMedia(await load(), ext))
+          } else {
+            const { bytes, ext: outExt } = await prepareImage(new Blob([await load() as BlobPart], { type: IMAGE_TYPES[ext] ?? '' }), name)
+            saved.set(i, await store.saveMedia(bytes, outExt))
+          }
         }
         return text.replace(new RegExp(`${MEDIA_PREFIX}(\\d+)`, 'g'), (m, i) => saved.get(Number(i)) ?? m)
       }
@@ -134,10 +140,11 @@ export default function ImportAnki() {
   const r = plan?.report
   const notes: string[] = []
   if (r) {
-    const imageCount = plan!.mediaNames.length
+    const imageCount = plan!.mediaNames.filter(n => !AUDIO_EXTS.has(n.split('.').pop()?.toLowerCase() ?? '')).length
     if (imageCount) notes.push(`${imageCount} image${imageCount !== 1 ? 's' : ''} included`)
     if (r.imagesDropped) notes.push(IS_DESKTOP ? `${r.imagesDropped} image${r.imagesDropped !== 1 ? 's' : ''} left out (web links or missing)` : `${r.imagesDropped} image${r.imagesDropped !== 1 ? 's' : ''} left out (images need the desktop app)`)
-    if (r.audio) notes.push(`${r.audio} audio clip${r.audio !== 1 ? 's' : ''} left out`)
+    if (r.audio) notes.push(`${r.audio} audio clip${r.audio !== 1 ? 's' : ''} included`)
+    if (r.audioDropped) notes.push(IS_DESKTOP ? `${r.audioDropped} audio clip${r.audioDropped !== 1 ? 's' : ''} left out (missing)` : `${r.audioDropped} audio clip${r.audioDropped !== 1 ? 's' : ''} left out (audio needs the desktop app)`)
     if (r.reversed) notes.push(`${r.reversed} card${r.reversed !== 1 ? 's' : ''} studied both ways (Anki's reversed cards, merged)`)
     if (r.tables) notes.push(`${r.tables} table${r.tables !== 1 ? 's' : ''} turned into text lines`)
     for (const [why, n] of Object.entries(r.unsupported)) notes.push(`${n} ${why} card${n !== 1 ? 's' : ''} skipped (not supported)`)

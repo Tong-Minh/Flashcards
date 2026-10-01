@@ -70,11 +70,15 @@ function newProgress(cardId: string): CardProgress {
   }
 }
 
-const IMAGE_TYPES: Record<string, string> = {
+const MEDIA_TYPES: Record<string, string> = {
   webp: 'image/webp', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', svg: 'image/svg+xml',
+  mp3: 'audio/mpeg', m4a: 'audio/mp4', aac: 'audio/aac', ogg: 'audio/ogg', oga: 'audio/ogg', opus: 'audio/ogg',
+  wav: 'audio/wav', webm: 'audio/webm', flac: 'audio/flac',
 }
 
-export type LocalStore = Store & { pruneImages(): Promise<number> }
+const mediaFolder = (ext: string) => (MEDIA_TYPES[ext]?.startsWith('audio/') ? 'audio' : 'images')
+
+export type LocalStore = Store & { pruneMedia(): Promise<number> }
 
 // Card order: manual position first, then creation time
 function compareCards(a: Flashcard, b: Flashcard) {
@@ -93,8 +97,8 @@ export function createLocalStore(files: Files): LocalStore {
   const sets    = new Map<string, SetData>()
   const cardSet = new Map<string, string>()   // card id → set id
   let loading: Promise<void> | null = null
-  // Object URLs of images already read, by path
-  const imageUrls = new Map<string, string>()
+  // Object URLs of images and audio already read, by path
+  const mediaUrls = new Map<string, string>()
   // Review log months read so far (read on demand: the log can be large)
   const reviewMonths = new Map<string, ReviewLog[]>()
   let allMonthsRead = false
@@ -496,48 +500,52 @@ export function createLocalStore(files: Files): LocalStore {
       return d ? stats(d) : null
     },
 
-    // Named by a hash of the bytes, so the same image is stored once however many cards use it
-    async saveImage(bytes, ext) {
+    // Named by a hash of the bytes, so the same file is stored once however many cards use it.
+    // Audio goes in audio/, everything else in images/.
+    async saveMedia(bytes, ext) {
       const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes as BufferSource))
       const hash = [...digest.slice(0, 12)].map(b => b.toString(16).padStart(2, '0')).join('')
-      const path = `images/${hash}.${ext.replace(/[^a-z0-9]/gi, '').toLowerCase() || 'bin'}`
+      const clean = ext.replace(/[^a-z0-9]/gi, '').toLowerCase() || 'bin'
+      const path = `${mediaFolder(clean)}/${hash}.${clean}`
       if (!(await files.readBytes(path))) await files.writeBytes(path, bytes)
       return path
     },
 
-    async imageUrl(path) {
-      if (!/^images\/[\w.-]+$/.test(path)) return null
-      const cached = imageUrls.get(path)
+    async mediaUrl(path) {
+      if (!/^(images|audio)\/[\w.-]+$/.test(path)) return null
+      const cached = mediaUrls.get(path)
       if (cached) return cached
       const bytes = await files.readBytes(path)
       if (!bytes) return null
       const ext = path.split('.').pop()!.toLowerCase()
-      const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: IMAGE_TYPES[ext] ?? 'application/octet-stream' }))
-      imageUrls.set(path, url)
+      const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: MEDIA_TYPES[ext] ?? 'application/octet-stream' }))
+      mediaUrls.set(path, url)
       return url
     },
 
-    // Deletes images no card refers to any more. Run when the library opens, before anything can be
-    // mid-edit (a card being written may use an image it hasn't saved yet).
-    async pruneImages() {
+    // Deletes images and audio no card refers to any more. Run when the library opens, before
+    // anything can be mid-edit (a card being written may use a file it hasn't saved yet).
+    async pruneMedia() {
       await ensure()
       const used = new Set<string>()
       for (const d of sets.values()) {
         for (const c of d.cards) {
           const text = [c.question, c.answer, ...(c.options ?? []), ...(c.pairs ?? []).flatMap(p => [p.left, p.right])].join('\n')
-          for (const m of text.matchAll(/images\/[\w.-]+/g)) used.add(m[0])
+          for (const m of text.matchAll(/(?:images|audio)\/[\w.-]+/g)) used.add(m[0])
         }
       }
       let removed = 0
-      for (const name of await files.listFiles('images')) {
-        if (name.endsWith('.tmp') || !used.has(`images/${name}`)) { await files.remove(`images/${name}`); removed++ }
+      for (const folder of ['images', 'audio']) {
+        for (const name of await files.listFiles(folder)) {
+          if (name.endsWith('.tmp') || !used.has(`${folder}/${name}`)) { await files.remove(`${folder}/${name}`); removed++ }
+        }
       }
       return removed
     },
   }
 
   // Reads never leave memory ahead of the disk, so only writes need the reset below
-  const READS = new Set<string>(['imageUrl', 'pruneImages'])
+  const READS = new Set<string>(['mediaUrl', 'pruneMedia'])
   for (const key of Object.keys(api) as (keyof LocalStore)[]) {
     const fn = api[key]
     if (typeof fn !== 'function' || READS.has(key)) continue

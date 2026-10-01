@@ -280,10 +280,10 @@ export const supabaseStore: Store = {
   },
 
   // Images are desktop-only (the web app has no image storage)
-  async saveImage() {
-    throw new Error('Images are only available in the desktop app')
+  async saveMedia() {
+    throw new Error('Images and audio are only available in the desktop app')
   },
-  async imageUrl() {
+  async mediaUrl() {
     return null
   },
 

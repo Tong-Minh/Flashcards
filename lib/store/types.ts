@@ -89,8 +89,9 @@ export interface Store {
   getSettings(): Promise<Partial<StudySettings> | null>
   saveSettings(settings: StudySettings): Promise<void>
 
-  // Card images (desktop app only). saveImage stores the bytes and returns the path cards use
-  // ("images/<hash>.<ext>"); imageUrl gives a URL to display one, or null if it's missing.
-  saveImage(bytes: Uint8Array, ext: string): Promise<string>
-  imageUrl(path: string): Promise<string | null>
+  // Card images and audio (desktop app only). saveMedia stores the bytes and returns the path cards
+  // use ("images/<hash>.<ext>" or "audio/<hash>.<ext>"); mediaUrl gives a URL to show or play one,
+  // or null if it's missing.
+  saveMedia(bytes: Uint8Array, ext: string): Promise<string>
+  mediaUrl(path: string): Promise<string | null>
 }

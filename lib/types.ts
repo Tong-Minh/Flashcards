@@ -29,6 +29,8 @@ export interface StudySettings {
   optimizedAt: string | null
   // How many reviews the log held when last optimized (for the "optimize again" nudge)
   reviewsAtOptimize: number
+  // Play a card's audio when its side appears (desktop app)
+  autoplayAudio: boolean
 }
 
 export const DEFAULT_STUDY_SETTINGS: StudySettings = {
@@ -37,6 +39,7 @@ export const DEFAULT_STUDY_SETTINGS: StudySettings = {
   fsrsParams: null,
   optimizedAt: null,
   reviewsAtOptimize: 0,
+  autoplayAudio: true,
 }
 
 export interface Collection {

@@ -13,6 +13,17 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.1.7',
+    date: '2026-10-01',
+    title: 'Audio',
+    changes: [
+      'Desktop: cards can play sound clips. Drag an mp3, m4a, wav… into a card, or type /audio.',
+      'Clips play when a card appears and the answer’s when you reveal it, like Anki (turn this off in Study settings). Press R to replay, or use the ▶ button.',
+      'Anki decks with audio now import it (before, clips were left out).',
+      'The web app shows a placeholder for audio, and leaves out cards whose question is only audio.',
+    ],
+  },
+  {
     version: '0.1.6',
     date: '2026-10-01',
     title: 'Reversed cards, and moving your library anywhere',

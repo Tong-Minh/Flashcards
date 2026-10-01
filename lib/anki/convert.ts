@@ -59,11 +59,12 @@ function splitInfoNote(front: string, fieldTexts: string[]): [string, string] | 
   return null
 }
 
-export function planImport(col: AnkiCollection, { images }: { images: boolean }): ImportPlan {
+export function planImport(col: AnkiCollection, { media }: { media: boolean }): ImportPlan {
   const report = { ...emptyReport(), cards: 0, skippedEmpty: 0, reversed: 0, unsupported: {} as Record<string, number> }
   const mediaNames: string[] = []
-  const imageSrc = (name: string) => {
-    if (!images || !col.media.has(name)) return null
+  // Images and audio: "anki-media/<index>" until the import saves them (desktop app only)
+  const mediaSrc = (name: string) => {
+    if (!media || !col.media.has(name)) return null
     let i = mediaNames.indexOf(name)
     if (i < 0) i = mediaNames.push(name) - 1
     return MEDIA_PREFIX + i
@@ -78,7 +79,7 @@ export function planImport(col: AnkiCollection, { images }: { images: boolean })
     if (!note || !model) continue
     if (!hiddenByModel.has(model.id)) hiddenByModel.set(model.id, hiddenSelectors(model.css))
     const hidden = hiddenByModel.get(model.id)!
-    const md = (html: string) => htmlToMarkup(html, report, { image: imageSrc, hidden })
+    const md = (html: string) => htmlToMarkup(html, report, { image: mediaSrc, audio: mediaSrc, hidden })
     const fields: Record<string, string> = {}
     model.fields.forEach((name, i) => { fields[name] = note.fields[i] ?? '' })
     const deckName = col.decks.get(card.did) ?? 'Imported'

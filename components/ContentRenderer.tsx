@@ -3,8 +3,9 @@
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import type { ReactNode } from 'react'
-import { tokenizeInline, tokensToPlainText, isMathBlockLine, matchImageLine, matchListLine, type InlineToken } from '@/lib/markup'
+import { tokenizeInline, tokensToPlainText, isMathBlockLine, matchAudioLine, matchImageLine, matchListLine, type InlineToken } from '@/lib/markup'
 import { CardImage } from '@/components/CardImage'
+import { CardAudio } from '@/components/CardAudio'
 import { normalizeLatex } from '@/lib/latex'
 import Prism from 'prismjs'
 import katex from 'katex'
@@ -103,6 +104,7 @@ export function hasFormattedContent(text: string): boolean {
     /\$[^$\n]+\$/.test(text)            ||   // math
     /^\s*([-*]|\d+\.) /m.test(text)     ||   // list
     /^\s*!\[[^\]\n]*\]\(\S+\)\s*$/m.test(text) || // image
+    /^\s*\[sound\]\(\S+\)\s*$/m.test(text) ||      // audio
     /\\[*$\[\]`\\#.\-]/.test(text)           // escaped literal
   )
 }
@@ -115,6 +117,7 @@ export function previewText(text: string): string {
       const t = line.trimStart()
       if (t.startsWith('$$') && t.endsWith('$$') && t.length > 4) return '[math]'
       if (matchImageLine(t)) return '[image]'
+      if (matchAudioLine(t)) return '[audio]'
       return tokensToPlainText(tokenizeInline(line.replace(/^\s*#{1,3} /, '')))
     })
     .join('\n')
@@ -232,6 +235,8 @@ function renderLine(line: string, j: number, onMathClick?: MathClickHandler): Re
   if (line === '')                return <br key={j} />
   const image = matchImageLine(trimmed)
   if (image) return <CardImage key={j} src={image.src} alt={image.alt} />
+  const audio = matchAudioLine(trimmed)
+  if (audio) return <CardAudio key={j} src={audio.src} />
   if (isMathBlockLine(trimmed)) {
     const expr = trimmed.slice(2, -2)
     return (
@@ -383,7 +388,7 @@ export function ContentRenderer({ text, className, readOnly, onCodeLangChange, o
 
   if (!anyCode) {
     const hasBlocks = /^#{1,3} /m.test(text) || /^\$\$[\s\S]+?\$\$/m.test(text) ||
-      text.split('\n').some(l => matchListLine(l) || matchImageLine(l.trimStart()))
+      text.split('\n').some(l => matchListLine(l) || matchImageLine(l.trimStart()) || matchAudioLine(l.trimStart()))
     const content   = hasBlocks ? renderTextBlock(text, 0, onInlineMathClick) : renderInline(text, onInlineMathClick)
     if (className) return <div className={className}>{content}</div>
     return <>{content}</>

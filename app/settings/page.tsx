@@ -8,6 +8,7 @@ import { cachedSettings, loadSettings, RETENTION_CHOICES, saveSettings } from '@
 import { MIN_REVIEWS } from '@/lib/optimizer'
 import { confirmAction, notify } from '@/lib/dialogs'
 import { paths } from '@/lib/paths'
+import { IS_DESKTOP } from '@/lib/platform'
 import type { StudySettings } from '@/lib/types'
 
 const hourLabel = (h: number) => new Date(2000, 0, 1, h).toLocaleTimeString(undefined, { hour: 'numeric' })
@@ -90,6 +91,25 @@ export default function StudySettingsPage() {
             {Array.from({ length: 24 }, (_, h) => <option key={h} value={h}>{hourLabel(h)}</option>)}
           </select>
         </section>
+
+        {IS_DESKTOP && (
+          <section className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm p-5">
+            <label className="flex items-start justify-between gap-4 cursor-pointer">
+              <span>
+                <span className="block font-semibold text-gray-900 dark:text-gray-100">Play audio automatically</span>
+                <span className="block text-sm text-gray-500 dark:text-gray-400 mt-1 text-pretty">
+                  A card’s sound clips play when it appears, and the answer’s when you reveal it, like Anki. Press R to replay.
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                checked={settings.autoplayAudio}
+                onChange={e => update({ autoplayAudio: e.target.checked })}
+                className="mt-1 w-5 h-5 rounded text-indigo-600 flex-shrink-0"
+              />
+            </label>
+          </section>
+        )}
 
         <section className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm p-5">
           <h2 className="font-semibold text-gray-900 dark:text-gray-100">FSRS parameters</h2>

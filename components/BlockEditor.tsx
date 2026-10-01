@@ -8,7 +8,7 @@ import { buildExtensions } from '@/components/editor/extensions'
 import { parseMarkup, serializeMarkup } from '@/lib/markup'
 import { IS_DESKTOP } from '@/lib/platform'
 import { store } from '@/lib/store'
-import { imageFileFrom, prepareImage } from '@/lib/images'
+import { audioExt, isAudioFile, mediaFileFrom, prepareImage } from '@/lib/images'
 import { notify } from '@/lib/dialogs'
 
 // ── Slash commands ─────────────────────────────────────────────────────────────
@@ -23,6 +23,7 @@ type CommandKind =
   | { kind: 'color'; color: string }
   | { kind: 'clear' }
   | { kind: 'image' }
+  | { kind: 'audio' }
 
 type SlashCommand = { id: string; label: string; desc: string; icon: string; iconClass?: string } & CommandKind
 
@@ -31,7 +32,10 @@ const SLASH_COMMANDS: SlashCommand[] = [
   { id: 'math',   label: 'Math',       desc: 'Inline LaTeX equation',    icon: '∑',   kind: 'math' },
   { id: 'mathblock', label: 'Math block', desc: 'Centered equation on its own line', icon: '∑̲', kind: 'mathBlock' },
   // Images live in the desktop app's library folder
-  ...(IS_DESKTOP ? [{ id: 'image', label: 'Image', desc: 'From a file (or paste or drag one in)', icon: '▣', kind: 'image' as const }] : []),
+  ...(IS_DESKTOP ? [
+    { id: 'image', label: 'Image', desc: 'From a file (or paste or drag one in)', icon: '▣', kind: 'image' as const },
+    { id: 'audio', label: 'Audio', desc: 'A sound clip: mp3, m4a, wav… (or drag one in)', icon: '♪', kind: 'audio' as const },
+  ] : []),
   { id: 'bullet', label: 'Bulleted list', desc: 'Simple bullet points',  icon: '•',   kind: 'list', ordered: false },
   { id: 'numbered', label: 'Numbered list', desc: 'List with numbers',   icon: '1.',  kind: 'list', ordered: true },
   { id: 'h1',     label: 'Heading 1',  desc: 'Large title',              icon: 'H1',  kind: 'heading', level: 1 },
@@ -87,28 +91,33 @@ function applyCommand(editor: Editor, cmd: SlashCommand) {
 
 // ── Images (desktop app) ────────────────────────────────────────────────────────
 
-function pickImageFile(): Promise<File | null> {
+function pickFile(accept: string): Promise<File | null> {
   return new Promise(resolve => {
     const input = document.createElement('input')
     input.type = 'file'
-    input.accept = 'image/*'
+    input.accept = accept
     input.onchange = () => resolve(input.files?.[0] ?? null)
     input.click()
   })
 }
 
-// Compresses the image, saves it to the library, and inserts it as its own block: at `at` (a drop
-// position), or at the cursor, replacing the line if it's empty
-async function insertImageFile(editor: Editor, file: File, at?: number) {
+// Saves an image (compressed) or audio clip (as is) to the library and inserts it as its own block:
+// at `at` (a drop position), or at the cursor, replacing the line if it's empty
+async function insertMediaFile(editor: Editor, file: File, at?: number) {
+  const audio = isAudioFile(file)
   let src: string
   try {
-    const { bytes, ext } = await prepareImage(file, file.name)
-    src = await store.saveImage(bytes, ext)
+    if (audio) {
+      src = await store.saveMedia(new Uint8Array(await file.arrayBuffer()), audioExt(file))
+    } else {
+      const { bytes, ext } = await prepareImage(file, file.name)
+      src = await store.saveMedia(bytes, ext)
+    }
   } catch {
-    notify('Could not add that image.')
+    notify(audio ? 'Could not add that audio file.' : 'Could not add that image.')
     return
   }
-  const block = { type: 'image', attrs: { src, alt: '' } }
+  const block = audio ? { type: 'audio', attrs: { src } } : { type: 'image', attrs: { src, alt: '' } }
   if (at !== undefined) { editor.chain().focus().insertContentAt(at, block).run(); return }
   const { $from } = editor.state.selection
   const emptyLine = $from.parent.type.name === 'paragraph' && $from.parent.content.size === 0
@@ -247,7 +256,7 @@ function RichTextBlock({
   const [toolbar, setToolbar] = useState<ToolbarState | null>(null)
   const [, forceRender] = useState(0)
 
-  const blockOnly = ['code', 'heading', 'mathBlock', 'list', 'image']
+  const blockOnly = ['code', 'heading', 'mathBlock', 'list', 'image', 'audio']
   const commands = singleLine ? SLASH_COMMANDS.filter(c => !blockOnly.includes(c.kind)) : SLASH_COMMANDS
   const menuListRef = useRef<HTMLDivElement>(null)
 
@@ -313,8 +322,8 @@ function RichTextBlock({
       // real code blocks and math. Rich clipboard HTML, including copies from this editor, pastes normally.
       handlePaste: (view, event) => {
         // A pasted picture (e.g. a screenshot) becomes an image block (desktop app)
-        const image = IS_DESKTOP && !singleLine ? imageFileFrom(event.clipboardData) : null
-        if (image && editorRef.current) { insertImageFile(editorRef.current, image); return true }
+        const media = IS_DESKTOP && !singleLine ? mediaFileFrom(event.clipboardData) : null
+        if (media && editorRef.current) { insertMediaFile(editorRef.current, media); return true }
         const text = event.clipboardData?.getData('text/plain') ?? ''
         const html = event.clipboardData?.getData('text/html') ?? ''
         if (!text || html) return false
@@ -331,13 +340,13 @@ function RichTextBlock({
         editorRef.current?.chain().focus().insertContent(parseMarkup(text, { singleLine }).content ?? []).run()
         return true
       },
-      // An image file dropped in becomes an image block where it lands (desktop app)
+      // An image or audio file dropped in becomes its own block where it lands (desktop app)
       handleDrop: (view, event, _slice, moved) => {
         if (moved || !IS_DESKTOP || singleLine || !editorRef.current) return false
-        const image = imageFileFrom(event.dataTransfer)
-        if (!image) return false
+        const media = mediaFileFrom(event.dataTransfer)
+        if (!media) return false
         const pos = view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos
-        insertImageFile(editorRef.current, image, pos)
+        insertMediaFile(editorRef.current, media, pos)
         return true
       },
       handleKeyDown: (view, event) => {
@@ -394,8 +403,8 @@ function RichTextBlock({
     const to = ed.state.selection.from
     ed.chain().focus().deleteRange({ from: s.from, to }).run()
 
-    if (cmd.kind === 'image') {
-      pickImageFile().then(file => { if (file) insertImageFile(ed, file) })
+    if (cmd.kind === 'image' || cmd.kind === 'audio') {
+      pickFile(cmd.kind === 'image' ? 'image/*' : 'audio/*,.mp3,.m4a,.ogg,.opus,.wav,.webm,.flac').then(file => { if (file) insertMediaFile(ed, file) })
       return
     }
     if (cmd.kind === 'code') {

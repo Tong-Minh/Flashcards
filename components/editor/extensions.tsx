@@ -12,6 +12,7 @@ import { Placeholder } from '@tiptap/extensions'
 import { COLOR_CLASSES, renderMath } from '@/components/ContentRenderer'
 import { MathPopup } from './MathPopup'
 import { CardImage } from '@/components/CardImage'
+import { CardAudio } from '@/components/CardAudio'
 
 // ── Color mark: [red]text[/red] ───────────────────────────────────────────────
 
@@ -209,6 +210,33 @@ export const ImageBlock = Node.create({
   addNodeView() { return ReactNodeViewRenderer(ImageView) },
 })
 
+function AudioView({ node, selected }: ReactNodeViewProps) {
+  return (
+    <NodeViewWrapper as="div" className={`py-1 rounded-lg w-fit ${selected ? 'ring-2 ring-indigo-400' : ''}`} data-drag-handle>
+      <CardAudio src={String(node.attrs.src ?? '')} />
+    </NodeViewWrapper>
+  )
+}
+
+// An audio clip line, "[sound](audio/<file>)". In both builds so a clip survives editing anywhere;
+// adding one (drop, paste, /audio) is desktop-only, like images.
+export const AudioBlock = Node.create({
+  name: 'audio',
+  group: 'block',
+  atom: true,
+  selectable: true,
+  draggable: true,
+  addAttributes() {
+    return {
+      src: { default: '', parseHTML: el => el.getAttribute('data-src') ?? '', renderHTML: a => ({ 'data-src': String(a.src ?? '') }) },
+    }
+  },
+  parseHTML() { return [{ tag: 'div[data-card-audio]' }] },
+  renderHTML({ HTMLAttributes }) { return ['div', mergeAttributes(HTMLAttributes, { 'data-card-audio': '' })] },
+  renderText({ node }) { return `[sound](${node.attrs.src ?? ''})` },
+  addNodeView() { return ReactNodeViewRenderer(AudioView) },
+})
+
 // ── Extension sets ────────────────────────────────────────────────────────────
 
 // The browser doesn't paint the selection highlight over rendered math (it isn't editable text), so
@@ -260,6 +288,7 @@ export function buildExtensions({ singleLine, placeholder }: { singleLine?: bool
       : [
           MathBlock,
           ImageBlock,
+          AudioBlock,
           // One level of "- " / "1. " lists; typing "- " or "1. " at a line start converts it
           BulletList,
           OrderedList,

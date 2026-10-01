@@ -11,14 +11,17 @@ export interface ConvertReport {
   images: number
   imagesDropped: number
   audio: number
+  audioDropped: number
   tables: number
 }
 
-export const emptyReport = (): ConvertReport => ({ images: 0, imagesDropped: 0, audio: 0, tables: 0 })
+export const emptyReport = (): ConvertReport => ({ images: 0, imagesDropped: 0, audio: 0, audioDropped: 0, tables: 0 })
 
 export interface ConvertOptions {
   // The markup src for a media file name, or null to leave the image out
   image?: (name: string) => string | null
+  // The same for [sound:…] clips
+  audio?: (name: string) => string | null
   // Classes and ids the note type's CSS hides (see hiddenSelectors)
   hidden?: { classes: Set<string>; ids: Set<string> }
 }
@@ -84,7 +87,8 @@ export function colorKey(value: string): string | null {
 
 export function htmlToMarkup(html: string, report: ConvertReport = emptyReport(), opts: ConvertOptions = {}): string {
   const prepared = html
-    .replace(/\[sound:[^\]]*\]/g, () => { report.audio++; return '' })
+    // Audio becomes a placeholder element too, turned into an audio block (or counted as left out)
+    .replace(/\[sound:([^\]]*)\]/g, (_, name: string) => `<anki-audio data-src="${attr(name)}"></anki-audio>`)
     .replace(/\[\$\$\]([\s\S]*?)\[\/\$\$\]/g, '\\[$1\\]')
     .replace(/\[\$\]([\s\S]*?)\[\/\$\]/g, '\\($1\\)')
     .replace(/\[latex\]([\s\S]*?)\[\/latex\]/g, '\\($1\\)')
@@ -168,6 +172,12 @@ export function htmlToMarkup(html: string, report: ConvertReport = emptyReport()
         !el.querySelector('div, section, table, h1, h2, h3, h4, h5, h6, img, anki-math')) return
 
     if (tag === 'br') { blankLine(); return }
+    if (tag === 'anki-audio') {
+      const src = opts.audio?.(el.getAttribute('data-src') ?? '') ?? null
+      if (src) { report.audio++; pushBlock({ type: 'audio', attrs: { src } }) }
+      else report.audioDropped++
+      return
+    }
     if (tag === 'anki-math') {
       const latex = el.getAttribute('data-tex') ?? ''
       if (!latex) return

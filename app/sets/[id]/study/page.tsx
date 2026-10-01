@@ -21,6 +21,9 @@ import {
 } from '@/lib/storage'
 import type { FlashcardWithProgress, CardStatus, CardProgress, FSRSState, ReviewLog } from '@/lib/types'
 import { paths } from '@/lib/paths'
+import { audioClips, isAudioOnly } from '@/lib/markup'
+import { playClips, stopAudio } from '@/lib/audio'
+import { IS_DESKTOP } from '@/lib/platform'
 import { nextStudyDay } from '@/lib/day'
 import { cardFace, progressKey, progressToFSRS, studyItems } from '@/lib/srs'
 import { cachedSettings, loadSettings, retentionFor, scheduler } from '@/lib/studySettings'
@@ -39,8 +42,11 @@ interface SessionCard extends StudyItem { _key: number }
 
 const itemKey = (c: { id: string; ord: number }) => progressKey(c.id, c.ord)
 
+// The web app leaves out directions whose question is only audio: it can't play them
 function toItems(cards: FlashcardWithProgress[]): StudyItem[] {
-  return studyItems(cards).map(({ card, ord, progress }) => ({ ...card, ord, progress }))
+  return studyItems(cards)
+    .map(({ card, ord, progress }) => ({ ...card, ord, progress }))
+    .filter(item => IS_DESKTOP || !isAudioOnly(cardFace(item, item.ord).question))
 }
 
 // What Undo puts back: the card's progress and the session as they were before the action
@@ -165,6 +171,24 @@ export default function Study() {
   // When the current card appeared, for the review's duration
   const shownAt     = useRef(Date.now())
   useEffect(() => { shownAt.current = Date.now() }, [cardKey, phase])
+
+  // Audio (desktop app): a card's clips play when it appears, the answer's when it's revealed (like
+  // Anki), if autoplay is on; R replays the side showing. Leaving the card stops it.
+  const playSide = (back: boolean) => {
+    const item = queue[0]
+    if (!IS_DESKTOP || !item) return
+    const face = cardFace(item, item.ord)
+    const clips = audioClips(back ? face.answer : face.question)
+    if (clips.length) playClips(clips).catch(() => {})
+  }
+  useEffect(() => {
+    stopAudio()
+    if (phase === 'session' && cachedSettings().autoplayAudio) playSide(false)
+  }, [cardKey, phase])
+  useEffect(() => {
+    if (revealed && cachedSettings().autoplayAudio) playSide(true)
+  }, [revealed])
+  useEffect(() => () => stopAudio(), [])
 
   // Regular session stats
   const [dueCount,      setDueCount]      = useState(0)
@@ -1016,6 +1040,7 @@ export default function Study() {
   studyKeys.current = e => {
     const key = e.key.toLowerCase()
     if (key === 'z') { e.preventDefault(); undo(); return }
+    if (key === 'r') { e.preventDefault(); playSide(showBack); return }
     if (e.key === '-') { e.preventDefault(); setAside('bury'); return }
     if (e.key === '@') { e.preventDefault(); setAside('suspend'); return }
     if (revealed) {

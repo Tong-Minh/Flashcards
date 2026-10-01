@@ -46,7 +46,7 @@ export function openLibrary(root = libraryRoot()): boolean {
   const opened = createLocalStore(currentFiles)
   current = opened
   // Clear out images no card uses any more, before anything is being edited
-  opened.pruneImages().catch(() => {})
+  opened.pruneMedia().catch(() => {})
   return true
 }
 

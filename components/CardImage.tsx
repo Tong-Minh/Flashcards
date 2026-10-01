@@ -17,7 +17,7 @@ export function CardImage({ src, alt }: { src: string; alt: string }) {
   useEffect(() => {
     if (!IS_DESKTOP) return
     let alive = true
-    store.imageUrl(src).then(u => { if (!alive) return; if (u) setUrl(u); else setFailed(true) }, () => alive && setFailed(true))
+    store.mediaUrl(src).then(u => { if (!alive) return; if (u) setUrl(u); else setFailed(true) }, () => alive && setFailed(true))
     return () => { alive = false }
   }, [src])
 
