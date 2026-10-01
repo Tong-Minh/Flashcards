@@ -17,6 +17,7 @@ import { DetailHeader, SettingsButton } from '@/components/DetailHeader'
 import { PublicSetCard, type PublicSet } from '@/components/PublicSetCard'
 import type { Collection } from '@/lib/types'
 import { IS_DESKTOP } from '@/lib/platform'
+import { confirmAction } from '@/lib/dialogs'
 
 export default function CollectionDetail() {
   const { id } = useRouteIds()
@@ -115,7 +116,7 @@ export default function CollectionDetail() {
   }
 
   async function deleteCollection() {
-    if (!confirm(`Delete the collection "${collection?.name}"? The sets inside it will be kept and moved out.`)) return
+    if (!await confirmAction(`Delete the collection "${collection?.name}"? The sets inside it will be kept and moved out.`)) return
     await store.deleteCollection(id).catch(() => {})
     cacheCollections(getCachedCollections().filter(c => c.id !== id))
     cacheSets(allSets.map(s => (s.collection_id === id ? { ...s, collection_id: null } : s)))

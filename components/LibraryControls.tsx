@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Download, FolderOpen, FileUp, RefreshCw, X } from 'lucide-react'
 import { useUser } from '@/components/AuthGuard'
 import { inTauri } from '@/lib/platform'
+import { notify } from '@/lib/dialogs'
 
 const iconButton = 'p-1.5 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 dark:text-gray-500 dark:hover:text-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-50'
 
@@ -19,7 +20,7 @@ export function DownloadLibraryButton({ className = iconButton }: { className?: 
       const { downloadLibraryZip } = await import('@/lib/libraryZip')
       await downloadLibraryZip(user.id, (done, total) => setBusy(`Preparing ${done}/${total}…`))
     } catch {
-      alert('Could not download your library. Please try again.')
+      notify('Could not download your library. Please try again.')
     } finally {
       setBusy(null)
     }
@@ -80,10 +81,10 @@ export function DesktopLibraryFooter({ themeButton }: { themeButton: ReactNode }
     try {
       const [{ readLibraryZip }, { importLibraryFiles }] = await Promise.all([import('@/lib/libraryZip'), import('@/lib/store/desktop')])
       const { added, skipped } = await importLibraryFiles(await readLibraryZip(file))
-      alert(`Imported ${added} set${added !== 1 ? 's' : ''}.${skipped ? ` Skipped ${skipped} that ${skipped === 1 ? 'was' : 'were'} already in this library.` : ''}`)
+      notify(`Imported ${added} set${added !== 1 ? 's' : ''}.${skipped ? ` Skipped ${skipped} that ${skipped === 1 ? 'was' : 'were'} already in this library.` : ''}`)
       window.location.assign('/')
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Could not import that file.')
+      notify(err instanceof Error ? err.message : 'Could not import that file.')
     }
   }
 
@@ -99,7 +100,7 @@ export function DesktopLibraryFooter({ themeButton }: { themeButton: ReactNode }
     <div className="border-t border-gray-200 dark:border-gray-700/70">
       {update && (
         <button
-          onClick={() => { setUpdating(true); update.install().catch(() => { setUpdating(false); alert('The update failed. Please try again later.') }) }}
+          onClick={() => { setUpdating(true); update.install().catch(() => { setUpdating(false); notify('The update failed. Please try again later.') }) }}
           disabled={updating}
           className="w-full flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/30 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors disabled:opacity-60"
         >
@@ -135,28 +136,29 @@ export function DesktopLibraryFooter({ themeButton }: { themeButton: ReactNode }
 
 const RELEASES_PAGE  = 'https://github.com/Tong-Minh/Flashcards/releases/latest'
 const LATEST_RELEASE = 'https://api.github.com/repos/Tong-Minh/Flashcards/releases/latest'
-const PROMO_DISMISSED = 'fc_desktop_promo_dismissed'
+// Macs have their own key: Mac visitors who dismissed the old "coming soon" card see it again
+const PROMO_DISMISSED = { windows: 'fc_desktop_promo_dismissed', mac: 'fc_desktop_promo_dismissed_mac' }
+const INSTALLER = { windows: '-setup.exe', mac: '.dmg' }
 
-// Web app on Windows and Mac: offers the desktop app. On Windows it links straight to the newest
-// installer (falling back to the releases page); Macs don't have a build yet, so they see "coming
-// soon". Stays hidden once dismissed.
+// Web app on Windows and Mac: offers the desktop app, linking straight to the newest installer for
+// that system (falling back to the releases page). Stays hidden once dismissed.
 export function DesktopAppPromo() {
   const [platform, setPlatform] = useState<'windows' | 'mac' | null>(null)
   const [href,     setHref]     = useState(RELEASES_PAGE)
 
   useEffect(() => {
-    let dismissed = false
-    try { dismissed = localStorage.getItem(PROMO_DISMISSED) === '1' } catch {}
     const ua = navigator.userAgent
     const found = /Windows/i.test(ua) ? 'windows' : /Macintosh|Mac OS X/i.test(ua) && !/iPhone|iPad/i.test(ua) ? 'mac' : null
-    if (dismissed || !found) return
+    if (!found) return
+    let dismissed = false
+    try { dismissed = localStorage.getItem(PROMO_DISMISSED[found]) === '1' } catch {}
+    if (dismissed) return
     setPlatform(found)
-    if (found !== 'windows') return
     fetch(LATEST_RELEASE)
       .then(r => (r.ok ? r.json() : null))
       .then((release: { assets?: { name: string; browser_download_url: string }[] } | null) => {
-        const exe = release?.assets?.find(a => a.name.endsWith('-setup.exe'))
-        if (exe) setHref(exe.browser_download_url)
+        const file = release?.assets?.find(a => a.name.endsWith(INSTALLER[found]))
+        if (file) setHref(file.browser_download_url)
       })
       .catch(() => {})
   }, [])
@@ -165,7 +167,7 @@ export function DesktopAppPromo() {
   return (
     <div className="relative mx-3 mb-3 rounded-xl border border-indigo-100 dark:border-indigo-900/60 bg-indigo-50 dark:bg-indigo-900/20 p-3">
       <button
-        onClick={() => { try { localStorage.setItem(PROMO_DISMISSED, '1') } catch {}; setPlatform(null) }}
+        onClick={() => { try { localStorage.setItem(PROMO_DISMISSED[platform], '1') } catch {}; setPlatform(null) }}
         className="absolute top-1.5 right-1.5 p-1 rounded-md text-indigo-300 hover:text-indigo-600 dark:text-indigo-700 dark:hover:text-indigo-300 transition-colors"
         aria-label="Dismiss"
         title="Dismiss"
@@ -176,20 +178,16 @@ export function DesktopAppPromo() {
       <p className="text-xs text-indigo-700/80 dark:text-indigo-300/80 mt-0.5 mb-2.5 text-pretty">
         Study offline with your cards saved in a folder on your {platform === 'mac' ? 'Mac' : 'PC'}. No size limits.
       </p>
-      {platform === 'windows' ? (
-        <a
-          href={href}
-          className="flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 transition-colors"
-        >
-          <Download size={14} /> Download for Windows
-        </a>
-      ) : (
-        <button
-          disabled
-          className="flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg bg-indigo-600/40 dark:bg-indigo-500/30 text-white text-xs font-semibold cursor-not-allowed"
-        >
-          Mac version coming soon
-        </button>
+      <a
+        href={href}
+        className="flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 transition-colors"
+      >
+        <Download size={14} /> Download for {platform === 'mac' ? 'Mac' : 'Windows'}
+      </a>
+      {platform === 'mac' && (
+        <p className="text-[11px] text-indigo-700/70 dark:text-indigo-300/70 mt-2 text-pretty">
+          The first time you open it, macOS blocks it. Go to System Settings → Privacy &amp; Security and click Open Anyway.
+        </p>
       )}
     </div>
   )

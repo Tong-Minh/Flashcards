@@ -20,6 +20,7 @@ import { MoveSheet } from '@/components/MoveSheet'
 import { UndoToast, type Toast } from '@/components/UndoToast'
 import type { Collection } from '@/lib/types'
 import { IS_DESKTOP } from '@/lib/platform'
+import { confirmAction, notify } from '@/lib/dialogs'
 
 const COLLECTION_DROP = 'collection:'
 
@@ -107,7 +108,7 @@ export function SetOrganizer({
       await moveSets(moving, collectionId)
     } catch {
       patchSets(s => (previous.has(s.id) ? { ...s, collection_id: previous.get(s.id) ?? null } : s))
-      alert('Could not move the sets. Please try again.')
+      notify('Could not move the sets. Please try again.')
       return
     }
     const where = collectionId
@@ -131,7 +132,7 @@ export function SetOrganizer({
       await setSetsVisibility(ids, isPublic)
     } catch {
       patchSets(s => (previous.has(s.id) ? { ...s, is_public: previous.get(s.id)! } : s))
-      alert('Could not update the sets. Please try again.')
+      notify('Could not update the sets. Please try again.')
       return
     }
     showToast(`Made ${ids.length} set${ids.length !== 1 ? 's' : ''} ${isPublic ? 'public' : 'private'}`, async () => {
@@ -146,7 +147,7 @@ export function SetOrganizer({
     const ids = [...selected]
     const names = allSets.filter(s => selected.has(s.id)).map(s => s.name)
     const what = ids.length === 1 ? `"${names[0]}"` : `${ids.length} sets`
-    if (!confirm(`Delete ${what} and all ${ids.length === 1 ? 'its' : 'their'} cards? This can't be undone.`)) return
+    if (!await confirmAction(`Delete ${what} and all ${ids.length === 1 ? 'its' : 'their'} cards? This can't be undone.`)) return
     setBusy(true)
     try {
       await deleteSets(ids)
@@ -154,7 +155,7 @@ export function SetOrganizer({
       exitSelect()
       showToast(`Deleted ${what}`)
     } catch {
-      alert('Could not delete the sets. Please try again.')
+      notify('Could not delete the sets. Please try again.')
     } finally {
       setBusy(false)
     }
@@ -165,7 +166,7 @@ export function SetOrganizer({
     try {
       created = await store.createCollection({ name })
     } catch {
-      alert('Could not create the collection.')
+      notify('Could not create the collection.')
       return
     }
     onCollectionsChange([...collections, created].sort((a, b) => a.name.localeCompare(b.name)))

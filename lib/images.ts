@@ -1,5 +1,5 @@
-// Prepares an image for a card: scaled down to at most MAX_SIDE px and re-encoded as WebP, which keeps
-// screenshots around 50–200 KB. GIFs (possibly animated) and SVGs are kept as they are, and so is any
+// Prepares an image for a card: scaled down to at most MAX_SIDE px and re-encoded as WebP (PNG in the
+// Mac app), which keeps screenshots around 50–200 KB. GIFs (possibly animated) and SVGs are kept as they are, and so is any
 // image the re-encode wouldn't shrink.
 
 const MAX_SIDE = 1600
@@ -24,9 +24,10 @@ export async function prepareImage(blob: Blob, name = ''): Promise<{ bytes: Uint
     canvas.height = Math.max(1, Math.round(bitmap.height * scale))
     canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
     bitmap.close()
-    const webp = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/webp', QUALITY))
-    if (!webp || (scale === 1 && webp.size >= blob.size)) return original
-    return { bytes: new Uint8Array(await webp.arrayBuffer()), ext: 'webp' }
+    // Safari (the Mac app) can't encode WebP and quietly returns a PNG, so name the file by what came back
+    const out = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/webp', QUALITY))
+    if (!out || (scale === 1 && out.size >= blob.size)) return original
+    return { bytes: new Uint8Array(await out.arrayBuffer()), ext: extFor(out.type) }
   } catch {
     // Not decodable here (e.g. an unusual format): keep it as is
     return original

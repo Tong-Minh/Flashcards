@@ -8,7 +8,7 @@ It comes in two versions built from the same code:
 
 - **Web app:** sign in with Google and your sets sync across devices. It also has friends, a
   Discover page of public sets, and share links. It installs as an app on phones (Add to Home Screen).
-- **Desktop app (Windows):** no account. Your cards are files in a folder on your PC, it works
+- **Desktop app (Windows and Mac):** no account. Your cards are files in a folder on your computer, it works
   offline, and there's no practical limit on set size. Cards can include images (paste, drag, or /image).
   It updates itself from GitHub Releases.
 
@@ -21,6 +21,10 @@ images come along in the desktop app.
 Download `Flashcards_x.y.z_x64-setup.exe` from the
 [latest release](https://github.com/Tong-Minh/Flashcards/releases/latest) and run it. Windows may
 say "Windows protected your PC": choose **More info → Run anyway** (the installer isn't code-signed).
+
+On a Mac, download `Flashcards_x.y.z_universal.dmg`, open it, and drag Flashcards into Applications.
+The app isn't notarized by Apple, so the first time you open it macOS blocks it: go to
+**System Settings → Privacy & Security** and click **Open Anyway**. Updates install normally after that.
 
 On first launch, choose a folder for your library. Putting it inside OneDrive or Dropbox gets you
 automatic backups. To bring your sets over from the web app, use the download button at the bottom

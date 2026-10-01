@@ -9,6 +9,7 @@ import { parseMarkup, serializeMarkup } from '@/lib/markup'
 import { IS_DESKTOP } from '@/lib/platform'
 import { store } from '@/lib/store'
 import { imageFileFrom, prepareImage } from '@/lib/images'
+import { notify } from '@/lib/dialogs'
 
 // ── Slash commands ─────────────────────────────────────────────────────────────
 
@@ -104,7 +105,7 @@ async function insertImageFile(editor: Editor, file: File, at?: number) {
     const { bytes, ext } = await prepareImage(file, file.name)
     src = await store.saveImage(bytes, ext)
   } catch {
-    alert('Could not add that image.')
+    notify('Could not add that image.')
     return
   }
   const block = { type: 'image', attrs: { src, alt: '' } }

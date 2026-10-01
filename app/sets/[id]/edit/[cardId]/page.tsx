@@ -7,6 +7,7 @@ import Link from 'next/link'
 import { store } from '@/lib/store'
 import { CardForm, type CardDraft } from '@/components/CardForm'
 import { paths } from '@/lib/paths'
+import { confirmAction } from '@/lib/dialogs'
 
 export default function EditCard() {
   const { id: setId, cardId } = useRouteIds()
@@ -34,7 +35,7 @@ export default function EditCard() {
   }
 
   async function handleDelete() {
-    if (!confirm('Delete this card?')) return
+    if (!await confirmAction('Delete this card?')) return
     setDeleting(true)
     await store.deleteCards([cardId]).catch(() => {})
     router.push(paths.set(setId))

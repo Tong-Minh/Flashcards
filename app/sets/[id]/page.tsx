@@ -34,6 +34,7 @@ import { TYPE_BADGES } from '@/lib/cardTypes'
 import type { CardStatus, Collection, FlashcardSet, FlashcardWithProgress, SetStudyStats } from '@/lib/types'
 import { paths } from '@/lib/paths'
 import { IS_DESKTOP } from '@/lib/platform'
+import { confirmAction, notify } from '@/lib/dialogs'
 
 const PAGE_SIZE = 50
 
@@ -219,7 +220,7 @@ export default function SetDetail() {
 
   async function deleteSelectedCards() {
     const n = selectedCards.size
-    if (!confirm(`Delete ${n} card${n !== 1 ? 's' : ''}? This can't be undone.`)) return
+    if (!await confirmAction(`Delete ${n} card${n !== 1 ? 's' : ''}? This can't be undone.`)) return
     setCardBusy(true)
     try {
       await store.deleteCards([...selectedCards])
@@ -229,7 +230,7 @@ export default function SetDetail() {
       adjustCachedCount(id, -n)
       exitCardSelect()
     } catch {
-      alert('Could not delete the cards. Please try again.')
+      notify('Could not delete the cards. Please try again.')
     } finally {
       setCardBusy(false)
     }
@@ -237,7 +238,7 @@ export default function SetDetail() {
 
   async function resetSelectedCards() {
     const n = selectedCards.size
-    if (!confirm(`Reset progress on ${n} card${n !== 1 ? 's' : ''}? They go back to New.`)) return
+    if (!await confirmAction(`Reset progress on ${n} card${n !== 1 ? 's' : ''}? They go back to New.`)) return
     setCardBusy(true)
     try {
       await store.resetProgress([...selectedCards])
@@ -246,7 +247,7 @@ export default function SetDetail() {
       cacheCards(id, reset)
       exitCardSelect()
     } catch {
-      alert('Could not reset the cards. Please try again.')
+      notify('Could not reset the cards. Please try again.')
     } finally {
       setCardBusy(false)
     }
@@ -260,7 +261,7 @@ export default function SetDetail() {
     try {
       const count = await store.countCards(destId)
       if (count + moving.length > store.maxCardsPerSet) {
-        alert(`"${dest?.name ?? 'That set'}" can only take ${Math.max(0, store.maxCardsPerSet - count)} more cards.`)
+        notify(`"${dest?.name ?? 'That set'}" can only take ${Math.max(0, store.maxCardsPerSet - count)} more cards.`)
         return
       }
       // Moved cards go to the end of the other set; their study progress comes with them
@@ -274,7 +275,7 @@ export default function SetDetail() {
       adjustCachedCount(destId, moving.length)
       exitCardSelect()
     } catch {
-      alert('Could not move the cards. Please try again.')
+      notify('Could not move the cards. Please try again.')
     } finally {
       setCardBusy(false)
     }
@@ -292,7 +293,7 @@ export default function SetDetail() {
   }
 
   async function resetProgress() {
-    if (!confirm('Reset all FSRS progress for this set? Cards will return to New state.')) return
+    if (!await confirmAction('Reset all FSRS progress for this set? Cards will return to New state.')) return
     await store.resetProgress(cards.map(c => c.id)).catch(() => {})
     resetTodayNewCount(id)
     const reset = cards.map(c => ({ ...c, progress: null }))
@@ -302,11 +303,11 @@ export default function SetDetail() {
   }
 
   async function clearAllCards() {
-    if (!confirm(`Delete all ${cards.length} cards in "${set?.name}"? The set, its settings, and its study history are kept. This can't be undone.`)) return
+    if (!await confirmAction(`Delete all ${cards.length} cards in "${set?.name}"? The set, its settings, and its study history are kept. This can't be undone.`)) return
     try {
       await store.clearCards(id)
     } catch {
-      alert('Failed to clear cards. Please try again.')
+      notify('Failed to clear cards. Please try again.')
       return
     }
     resetTodayNewCount(id)
@@ -318,7 +319,7 @@ export default function SetDetail() {
   }
 
   async function deleteSet() {
-    if (!confirm(`Delete "${set?.name}" and all its cards?`)) return
+    if (!await confirmAction(`Delete "${set?.name}" and all its cards?`)) return
     await store.deleteSets([id]).catch(() => {})
     router.push('/')
   }
