@@ -28,7 +28,9 @@ import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type D
 import { SortableContext, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { restrictToVerticalAxis, restrictToWindowEdges } from '@dnd-kit/modifiers'
 import { SortableRow } from '@/components/SortableRow'
-import { BarChart3, Pencil } from 'lucide-react'
+import { BarChart3, Copy, HardDrive } from 'lucide-react'
+import { formatBytes } from '@/lib/media'
+import { CardActionsMenu } from '@/components/CardActionsMenu'
 import { exportCards, downloadText } from '@/lib/cardFormat'
 import { TYPE_BADGES } from '@/lib/cardTypes'
 import type { CardProgress, CardStatus, Collection, FlashcardSet, FlashcardWithProgress, SetStudyStats } from '@/lib/types'
@@ -36,6 +38,9 @@ import { paths } from '@/lib/paths'
 import { IS_DESKTOP } from '@/lib/platform'
 import { confirmAction, notify } from '@/lib/dialogs'
 import { cachedSettings, RETENTION_CHOICES } from '@/lib/studySettings'
+import { SourceUrlField, sourceUrlError } from '@/components/SourceUrlField'
+import { normalizeUrl } from '@/lib/links'
+import { useHighlight } from '@/lib/useHighlight'
 import { canReverse, cardOrds, progressOf, studyItems } from '@/lib/srs'
 import { isAudioOnly } from '@/lib/markup'
 
@@ -86,7 +91,6 @@ export default function SetDetail() {
   const [stats,    setStats]    = useState<SetStudyStats | null>(null)
   const [loading,  setLoading]  = useState(true)
   const [forking,     setForking]     = useState(false)
-  const [showMoreMenu, setShowMoreMenu] = useState(false)
   const [page,         setPage]         = useState(0)
   const [previewCard,  setPreviewCard]  = useState<FlashcardWithProgress | null>(null)
   const [collections,  setCollections]  = useState<Collection[]>([])
@@ -107,11 +111,26 @@ export default function SetDetail() {
     toggleCard(cardId)
   })
   const cardsTopRef = useRef<HTMLDivElement>(null)
+  // Search matches are highlighted on the cards ("#12" looks up a card number, so nothing to mark)
+  const cardListRef = useRef<HTMLDivElement>(null)
+  // How much space the set takes: measured in the desktop app (images and audio included), estimated
+  // from the cards on the web
+  const [setSize, setSetSize] = useState<number | null>(null)
+  useEffect(() => {
+    if (!cards.length) { setSetSize(null); return }
+    if (!IS_DESKTOP) { setSetSize(new TextEncoder().encode(JSON.stringify(cards)).length); return }
+    let alive = true
+    store.getStorage([id]).then(r => { const s = r.sets[0]; if (alive && s) setSetSize(s.data + s.media) }).catch(() => {})
+    return () => { alive = false }
+  }, [cards, id])
+  useHighlight(cardListRef, /^#\d+$/.test(cardQuery.trim()) ? '' : cardQuery, [cards, page, statusFilter])
 
   // Settings sheet
   const [showSettings,      setShowSettings]      = useState(false)
   const [nameInput,         setNameInput]         = useState('')
   const [descInput,         setDescInput]         = useState('')
+  const [sourceInput,       setSourceInput]       = useState('')
+  const [sourceError,       setSourceError]       = useState<string | null>(null)
   const [isPublicInput,     setIsPublicInput]     = useState(true)
   const [dailyLimitInput,   setDailyLimitInput]   = useState(20)
   const [tagsInput,         setTagsInput]         = useState<string[]>([])
@@ -134,6 +153,7 @@ export default function SetDetail() {
         setSet(cachedSet)
         setNameInput(cachedSet.name)
         setDescInput(cachedSet.description ?? '')
+        setSourceInput(cachedSet.source_url ?? '')
         setIsPublicInput(cachedSet.is_public ?? false)
         setTagsInput(cachedSet.tags ?? [])
         setCollectionInput(cachedSet.collection_id ?? '')
@@ -162,6 +182,7 @@ export default function SetDetail() {
     setSet(freshSet)
     setNameInput(freshSet.name)
     setDescInput(freshSet.description ?? '')
+    setSourceInput(freshSet.source_url ?? '')
     setIsPublicInput(freshSet.is_public ?? false)
     setTagsInput(freshSet.tags ?? [])
     setCollectionInput(freshSet.collection_id ?? '')
@@ -178,9 +199,13 @@ export default function SetDetail() {
     const trimmedName = nameInput.trim()
     const trimmedDesc = descInput.trim()
     if (!trimmedName) return
+    const badSource = sourceUrlError(sourceInput)
+    setSourceError(badSource)
+    if (badSource) return
     const patch = {
       name: trimmedName,
       description: trimmedDesc || null,
+      source_url: normalizeUrl(sourceInput),
       is_public: isPublicInput,
       tags: tagsInput,
       collection_id: collectionInput || null,
@@ -236,6 +261,20 @@ export default function SetDetail() {
       notify('Could not delete the cards. Please try again.')
     } finally {
       setCardBusy(false)
+    }
+  }
+
+  // One card, from its ⋯ menu
+  async function deleteCard(cardId: string) {
+    if (!await confirmAction('Delete this card? This can’t be undone.')) return
+    try {
+      await store.deleteCards([cardId])
+      const remaining = cards.filter(c => c.id !== cardId)
+      setCards(remaining)
+      cacheCards(id, remaining)
+      adjustCachedCount(id, -1)
+    } catch {
+      notify('Could not delete the card. Please try again.')
     }
   }
 
@@ -488,6 +527,7 @@ export default function SetDetail() {
         name={set?.name}
         description={set?.description}
         tags={set?.tags}
+        sourceUrl={set?.source_url}
         badge={!IS_DESKTOP && set && !set.is_public && (
           <span className="text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-full">Private</span>
         )}
@@ -505,6 +545,18 @@ export default function SetDetail() {
                 cacheSets(getCachedSets().map(s => (s.id === id ? { ...s, is_public: true } : s)))
               }}
             />
+          )}
+          {/* Someone else's set: save your own copy to study and edit */}
+          {set && !isOwner && !IS_DESKTOP && (
+            <button
+              onClick={forkSet}
+              disabled={forking}
+              className="p-1 text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300 transition-colors disabled:opacity-50"
+              aria-label="Duplicate to my library"
+              title={forking ? 'Duplicating…' : 'Duplicate to my library'}
+            >
+              <Copy size={19} className={forking ? 'animate-pulse' : ''} />
+            </button>
           )}
           {isOwner && <SettingsButton onClick={() => setShowSettings(true)} />}
         </>}
@@ -543,9 +595,16 @@ export default function SetDetail() {
           <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
             <div className="h-full bg-green-400 rounded-full transition-all" style={{ width: `${masteryPct}%` }} />
           </div>
-          <Link href={paths.stats({ set: id })} className="inline-flex items-center gap-1 mt-2 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline">
-            <BarChart3 size={13} /> Forecast, retention and history
-          </Link>
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mt-2">
+            <Link href={paths.stats({ set: id })} className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline">
+              <BarChart3 size={13} /> Forecast, retention and history
+            </Link>
+            {setSize !== null && (
+              <Link href="/storage" className="inline-flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300" title="Storage">
+                <HardDrive size={12} /> {formatBytes(setSize)}
+              </Link>
+            )}
+          </div>
         </div>
       )}
 
@@ -578,32 +637,6 @@ export default function SetDetail() {
             </svg>
             View
           </Link>
-        )}
-        {!isOwner && (
-          <div className="relative">
-            <button
-              onClick={() => setShowMoreMenu(v => !v)}
-              className="h-full px-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200 transition-colors shadow-sm text-xl leading-none tracking-widest"
-              aria-label="More options"
-            >
-              •••
-            </button>
-            {showMoreMenu && (
-              <>
-                <div className="fixed inset-0 z-10" onClick={() => setShowMoreMenu(false)} />
-                <div className="absolute left-0 top-full mt-2 z-20 w-52 bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-100 dark:border-gray-700 py-1 overflow-hidden">
-                  <button
-                    onClick={() => { setShowMoreMenu(false); forkSet() }}
-                    disabled={forking}
-                    className="w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors disabled:opacity-50"
-                  >
-                    <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{forking ? 'Duplicating…' : 'Duplicate set'}</p>
-                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Save your own copy to study &amp; edit</p>
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
         )}
       </div>
       {dueToday === 0 && cards.length > 0 && (
@@ -747,7 +780,7 @@ export default function SetDetail() {
           onDragEnd={handleCardDragEnd}
         >
         <SortableContext items={pageCards.map(p => p.card.id)} strategy={verticalListSortingStrategy}>
-        <div className="space-y-2">
+        <div ref={cardListRef} className="space-y-2">
           {pageCards.map(({ card, idx }) => {
             const status = card.progress?.status ?? 'new'
             const badge  = STATUS_STYLES[status]
@@ -818,14 +851,7 @@ export default function SetDetail() {
                     </div>
                   )}
                   {isOwner && !selecting && (
-                    <Link
-                      href={paths.editCard(id, card.id)}
-                      className="flex-shrink-0 p-1.5 -m-1 rounded-lg text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
-                      aria-label="Edit card"
-                      title="Edit card"
-                    >
-                      <Pencil size={16} />
-                    </Link>
+                    <CardActionsMenu editHref={paths.editCard(id, card.id)} onDelete={() => deleteCard(card.id)} />
                   )}
                 </div>
                 <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-700">
@@ -1004,6 +1030,7 @@ export default function SetDetail() {
                     className="w-full border border-gray-300 dark:border-gray-600 rounded-xl px-3 py-2 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 bg-white dark:bg-gray-700 outline-none focus:border-indigo-500 resize-none"
                   />
                 </div>
+                <SourceUrlField value={sourceInput} onChange={v => { setSourceInput(v); setSourceError(null) }} error={sourceError} />
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Collection</label>
                   <select

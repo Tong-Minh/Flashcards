@@ -3,17 +3,17 @@
 import { Suspense, useEffect, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
-import { BarChart3, Compass, Library, LogOut, Moon, Plus, SlidersHorizontal, Sun, Users } from 'lucide-react'
-import { supabase } from '@/lib/supabase/client'
+import { BarChart3, Compass, Library, Plus, SlidersHorizontal, Users } from 'lucide-react'
 import { useUser } from '@/components/AuthGuard'
-import { useDarkMode } from '@/components/ThemeProvider'
 import { ItemIcon } from '@/components/ItemIcon'
 import { getCachedCollections, COLLECTIONS_EVENT } from '@/lib/storage'
 import type { Collection } from '@/lib/types'
 import { paths } from '@/lib/paths'
 import { IS_DESKTOP } from '@/lib/platform'
 import { APP_VERSION } from '@/lib/changelog'
-import { DesktopAppPromo, DesktopLibraryFooter, LibraryTransferLinks } from '@/components/LibraryControls'
+import { DesktopAppPromo, DesktopLibraryFooter } from '@/components/LibraryControls'
+import { AppMenu } from '@/components/AppMenu'
+import { NewMenu } from '@/components/NewMenu'
 
 // Pages that get the whole screen: signing in, studying (focus mode), and the optimizer (its
 // cross-origin isolation would block the sidebar's profile picture)
@@ -41,7 +41,6 @@ function Sidebar() {
   const pathname = usePathname()
   const params   = useSearchParams()
   const user     = useUser()
-  const { theme, toggle } = useDarkMode()
   const [collections, setCollections] = useState<Collection[]>([])
 
   useEffect(() => {
@@ -58,15 +57,6 @@ function Sidebar() {
   const tab = pathname === '/' ? params.get('tab') ?? 'mine' : null
   const name   = (user?.user_metadata?.full_name as string | undefined) ?? user?.email ?? ''
   const avatar = user?.user_metadata?.avatar_url as string | undefined
-  const themeButton = (
-    <button
-      onClick={toggle}
-      className="p-1.5 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 dark:text-gray-500 dark:hover:text-gray-200 dark:hover:bg-gray-700 transition-colors"
-      title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-    >
-      {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
-    </button>
-  )
 
   return (
     <aside className="hidden lg:flex fixed inset-y-0 left-0 z-30 w-64 flex-col bg-white dark:bg-gray-800/60 border-r border-gray-200 dark:border-gray-800">
@@ -77,16 +67,11 @@ function Sidebar() {
       </Link>
 
       <div className="px-3">
-        <Link
-          href="/sets/new"
-          className="flex items-center justify-center gap-1.5 w-full bg-indigo-600 text-white py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 active:bg-indigo-800 transition-colors"
-        >
-          <Plus size={16} strokeWidth={2.5} /> New set
-        </Link>
+        <NewMenu full />
       </div>
 
       <nav className="px-3 mt-4 space-y-0.5">
-        <NavItem href="/"               active={tab === 'mine'}     icon={<Library size={18} />}>My Sets</NavItem>
+        <NavItem href="/"               active={tab === 'mine'}     icon={<Library size={18} />}>Library</NavItem>
         <NavItem href="/stats"          active={pathname === '/stats'} icon={<BarChart3 size={18} />}>Stats</NavItem>
         <NavItem href="/settings"       active={pathname === '/settings'} icon={<SlidersHorizontal size={18} />}>Study settings</NavItem>
         {/* Social features need the web app's server */}
@@ -146,7 +131,7 @@ function Sidebar() {
       </Link>
 
       {IS_DESKTOP ? (
-        <DesktopLibraryFooter themeButton={themeButton} />
+        <DesktopLibraryFooter />
       ) : (
         <div className="flex items-center gap-1 px-3 py-3 border-t border-gray-200 dark:border-gray-700/70">
           {avatar
@@ -154,15 +139,7 @@ function Sidebar() {
             ? <img src={avatar} alt="" className="w-8 h-8 rounded-full flex-shrink-0 mr-1" referrerPolicy="no-referrer" />
             : <div className="w-8 h-8 rounded-full flex-shrink-0 mr-1 bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 flex items-center justify-center text-sm font-semibold">{name.charAt(0).toUpperCase()}</div>}
           <p className="flex-1 min-w-0 truncate text-sm font-medium text-gray-700 dark:text-gray-200">{name}</p>
-          <LibraryTransferLinks />
-          {themeButton}
-          <button
-            onClick={() => supabase.auth.signOut()}
-            className="p-1.5 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 dark:text-gray-500 dark:hover:text-gray-200 dark:hover:bg-gray-700 transition-colors"
-            title="Sign out"
-          >
-            <LogOut size={17} />
-          </button>
+          <AppMenu up />
         </div>
       )}
     </aside>

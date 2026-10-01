@@ -10,11 +10,15 @@ import { TagInput } from '@/components/TagInput'
 import { IconPicker } from '@/components/IconPicker'
 import { suggestIcon } from '@/lib/icons'
 import { paths } from '@/lib/paths'
+import { SourceUrlField, sourceUrlError } from '@/components/SourceUrlField'
+import { normalizeUrl } from '@/lib/links'
 
 export default function NewCollection() {
   const router = useRouter()
   const [name,        setName]        = useState('')
   const [description, setDescription] = useState('')
+  const [source,      setSource]      = useState('')
+  const [sourceError, setSourceError] = useState<string | null>(null)
   const [tags,        setTags]        = useState<string[]>([])
   const [saving,      setSaving]      = useState(false)
   const [error,       setError]       = useState('')
@@ -31,11 +35,13 @@ export default function NewCollection() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!name.trim()) return setError('Please enter a collection name.')
+    const badSource = sourceUrlError(source)
+    if (badSource) return setSourceError(badSource)
     setSaving(true)
 
     let created: Collection
     try {
-      created = await store.createCollection({ name: name.trim(), description: description.trim() || null, tags, icon, color })
+      created = await store.createCollection({ name: name.trim(), description: description.trim() || null, tags, icon, color, source_url: normalizeUrl(source) })
     } catch {
       setError('Failed to create collection. Please try again.')
       setSaving(false)
@@ -91,6 +97,8 @@ export default function NewCollection() {
             className="w-full border border-gray-300 dark:border-gray-600 rounded-xl px-4 py-3 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
           />
         </div>
+
+        <SourceUrlField value={source} onChange={v => { setSource(v); setSourceError(null) }} error={sourceError} />
 
         <div>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">

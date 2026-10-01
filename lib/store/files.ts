@@ -11,6 +11,8 @@ export interface Files {
   // Names of the folders / files directly inside `path`
   listDirs(path: string): Promise<string[]>
   listFiles(path: string): Promise<string[]>
+  // A file's size in bytes, or null if it's missing (for the Storage page)
+  size(path: string): Promise<number | null>
 }
 
 export function tauriFiles(root: string): Files {
@@ -59,6 +61,9 @@ export function tauriFiles(root: string): Files {
     },
     listDirs: path => list(path, 'dirs'),
     listFiles: path => list(path, 'files'),
+    async size(path) {
+      try { return (await (await fs()).stat(full(path))).size } catch { return null }
+    },
   }
 }
 
@@ -98,6 +103,12 @@ export function memoryFiles(prefix = 'fc_lib/'): Files {
     },
     async listFiles(path) {
       return children(path).filter(r => !r.includes('/'))
+    },
+    async size(path) {
+      const v = localStorage.getItem(prefix + path)
+      if (v === null) return null
+      // Binary files are base64 (4 characters per 3 bytes); text is close enough at 1 byte a character
+      return /\.(json|txt)$/.test(path) ? v.length : Math.floor(v.length * 0.75)
     },
   }
 }

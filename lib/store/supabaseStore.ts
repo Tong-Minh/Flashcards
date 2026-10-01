@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabase/client'
 import { fetchAllRows, MAX_CARDS_PER_SET } from '@/lib/fetchAll'
 import type { CardProgress, Collection, Flashcard, FlashcardSet, FlashcardWithProgress, ReviewLog, SetStudyStats, StudySettings } from '@/lib/types'
-import { PartialInsertError, type SetWithStats, type Store } from './types'
+import { PartialInsertError, type SetWithStats, type StorageReport, type Store } from './types'
 
 // Id lists go in the query string, so bulk edits are chunked to stay well under URL length limits
 async function eachChunk(ids: string[], fn: (chunk: string[]) => PromiseLike<{ error: unknown }>) {
@@ -243,6 +243,21 @@ export const supabaseStore: Store = {
       return q.order('reviewed_at').order('id')
     })
     return rows.map(({ flashcards, ...r }) => ({ ...r, set_id: (Array.isArray(flashcards) ? flashcards[0] : flashcards)?.set_id ?? null }))
+  },
+
+  // An estimate: the size of the set's cards, progress and reviews as downloaded (the database's own
+  // overhead isn't counted). Images and audio aren't stored on the web.
+  async getStorage(setIds) {
+    const encoder = new TextEncoder()
+    const bytes = (v: unknown) => encoder.encode(JSON.stringify(v)).length
+    const reviewBytes = new Map<string, number>()
+    for (const r of await this.getReviews(setIds)) if (r.set_id) reviewBytes.set(r.set_id, (reviewBytes.get(r.set_id) ?? 0) + bytes(r))
+    const out: StorageReport['sets'] = []
+    for (const id of setIds) {
+      const cards = await this.getCards(id)
+      out.push({ id, data: bytes(cards) + (reviewBytes.get(id) ?? 0), media: 0 })
+    }
+    return { sets: out, mediaTotal: 0 }
   },
 
   async getSettings() {

@@ -84,6 +84,7 @@ export async function importWebBundle(bundle: LibraryBundle, userId: string, onP
   if (newCollections.length) {
     const { error } = await supabase.from('collections').insert(newCollections.map(c => ({
       id: c.id, name: c.name, description: c.description, tags: c.tags ?? [], icon: c.icon, color: c.color, is_public: false, created_at: c.created_at,
+      source_url: c.source_url ?? null,
     })))
     if (error) throw error
     for (const c of newCollections) haveCollection.add(c.id)
@@ -107,7 +108,7 @@ export async function importWebBundle(bundle: LibraryBundle, userId: string, onP
         id: s.set.id, name: s.set.name, description: s.set.description, is_public: false, tags: s.set.tags ?? [],
         collection_id: s.set.collection_id && haveCollection.has(s.set.collection_id) ? s.set.collection_id : null,
         icon: s.set.icon, color: s.set.color, position: s.set.position, desired_retention: s.set.desired_retention ?? null,
-        created_at: s.set.created_at,
+        created_at: s.set.created_at, source_url: s.set.source_url ?? null,
       })
       if (error) throw error
       setCount.set(s.set.id, 0)
@@ -120,7 +121,7 @@ export async function importWebBundle(bundle: LibraryBundle, userId: string, onP
       const { data, error } = await supabase.from('sets').insert({
         name: `${s.set.name} (part ${part})`, description: s.set.description, is_public: false, tags: s.set.tags ?? [],
         collection_id: s.set.collection_id && haveCollection.has(s.set.collection_id) ? s.set.collection_id : null,
-        icon: s.set.icon, color: s.set.color, desired_retention: s.set.desired_retention ?? null,
+        icon: s.set.icon, color: s.set.color, desired_retention: s.set.desired_retention ?? null, source_url: s.set.source_url ?? null,
       }).select('id').single()
       if (error) throw error
       placements.push({ setId: data.id as string, cards: missing.slice(i, i + MAX_CARDS_PER_SET) })

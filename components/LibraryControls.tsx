@@ -2,30 +2,19 @@
 
 import { useEffect, useState, type ReactNode } from 'react'
 import Link from 'next/link'
-import { Download, FolderOpen, FileUp, RefreshCw, X } from 'lucide-react'
+import { Download, RefreshCw, X } from 'lucide-react'
+import { AppMenu } from '@/components/AppMenu'
 import { inTauri } from '@/lib/platform'
 import { notify } from '@/lib/dialogs'
 
 const iconButton = 'p-1.5 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 dark:text-gray-500 dark:hover:text-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-50'
-
-// Export and import a library zip (lib/libraryTransfer.ts). Each opens a page that explains it.
-export function LibraryTransferLinks({ className = iconButton }: { className?: string }) {
-  return <>
-    <Link href="/library/export" className={className} title="Export a library (.zip)" aria-label="Export a library">
-      <Download size={17} />
-    </Link>
-    <Link href="/library/import" className={className} title="Import a library (.zip)" aria-label="Import a library">
-      <FileUp size={17} />
-    </Link>
-  </>
-}
 
 // When the app last asked GitHub for an update (kept across sidebar remounts, e.g. after studying)
 let lastUpdateCheck = 0
 const UPDATE_RECHECK_MS = 10 * 60 * 1000
 
 // Desktop app: the open library folder, importing a library zip, switching folders, and app updates
-export function DesktopLibraryFooter({ themeButton }: { themeButton: ReactNode }) {
+export function DesktopLibraryFooter() {
   const [root,   setRoot]   = useState<string | null>(null)
   const [update, setUpdate] = useState<{ version: string; install: () => Promise<void> } | null>(null)
   const [updating, setUpdating] = useState(false)
@@ -83,11 +72,7 @@ export function DesktopLibraryFooter({ themeButton }: { themeButton: ReactNode }
           <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Library</p>
           <p className="truncate text-sm font-medium text-gray-700 dark:text-gray-200">{folderName}</p>
         </Link>
-        <LibraryTransferLinks />
-        <Link href="/library/folder" className={iconButton} title="Open a different library folder">
-          <FolderOpen size={17} />
-        </Link>
-        {themeButton}
+        <AppMenu up />
       </div>
     </div>
   )

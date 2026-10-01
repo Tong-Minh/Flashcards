@@ -11,10 +11,10 @@ export interface SetWithStats extends FlashcardSet {
   totalSessions: number
 }
 
-export type SetInput = Pick<FlashcardSet, 'name' | 'description' | 'is_public' | 'tags' | 'collection_id' | 'icon' | 'color'>
+export type SetInput = Pick<FlashcardSet, 'name' | 'description' | 'is_public' | 'tags' | 'collection_id' | 'icon' | 'color' | 'source_url'>
 export type SetPatch = Partial<SetInput> & Pick<FlashcardSet, 'desired_retention'>
-export type CollectionInput = Pick<Collection, 'name'> & Partial<Pick<Collection, 'description' | 'tags' | 'icon' | 'color'>>
-export type CollectionPatch = Partial<Pick<Collection, 'name' | 'description' | 'tags' | 'icon' | 'color' | 'is_public'>>
+export type CollectionInput = Pick<Collection, 'name'> & Partial<Pick<Collection, 'description' | 'tags' | 'icon' | 'color' | 'source_url'>>
+export type CollectionPatch = Partial<Pick<Collection, 'name' | 'description' | 'tags' | 'icon' | 'color' | 'is_public' | 'source_url'>>
 // FSRS fields saved after a review (the row's id and card are implied)
 export type ProgressFields = Omit<CardProgress, 'id' | 'card_id' | 'ord'>
 export interface SessionInput {
@@ -22,6 +22,11 @@ export interface SessionInput {
   correct_count: number
   mastered_count: number
   duration_seconds: number | null
+}
+
+export interface StorageReport {
+  sets: { id: string; data: number; media: number }[]
+  mediaTotal: number
 }
 
 // Thrown by addCards when some cards were saved before a failure
@@ -84,6 +89,11 @@ export interface Store {
   getReviews(setIds?: string[]): Promise<ReviewLog[]>
   // Session totals (and rolled-up days), for history before the review log
   getStudyHistory(setIds?: string[]): Promise<StudyHistoryEntry[]>
+
+  // How much space sets take: their cards, progress, history and reviews (data), and the images and
+  // audio their cards use (media, desktop only). mediaTotal counts each file once, however many sets
+  // share it. The web estimates from the data it downloads.
+  getStorage(setIds: string[]): Promise<StorageReport>
 
   // Study settings (target retention, new-day hour, FSRS parameters); null if never saved
   getSettings(): Promise<Partial<StudySettings> | null>

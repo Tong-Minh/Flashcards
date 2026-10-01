@@ -13,6 +13,22 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.1.7',
+    date: '2026-10-01',
+    title: 'Tidier menus, source links, storage',
+    changes: [
+      'Sets and collections can have a source link (where you got them). It shows as a link icon by the title and while studying.',
+      'Fewer buttons: settings, export and import, the library folder, storage, the theme and sign out are in one ⋯ menu. The sidebar’s button is now “+ New” (set, collection, or Import from Anki).',
+      '“My Sets” is now Library, with Collections and My Sets labeled.',
+      'Search inside a collection. Searching a set highlights the matches on each card.',
+      'Each card has a ⋯ menu to edit or delete it.',
+      'Someone else’s set: a copy button next to Share saves your own copy.',
+      'Storage: see how much space each collection and set takes (and, in the desktop app, the app itself).',
+      'Desktop: uninstall from the ⋯ menu, keeping or deleting your flashcards.',
+      'A new front page explains the app, with downloads for Windows and Mac and how to bring your decks in.',
+    ],
+  },
+  {
     version: '0.1.6',
     date: '2026-10-01',
     title: 'Reversed cards, audio, image occlusion, and moving your library anywhere',

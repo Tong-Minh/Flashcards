@@ -25,6 +25,8 @@ export interface FlashcardSet {
   position: number | null
   // This set's target retention (0.7–0.99); null or missing = the user's default
   desired_retention?: number | null
+  // Where it came from (a link the user adds), shown by the title
+  source_url?: string | null
 }
 
 // The user's study settings (user_settings on the web, library.json on desktop)
@@ -61,6 +63,8 @@ export interface Collection {
   icon: string | null
   color: string | null
   is_public: boolean
+  // Where it came from (a link the user adds), shown by the title
+  source_url?: string | null
 }
 
 export interface Profile {

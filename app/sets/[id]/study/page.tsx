@@ -10,6 +10,7 @@ import { store } from '@/lib/store'
 import { ContentRenderer, previewText } from '@/components/ContentRenderer'
 import { ClozeQuestion, FlipCard } from '@/components/CardPreview'
 import { OcclusionImage } from '@/components/OcclusionImage'
+import { SourceLink } from '@/components/SourceLink'
 import { BottomBar, BottomBarSpacer } from '@/components/BottomBar'
 import { TypedAnswerInput, TypedResultBanner, TrueFalseButtons, MatchingBoard, MatchingPairsList } from '@/components/StudyInteractions'
 import { checkTypedAnswer, type TypedResult } from '@/lib/answerCheck'
@@ -162,6 +163,8 @@ export default function Study() {
   const [cardKey,        setCardKey]        = useState(0)
   // The answer has been shown: rating is possible, and Space flips between the sides
   const [revealed,       setRevealed]       = useState(false)
+  // Where the set came from, linked in the header
+  const [sourceUrl,      setSourceUrl]      = useState<string | null>(null)
   const [toast,          setToast]          = useState<Toast | null>(null)
   const undoStack   = useRef<UndoEntry[]>([])
   const [undoCount,      setUndoCount]      = useState(0)
@@ -276,6 +279,7 @@ export default function Study() {
         // The set's target retention, or the user's default, with their FSRS parameters
         const [settings, set] = await Promise.all([loadSettings(), store.getSet(setId).catch(() => null)])
         fsrsRef.current = scheduler(retentionFor(set, settings), settings)
+        setSourceUrl(set?.source_url ?? null)
         cards = await store.getCards(setId)
         cacheCards(setId, cards)
       } catch { setIsOffline(true) }
@@ -748,9 +752,12 @@ export default function Study() {
     return (
       <div className="max-w-lg lg:max-w-3xl mx-auto px-4 py-6 lg:py-10">
         <div className="flex items-center justify-between mb-4">
-          <button onClick={() => router.push(paths.set(setId))} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors font-medium">
-            ← Exit
-          </button>
+          <span className="flex items-center gap-1">
+            <button onClick={() => router.push(paths.set(setId))} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors font-medium">
+              ← Exit
+            </button>
+            {sourceUrl && <SourceLink url={sourceUrl} />}
+          </span>
           <p className="text-sm text-gray-400 dark:text-gray-500">{viewIndex + 1} / {viewCards.length}</p>
           <span className="w-12 text-right text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">View</span>
         </div>
@@ -1073,6 +1080,7 @@ export default function Study() {
         <button onClick={handleExit} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors font-medium flex-shrink-0">
           ← Exit
         </button>
+        {sourceUrl && <SourceLink url={sourceUrl} className="flex-shrink-0" />}
         <p className="flex-1 text-center text-sm text-gray-400 dark:text-gray-500 tabular-nums">{cardNumber} / {totalInSession}</p>
         <div className="flex items-center flex-shrink-0">
           <StudyAction icon={Undo2}  label="Undo"    kbd="Z" onClick={undo} disabled={undoCount === 0} />

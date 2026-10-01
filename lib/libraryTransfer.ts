@@ -43,16 +43,8 @@ export function newerProgress(a: CardProgress | undefined, b: CardProgress | und
   return (b.last_review ?? '') > (a.last_review ?? '') ? b : a
 }
 
-// Image paths a set's cards use
-export function mediaOf(cards: Flashcard[]): string[] {
-  const used = new Set<string>()
-  for (const c of cards) {
-    const text = [c.question, c.answer, ...(c.options ?? []), ...(c.pairs ?? []).flatMap(p => [p.left, p.right])].join('\n')
-    for (const m of text.matchAll(/(?:images|audio)\/[\w.-]+/g)) used.add(m[0])
-    if (c.occlusion?.image) used.add(c.occlusion.image)
-  }
-  return [...used]
-}
+// The files a set's cards use (moved to lib/media.ts; kept here for the zip code's callers)
+export { mediaOf } from '@/lib/media'
 
 export async function zipLibrary(bundle: LibraryBundle): Promise<Uint8Array> {
   const { zipSync, strToU8 } = await import('fflate')

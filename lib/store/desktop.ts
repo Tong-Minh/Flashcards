@@ -192,3 +192,12 @@ export async function importBundle(bundle: LibraryBundle): Promise<ImportResult>
   current = createLocalStore(files)
   return result
 }
+
+// Deletes the library's own files from its folder (before uninstalling, if the user chose to): the
+// sets, reviews, images, audio and library.json. Anything else in the folder is left alone.
+export async function deleteLibraryContents() {
+  const files = openFiles()
+  for (const dir of ['sets', 'reviews', 'images', 'audio']) await files.removeDir(dir)
+  await files.remove('library.json')
+  current = null
+}

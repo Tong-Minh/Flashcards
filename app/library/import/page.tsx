@@ -103,7 +103,7 @@ export default function ImportLibrary() {
             </p>
             {/* A full load, so every page reads the library again */}
             <a href="/" className="inline-block mt-3 bg-indigo-600 text-white px-5 py-2 rounded-xl text-sm font-semibold hover:bg-indigo-700 transition-colors">
-              Go to My Sets
+              Go to your library
             </a>
           </div>
         )}

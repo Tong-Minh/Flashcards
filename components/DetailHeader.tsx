@@ -4,10 +4,11 @@ import { ItemIcon } from '@/components/ItemIcon'
 import { TagList } from '@/components/TagInput'
 import { noOrphan } from '@/lib/text'
 import { paths } from '@/lib/paths'
+import { SourceLink } from '@/components/SourceLink'
 
 // Shared header for set and collection pages: a label row (what it is, and for a set, which
 // collection it's in), then the icon with the name and description beside it, then tags.
-export function DetailHeader({ kind, backHref, collection, owner, icon, color, name, description, badge, tags, actions }: {
+export function DetailHeader({ kind, backHref, collection, owner, icon, color, name, description, badge, tags, actions, sourceUrl }: {
   kind: 'set' | 'collection'
   backHref: string
   // Sets only: the collection it belongs to
@@ -21,6 +22,8 @@ export function DetailHeader({ kind, backHref, collection, owner, icon, color, n
   badge?: ReactNode
   tags?: string[]
   actions?: ReactNode
+  // Where it came from: a link icon right after the title
+  sourceUrl?: string | null
 }) {
   return (
     <div className="mb-4">
@@ -53,6 +56,7 @@ export function DetailHeader({ kind, backHref, collection, owner, icon, color, n
             {/* A box exactly one title line tall, with the pill centered in it, so the pill lines up with
                 the title text and doesn't make its line taller */}
             {badge && <span className="inline-flex items-center align-top h-[1.375em] ml-2 [&>*]:leading-4">{badge}</span>}
+            {sourceUrl && <span className="inline-flex items-center align-top h-[1.375em] ml-1"><SourceLink url={sourceUrl} /></span>}
           </h1>
           {description && (
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{description}</p>

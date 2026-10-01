@@ -3,24 +3,20 @@
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { supabase } from '@/lib/supabase/client'
 import { useUser } from '@/components/AuthGuard'
-import { useDarkMode } from '@/components/ThemeProvider'
 import { getCachedSets, getCachedCollections, cacheSets, cacheCollections } from '@/lib/storage'
 import { loadSetsAndCollections, type SetWithStats } from '@/lib/sets'
 import { SetOrganizer } from '@/components/SetOrganizer'
 import FriendsTab from '@/components/FriendsTab'
 import DiscoverTab from '@/components/DiscoverTab'
 import { SearchBar } from '@/components/SearchBar'
-import { LibraryTransferLinks } from '@/components/LibraryControls'
+import { AppMenu } from '@/components/AppMenu'
+import { itemMatcher } from '@/lib/search'
+import { NewMenu } from '@/components/NewMenu'
 import { IS_DESKTOP } from '@/lib/platform'
 import type { Collection } from '@/lib/types'
 import { BarChart3 } from 'lucide-react'
 import { APP_VERSION } from '@/lib/changelog'
-
-async function signOut() {
-  await supabase.auth.signOut()
-}
 
 type Tab = 'mine' | 'discover' | 'friends'
 
@@ -31,7 +27,6 @@ export default function Home() {
 
 function HomePage() {
   const currentUser = useUser()
-  const { theme, toggle } = useDarkMode()
   const router      = useRouter()
   const params      = useSearchParams()
   // The tab lives in the URL so the desktop sidebar can link to it
@@ -42,7 +37,6 @@ function HomePage() {
   const [sets,        setSets]        = useState<SetWithStats[]>([])
   const [collections, setCollections] = useState<Collection[]>([])
   const [loading,     setLoading]     = useState(true)
-  const [showNewMenu, setShowNewMenu] = useState(false)
   const [kind,        setKind]        = useState<'all' | 'collections' | 'sets'>('all')
   const [search,      setSearch]      = useState('')
 
@@ -76,16 +70,9 @@ function HomePage() {
   }, [sets])
 
   const collectionIds = new Set(collections.map(c => c.id))
-  // "#bio" searches tags only (by prefix); anything else matches name, description, or tags
-  const raw      = search.trim().toLowerCase()
-  const tagQuery = raw.startsWith('#') ? raw.slice(1) : null
-  const matches = (item: { name: string; description: string | null; tags: string[] | null }) =>
-    tagQuery !== null
-      ? !!item.tags?.some(t => t.startsWith(tagQuery))
-      : !raw || item.name.toLowerCase().includes(raw) || !!item.description?.toLowerCase().includes(raw) || !!item.tags?.some(t => t.includes(raw))
+  const { searching, tagQuery, matches } = itemMatcher(search)
   // Searching, or the Sets filter, lists every matching set flat (even ones inside collections);
   // otherwise collections come first and only ungrouped sets are listed below them.
-  const searching = !!raw && raw !== '#'
   const flat      = searching || kind === 'sets'
   const visibleCollections = kind === 'sets' ? [] : searching ? collections.filter(matches) : collections
   const visibleSets = kind === 'collections' ? []
@@ -93,14 +80,14 @@ function HomePage() {
     : sets.filter(s => !s.collection_id || !collectionIds.has(s.collection_id))
 
   const TAB_LABELS: Record<Tab, string> = {
-    mine:     'My Sets',
+    mine:     'Library',
     discover: 'Discover',
     friends:  'Friends',
   }
 
   return (
     <div className="max-w-lg lg:max-w-6xl mx-auto px-4 py-6 lg:px-8 lg:py-8">
-      {/* Header. On desktop the sidebar has the app name, tabs, theme and sign out, so the heading is the tab */}
+      {/* Header. On desktop the sidebar has the app name, tabs and the ⋯ menu, so the heading is the tab */}
       <div className="flex items-center justify-between mb-5 lg:mb-6">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 lg:hidden">Flashcards</h1>
         <h1 className="hidden lg:block text-2xl font-bold text-gray-900 dark:text-gray-100">{TAB_LABELS[tab]}</h1>
@@ -114,61 +101,9 @@ function HomePage() {
           >
             <BarChart3 size={20} />
           </Link>
-          {tab === 'mine' && (
-            <div className="relative">
-              <button
-                onClick={() => setShowNewMenu(v => !v)}
-                className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 active:bg-indigo-800 transition-colors"
-              >
-                + New
-              </button>
-              {showNewMenu && (
-                <>
-                  <div className="fixed inset-0 z-10" onClick={() => setShowNewMenu(false)} />
-                  <div className="absolute right-0 top-full mt-2 z-20 w-56 bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-100 dark:border-gray-700 py-1 overflow-hidden">
-                    <Link href="/sets/new" className="block px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
-                      <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">New set</p>
-                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">A deck of cards to study</p>
-                    </Link>
-                    <Link href="/collections/new" className="block px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
-                      <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">New collection</p>
-                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">A folder to group sets together</p>
-                    </Link>
-                    <Link href="/import-anki" className="block px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors border-t border-gray-100 dark:border-gray-700">
-                      <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Import from Anki</p>
-                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">An .apkg deck or a text export</p>
-                    </Link>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-          <button
-            onClick={toggle}
-            className="lg:hidden p-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors"
-            title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-          >
-            {theme === 'dark' ? (
-              <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <circle cx="12" cy="12" r="5" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
-              </svg>
-            ) : (
-              <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
-              </svg>
-            )}
-          </button>
-          {!IS_DESKTOP && <span className="lg:hidden flex"><LibraryTransferLinks className="p-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors" /></span>}
-          {!IS_DESKTOP && <button
-            onClick={signOut}
-            className="lg:hidden p-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors"
-            title="Sign out"
-          >
-            <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h6a2 2 0 012 2v1" />
-            </svg>
-          </button>}
+          {tab === 'mine' && <NewMenu />}
+          {/* Everything else (settings, export/import, theme, sign out): the sidebar has its own on desktop */}
+          <span className="lg:hidden"><AppMenu /></span>
         </div>
       </div>
 
@@ -189,7 +124,7 @@ function HomePage() {
         ))}
       </div>
 
-      {/* ── My Sets ─────────────────────────────────────────────────────── */}
+      {/* ── Library ─────────────────────────────────────────────────────── */}
       {tab === 'mine' && (
         loading ? (
           <div className="text-center text-gray-400 dark:text-gray-500 py-16">Loading...</div>
@@ -231,7 +166,8 @@ function HomePage() {
               dropCollections={visibleCollections}
               setsByCollection={setsByCollection}
               sortable={!flat}
-              label={flat ? 'Sets' : visibleCollections.length > 0 ? 'Ungrouped sets' : 'Sets'}
+              label={flat ? 'Sets' : visibleCollections.length > 0 ? 'My Sets' : 'Sets'}
+              collectionsLabel="Collections"
             />
 
             {visibleSets.length === 0 && visibleCollections.length === 0 && (

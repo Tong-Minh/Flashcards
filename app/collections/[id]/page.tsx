@@ -18,6 +18,11 @@ import { PublicSetCard, type PublicSet } from '@/components/PublicSetCard'
 import type { Collection } from '@/lib/types'
 import { IS_DESKTOP } from '@/lib/platform'
 import { confirmAction } from '@/lib/dialogs'
+import { SourceUrlField, sourceUrlError } from '@/components/SourceUrlField'
+import { normalizeUrl } from '@/lib/links'
+import { itemMatcher } from '@/lib/search'
+import { formatBytes } from '@/lib/media'
+import { SearchBar } from '@/components/SearchBar'
 
 export default function CollectionDetail() {
   const { id } = useRouteIds()
@@ -30,11 +35,16 @@ export default function CollectionDetail() {
   const [loading,     setLoading]     = useState(true)
   const [showPicker,  setShowPicker]  = useState(false)
   const [busySetId,   setBusySetId]   = useState<string | null>(null)
+  const [search,      setSearch]      = useState('')
+  const [size,        setSize]        = useState<number | null>(null)
+  const { searching, matches } = itemMatcher(search)
 
   // Settings modal
   const [showSettings, setShowSettings] = useState(false)
   const [nameInput,    setNameInput]    = useState('')
   const [descInput,    setDescInput]    = useState('')
+  const [sourceInput,  setSourceInput]  = useState('')
+  const [sourceError,  setSourceError]  = useState<string | null>(null)
   const [tagsInput,    setTagsInput]    = useState<string[]>([])
   const [iconInput,    setIconInput]    = useState<{ icon: string | null; color: string | null }>({ icon: null, color: null })
   const [isPublicInput, setIsPublicInput] = useState(false)
@@ -53,6 +63,7 @@ export default function CollectionDetail() {
     if (c) {
       setNameInput(c.name)
       setDescInput(c.description ?? '')
+      setSourceInput(c.source_url ?? '')
       setTagsInput(c.tags ?? [])
       setIconInput({ icon: c.icon ?? null, color: c.color ?? null })
       setIsPublicInput(c.is_public ?? false)
@@ -107,7 +118,10 @@ export default function CollectionDetail() {
   async function saveInfo() {
     const name = nameInput.trim()
     if (!name || !collection) return
-    const patch = { name, description: descInput.trim() || null, tags: tagsInput, icon: iconInput.icon, color: iconInput.color, is_public: isPublicInput }
+    const badSource = sourceUrlError(sourceInput)
+    setSourceError(badSource)
+    if (badSource) return
+    const patch = { name, description: descInput.trim() || null, tags: tagsInput, icon: iconInput.icon, color: iconInput.color, is_public: isPublicInput, source_url: normalizeUrl(sourceInput) }
     try { await store.updateCollection(id, patch) } catch { return }
     const updated = { ...collection, ...patch }
     setCollection(updated)
@@ -122,6 +136,15 @@ export default function CollectionDetail() {
     cacheSets(allSets.map(s => (s.collection_id === id ? { ...s, collection_id: null } : s)))
     router.push('/')
   }
+
+  // Desktop: how much space the collection's sets take (images and audio included)
+  const setIdsKey = allSets.filter(s => s.collection_id === id).map(s => s.id).join(',')
+  useEffect(() => {
+    if (!IS_DESKTOP || !setIdsKey) { setSize(null); return }
+    let alive = true
+    store.getStorage(setIdsKey.split(',')).then(r => { if (alive) setSize(r.sets.reduce((n, s) => n + s.data + s.media, 0)) }).catch(() => {})
+    return () => { alive = false }
+  }, [setIdsKey])
 
   if (loading && !collection) {
     return <div className="max-w-lg lg:max-w-6xl mx-auto px-4 py-6 lg:px-8 lg:py-8 text-center text-gray-400 dark:text-gray-500 py-16">Loading…</div>
@@ -139,19 +162,25 @@ export default function CollectionDetail() {
           name={collection.name}
           description={collection.description}
           tags={collection.tags}
+          sourceUrl={collection.source_url}
           actions={<ShareButton kind="collection" id={id} name={collection.name} isPublic isOwner={false} />}
         />
 
+        {publicSets.length > 0 && (
+          <SearchBar value={search} onChange={setSearch} placeholder="Search sets in this collection, or #tag" className="mb-3 lg:max-w-md" />
+        )}
         <h2 className="font-semibold text-gray-900 dark:text-gray-100 mb-3">
           {publicSets.length} set{publicSets.length !== 1 ? 's' : ''}
         </h2>
-        {publicSets.length === 0 ? (
+        {searching && !publicSets.some(matches) ? (
+          <p className="text-center text-sm text-gray-400 dark:text-gray-500 py-10">Nothing matches &ldquo;{search.trim()}&rdquo;</p>
+        ) : publicSets.length === 0 ? (
           <div className="text-center text-gray-400 dark:text-gray-500 py-10 bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700">
             No public sets in this collection yet
           </div>
         ) : (
           <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
-            {publicSets.map(s => <PublicSetCard key={s.id} set={s} />)}
+            {publicSets.filter(matches).map(s => <PublicSetCard key={s.id} set={s} />)}
           </div>
         )}
         <p className="text-xs text-center text-gray-400 dark:text-gray-500 mt-4">Open a set to study it or save your own copy</p>
@@ -174,6 +203,7 @@ export default function CollectionDetail() {
         name={collection?.name}
         description={collection?.description}
         tags={collection?.tags}
+        sourceUrl={collection?.source_url}
         badge={collection?.is_public && (
           <span className="text-xs font-medium text-indigo-600 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/40 px-2 py-0.5 rounded-full">Shared</span>
         )}
@@ -198,12 +228,13 @@ export default function CollectionDetail() {
         </>}
       />
 
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-2 mb-5 lg:max-w-md">
+      {/* Stats (and, in the desktop app, the space it takes) */}
+      <div className={`grid ${size !== null ? 'grid-cols-4' : 'grid-cols-3'} gap-2 mb-5 lg:max-w-md`}>
         {[
           { value: sets.length, label: 'Sets'     },
           { value: totalCards,  label: 'Cards'    },
           { value: toStudy,     label: 'To study' },
+          ...(size !== null ? [{ value: formatBytes(size), label: 'Size' }] : []),
         ].map(({ value, label }) => (
           <div key={label} className="bg-white dark:bg-gray-800 rounded-xl p-2.5 text-center shadow-sm border border-gray-100 dark:border-gray-700">
             <div className="text-base font-bold text-gray-900 dark:text-gray-100">{value}</div>
@@ -211,6 +242,10 @@ export default function CollectionDetail() {
           </div>
         ))}
       </div>
+
+      {sets.length > 0 && (
+        <SearchBar value={search} onChange={setSearch} placeholder="Search sets in this collection, or #tag" className="mb-4 lg:max-w-md" />
+      )}
 
       <SetOrganizer
         title={<h2 className="font-semibold text-gray-900 dark:text-gray-100">Sets</h2>}
@@ -232,15 +267,18 @@ export default function CollectionDetail() {
         onSetsChange={next => { setAllSets(next); cacheSets(next) }}
         collections={ownCollections}
         onCollectionsChange={next => { setOwnCollections(next); cacheCollections(next) }}
-        listSets={sets}
-        sortable
+        listSets={sets.filter(matches)}
+        // Reordering while some sets are hidden would scramble the order
+        sortable={!searching}
         currentCollectionId={id}
-        empty={
+        empty={searching ? (
+          <p className="text-center text-sm text-gray-400 dark:text-gray-500 py-10">Nothing matches &ldquo;{search.trim()}&rdquo;</p>
+        ) : (
           <div className="text-center text-gray-400 dark:text-gray-500 py-10 bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700">
             <p className="mb-1">No sets in this collection</p>
             <p className="text-sm">Create a new set or add existing ones</p>
           </div>
-        }
+        )}
       />
 
       {/* ── Set picker ────────────────────────────────────────────────────── */}
@@ -336,6 +374,7 @@ export default function CollectionDetail() {
                       className="w-full border border-gray-300 dark:border-gray-600 rounded-xl px-3 py-2 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 bg-white dark:bg-gray-700 outline-none focus:border-indigo-500 resize-none"
                     />
                   </div>
+                  <SourceUrlField value={sourceInput} onChange={v => { setSourceInput(v); setSourceError(null) }} error={sourceError} />
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Tags</label>
                     <TagInput value={tagsInput} onChange={setTagsInput} suggestions={tagSuggestions} />

@@ -12,12 +12,16 @@ import { suggestIcon } from '@/lib/icons'
 import type { Collection } from '@/lib/types'
 import { paths } from '@/lib/paths'
 import { IS_DESKTOP } from '@/lib/platform'
+import { SourceUrlField, sourceUrlError } from '@/components/SourceUrlField'
+import { normalizeUrl } from '@/lib/links'
 
 export default function NewSet() {
   const router = useRouter()
   const currentUser = useUser()
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  const [source,      setSource]      = useState('')
+  const [sourceError, setSourceError] = useState<string | null>(null)
   const [isPublic, setIsPublic] = useState(!IS_DESKTOP)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -42,6 +46,8 @@ export default function NewSet() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!name.trim()) return setError('Please enter a set name.')
+    const badSource = sourceUrlError(source)
+    if (badSource) return setSourceError(badSource)
     setSaving(true)
 
     let created
@@ -49,6 +55,7 @@ export default function NewSet() {
       created = await store.createSet({
         name: name.trim(),
         description: description.trim() || null,
+        source_url: normalizeUrl(source),
         is_public: isPublic,
         tags,
         collection_id: collectionId || null,
@@ -108,6 +115,8 @@ export default function NewSet() {
             className="w-full border border-gray-300 dark:border-gray-600 rounded-xl px-4 py-3 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
           />
         </div>
+
+        <SourceUrlField value={source} onChange={v => { setSource(v); setSourceError(null) }} error={sourceError} />
 
         {collections.length > 0 && (
           <div>

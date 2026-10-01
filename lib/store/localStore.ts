@@ -5,7 +5,8 @@ import type {
   StudySettings,
 } from '@/lib/types'
 import type { Files } from './files'
-import type { SetWithStats, Store } from './types'
+import type { SetWithStats, StorageReport, Store } from './types'
+import { mediaOf } from '@/lib/media'
 
 // ── Library folder layout ──────────────────────────────────────────────────────
 //   library.json              { version, collections }
@@ -286,7 +287,7 @@ export function createLocalStore(files: Files): LocalStore {
       await ensure()
       const collection: Collection = {
         id: uuid(), name: input.name, description: input.description ?? null, tags: input.tags ?? [],
-        icon: input.icon ?? null, color: input.color ?? null, is_public: false,
+        icon: input.icon ?? null, color: input.color ?? null, is_public: false, source_url: input.source_url ?? null,
         user_id: LOCAL_USER_ID, created_at: new Date().toISOString(),
       }
       library.collections.push(collection)
@@ -467,6 +468,31 @@ export function createLocalStore(files: Files): LocalStore {
         .map(r => ({ ...r, set_id: cardSet.get(r.card_id) ?? r.set_id }))
         .filter(r => !wanted || (r.set_id !== null && wanted.has(r.set_id)))
         .sort((a, b) => a.reviewed_at.localeCompare(b.reviewed_at))
+    },
+
+    async getStorage(setIds) {
+      await ensure()
+      const encoder = new TextEncoder()
+      const bytes = (v: unknown) => encoder.encode(json(v)).length
+      // Reviews live by month for all sets; each counts toward its card's set
+      const reviewBytes = new Map<string, number>()
+      for (const r of await allReviews()) {
+        const setId = cardSet.get(r.card_id) ?? r.set_id
+        if (setId) reviewBytes.set(setId, (reviewBytes.get(setId) ?? 0) + bytes(r))
+      }
+      const fileSizes = new Map<string, number>()
+      const out: StorageReport['sets'] = []
+      for (const id of setIds) {
+        const d = sets.get(id)
+        if (!d) continue
+        let media = 0
+        for (const path of mediaOf(d.cards)) {
+          if (!fileSizes.has(path)) fileSizes.set(path, (await files.size(path)) ?? 0)
+          media += fileSizes.get(path)!
+        }
+        out.push({ id, data: bytes(d.set) + bytes(d.cards) + bytes(d.progress) + bytes(d.sessions) + (reviewBytes.get(id) ?? 0), media })
+      }
+      return { sets: out, mediaTotal: [...fileSizes.values()].reduce((a, b) => a + b, 0) }
     },
 
     async getSettings() {

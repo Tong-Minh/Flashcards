@@ -128,3 +128,7 @@ pre[class*="language-"], code[class*="language-"] {
 @media (min-width: 1024px) {
   [data-sidebar] .fixed-bar { left: 16rem; }
 }
+
+/* Card search matches on the set page (lib/useHighlight.ts) */
+::highlight(card-search) { background-color: #fde68a; color: inherit; }
+.dark ::highlight(card-search) { background-color: #a16207; color: #fff; }

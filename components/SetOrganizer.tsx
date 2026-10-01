@@ -37,7 +37,7 @@ const collision: CollisionDetection = args => {
 //   collection card to move it. Outside selection mode sets can't be dragged.
 export function SetOrganizer({
   allSets, onSetsChange, collections, onCollectionsChange,
-  listSets, dropCollections = [], setsByCollection = {}, sortable, label, title, actions, currentCollectionId = null, empty,
+  listSets, dropCollections = [], setsByCollection = {}, sortable, label, collectionsLabel, title, actions, currentCollectionId = null, empty,
 }: {
   allSets: SetWithStats[]
   onSetsChange: (next: SetWithStats[]) => void
@@ -51,6 +51,8 @@ export function SetOrganizer({
   // Off while a search or filter is hiding some sets
   sortable: boolean
   label?: string | null
+  // A small label above the collection cards, like the sets' label
+  collectionsLabel?: string
   // Replaces the small label with a heading, and extra buttons shown beside Select
   title?: React.ReactNode
   actions?: React.ReactNode
@@ -219,6 +221,9 @@ export function SetOrganizer({
         onDragCancel={() => { suppressClick.current = false }}
         onDragEnd={handleDragEnd}
       >
+        {dropCollections.length > 0 && collectionsLabel && (
+          <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-3 min-h-[1.75rem] flex items-center">{collectionsLabel}</p>
+        )}
         {dropCollections.length > 0 && (
           <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3 mb-5">
             {dropCollections.map(c => (
