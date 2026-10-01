@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { Apple, Download, Monitor } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
 import { INVITE_KEY } from '@/components/AuthGuard'
+import { ScreenshotCarousel } from '@/components/ScreenshotCarousel'
 
 const RELEASES_PAGE  = 'https://github.com/Tong-Minh/Flashcards/releases/latest'
 const LATEST_RELEASE = 'https://api.github.com/repos/Tong-Minh/Flashcards/releases/latest'
@@ -61,9 +62,13 @@ export default function Login() {
           <img src="/icon.svg" alt="" className="w-14 h-14 mx-auto mb-4" />
           <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Flashcards</h1>
           <p className="text-gray-500 dark:text-gray-400 mt-3 max-w-xl mx-auto text-pretty">
-            Spaced-repetition flashcards, like Anki: FSRS scheduling, rich cards (math, code, images, audio, image occlusion),
-            stats, and Anki deck import.
+            Free spaced-repetition flashcards. It studies like Anki, looks like Quizlet, and you write cards the way you
+            write in Notion. Make your own decks, or bring them from Anki.
           </p>
+        </div>
+
+        <div className="mb-10">
+          <ScreenshotCarousel />
         </div>
 
         <div className="grid gap-4 lg:grid-cols-2">
@@ -129,7 +134,10 @@ export default function Login() {
             <div>
               <p className="font-medium text-gray-800 dark:text-gray-100 mb-1.5">From Anki</p>
               <ol className="list-decimal pl-5 space-y-1 marker:text-gray-400 text-pretty">
-                <li>In Anki: File → Export, choose <span className="font-medium">Anki Deck Package (.apkg)</span>, and check “Include media”.</li>
+                <li>
+                  Download a deck from <a href="https://ankiweb.net/shared/decks" target="_blank" rel="noopener noreferrer" className="text-indigo-600 dark:text-indigo-400 hover:underline">AnkiWeb’s shared decks</a>,
+                  or in Anki: File → Export, choose <span className="font-medium">Anki Deck Package (.apkg)</span>, and check “Include media”.
+                </li>
                 <li>In Flashcards: <span className="font-medium">+ New → Import from Anki</span>, and pick the file.</li>
                 <li>Decks become sets (subdecks too); math, code, images and audio come along.</li>
               </ol>

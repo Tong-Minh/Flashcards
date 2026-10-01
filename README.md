@@ -1,24 +1,73 @@
 # Flashcards
 
-A flashcard app with spaced repetition (FSRS), rich cards (formatting, code, math), and several
-question types: open-ended, multiple choice, fill in the blank, type the answer, true/false, and
-matching.
+Free spaced-repetition flashcards for Windows and Mac. It studies like Anki, looks like Quizlet, and
+you write cards the way you write in Notion: type `/` for code, math, images and more.
 
-It comes in two versions built from the same code:
+Make your own decks, or bring them from Anki: download any deck from
+[AnkiWeb's shared decks](https://ankiweb.net/shared/decks) (or export your own from Anki) and import
+the `.apkg`.
 
-- **Web app:** sign in with Google and your sets sync across devices. It also has friends, a
-  Discover page of public sets, and share links. It installs as an app on phones (Add to Home Screen).
-- **Desktop app (Windows and Mac):** no account. Your cards are files in a folder on your computer, it works
-  offline, and there's no practical limit on set size. Cards can include images (paste, drag, or /image).
-  It updates itself from GitHub Releases.
+**[Download the latest version](https://github.com/Tong-Minh/Flashcards/releases/latest)**
+(Windows `-setup.exe`, Mac `.dmg`)
 
-Both have Anki-style studying: undo, bury and suspend, Space to flip, and a **Stats** page (forecast,
-calendar, true retention, answer buttons, intervals) built from a log of every rating. **What's new**
-in the sidebar lists every version.
+![Library](public/screenshots/library.webp)
 
-Both can **import Anki decks** (`.apkg` or a text export) from the **+ New** menu: decks become sets,
-clozes become fill-in-the-blank cards, and math, code, and formatting carry over. Every card starts as new, and
-images come along in the desktop app.
+## What it does
+
+### Studies like Anki
+
+FSRS spaced repetition decides what comes up and when. Rate each card Again, Hard, Good or Easy and see
+when it will come back. Undo, bury and suspend are one key away (Z, -, @), and Space flips the card.
+Study settings let you set your target retention and fit the scheduler to your own history with
+Anki's optimizer. A Stats page shows a forecast, a study calendar, true retention and more.
+
+| Question | Answer |
+|---|---|
+| ![A fill-in-the-blank card](public/screenshots/study-question.webp) | ![The answer with rating buttons](public/screenshots/study-answer.webp) |
+
+### Looks like Quizlet
+
+A set shows every card with its formatting and pictures, with search (matches are highlighted),
+progress, and a Study button with what's due. Collections group sets, and tags and search find them.
+
+![A set](public/screenshots/set.webp)
+
+![A collection](public/screenshots/collection.webp)
+
+### Edits like Notion
+
+Cards are written in a rich editor. Type `/` to add a code block (with syntax highlighting), inline or
+block math (LaTeX), an image, or audio. You never see raw markup.
+
+![The / menu](public/screenshots/slash-menu.webp)
+
+Seven kinds of card: open-ended, type the answer, multiple choice, true/false, fill in the blank,
+matching, and image occlusion (drag boxes over a picture's labels). Cards can also be studied both ways.
+
+![Editing a card](public/screenshots/edit-card.webp)
+
+### Bring your Anki decks
+
+**+ New → Import from Anki** takes an `.apkg` (or Anki's text export). Subdecks become sets inside a
+collection, clozes become fill-in-the-blank cards, and math, code, formatting, images and audio come
+along. Every card starts as new.
+
+| | |
+|---|---|
+| ![The + New menu](public/screenshots/new-menu.webp) | ![Importing an Anki deck](public/screenshots/import-anki.webp) |
+
+### Your cards are your files
+
+The desktop app has no account. Everything lives in a folder you choose (put it in OneDrive or Dropbox
+for backups), works offline, and has no limit on set size. It updates itself from GitHub Releases.
+
+![The library folder](public/screenshots/library-folder.webp)
+
+## The web version
+
+There is also a web version (sign in with Google, sync across devices, install it on your phone, plus
+friends, Discover and share links). It's private: just for me and my friends, and new accounts need an
+invite password. Anyone can use the desktop app.
 
 ## Getting the desktop app
 
@@ -31,8 +80,8 @@ The app isn't notarized by Apple, so the first time you open it macOS blocks it:
 **System Settings → Privacy & Security** and click **Open Anyway**. Updates install normally after that.
 
 On first launch, choose a folder for your library. Putting it inside OneDrive or Dropbox gets you
-automatic backups. To bring your sets over from the web app, use the download button at the bottom
-of the web app's sidebar, then the import button in the desktop app's sidebar.
+automatic backups. To move sets between the web version, Windows and Mac, use **Export library** in
+one app's ⋯ menu, then **Import library** in the other's.
 
 ## Library folder layout
 
