@@ -16,6 +16,11 @@ export const paths = {
     ? desktop('/sets/_/edit/_', id, `&card=${cardId}`)
     : `/sets/${id}/edit/${cardId}`,
   collection: (id: string) => IS_DESKTOP ? desktop('/collections/_', id) : `/collections/${id}`,
+  // Link with a plain <a>, not <Link>: the page is served with cross-origin isolation headers, which
+  // only apply on a full page load (lib/optimizer.ts)
+  optimize:   IS_DESKTOP ? '/optimize/' : '/optimize',
+  // For plain <a> links out of /optimize (the static export's folders end in a slash)
+  settings:   IS_DESKTOP ? '/settings/' : '/settings',
   // One static page in both builds; the scope is in the query string
   stats:      (scope?: { set?: string; collection?: string }) =>
     scope?.set ? `/stats?set=${scope.set}` : scope?.collection ? `/stats?collection=${scope.collection}` : '/stats',

@@ -14,6 +14,29 @@ export interface FlashcardSet {
   icon: string | null
   color: string | null
   position: number | null
+  // This set's target retention (0.7–0.99); null or missing = the user's default
+  desired_retention?: number | null
+}
+
+// The user's study settings (user_settings on the web, library.json on desktop)
+export interface StudySettings {
+  // Target retention for sets without their own (FSRS's request_retention)
+  desiredRetention: number
+  // The hour (local) a new study day starts
+  newDayHour: number
+  // Optimized FSRS parameters, or null for the defaults
+  fsrsParams: number[] | null
+  optimizedAt: string | null
+  // How many reviews the log held when last optimized (for the "optimize again" nudge)
+  reviewsAtOptimize: number
+}
+
+export const DEFAULT_STUDY_SETTINGS: StudySettings = {
+  desiredRetention: 0.9,
+  newDayHour: 4,
+  fsrsParams: null,
+  optimizedAt: null,
+  reviewsAtOptimize: 0,
 }
 
 export interface Collection {

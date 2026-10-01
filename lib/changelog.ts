@@ -13,6 +13,18 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.1.5',
+    date: '2026-10-01',
+    title: 'Target retention and FSRS optimization',
+    changes: [
+      'Study settings (in the sidebar, and on the Stats page on phones): choose your target retention, how likely you should be to remember a card when it comes back. The default is 90%.',
+      'Each set can have its own target retention in its settings, for example 95% before an exam.',
+      'Optimize FSRS: fit the scheduler to your own review history with Anki’s optimizer, running on your device. You see how well the current and new parameters predict your past reviews before choosing.',
+      'Stats suggests optimizing once you have enough new reviews.',
+      'Choose when a new study day starts (4 AM by default).',
+    ],
+  },
+  {
     version: '0.1.4',
     date: '2026-10-01',
     title: 'Undo, bury, suspend, and stats',

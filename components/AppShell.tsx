@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
-import { BarChart3, Compass, Library, LogOut, Moon, Plus, Sun, Users } from 'lucide-react'
+import { BarChart3, Compass, Library, LogOut, Moon, Plus, SlidersHorizontal, Sun, Users } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
 import { useUser } from '@/components/AuthGuard'
 import { useDarkMode } from '@/components/ThemeProvider'
@@ -15,9 +15,10 @@ import { IS_DESKTOP } from '@/lib/platform'
 import { APP_VERSION } from '@/lib/changelog'
 import { DesktopAppPromo, DesktopLibraryFooter, DownloadLibraryButton } from '@/components/LibraryControls'
 
-// Pages that get the whole screen: signing in, and studying (focus mode)
+// Pages that get the whole screen: signing in, studying (focus mode), and the optimizer (its
+// cross-origin isolation would block the sidebar's profile picture)
 function isBare(pathname: string) {
-  return pathname === '/login' || /^\/sets\/[^/]+\/study/.test(pathname)
+  return pathname === '/login' || /^\/optimize\/?$/.test(pathname) || /^\/sets\/[^/]+\/study/.test(pathname)
 }
 
 // Desktop (lg and up) gets a fixed sidebar with navigation and the user's collections; phones keep the
@@ -87,6 +88,7 @@ function Sidebar() {
       <nav className="px-3 mt-4 space-y-0.5">
         <NavItem href="/"               active={tab === 'mine'}     icon={<Library size={18} />}>My Sets</NavItem>
         <NavItem href="/stats"          active={pathname === '/stats'} icon={<BarChart3 size={18} />}>Stats</NavItem>
+        <NavItem href="/settings"       active={pathname === '/settings'} icon={<SlidersHorizontal size={18} />}>Study settings</NavItem>
         {/* Social features need the web app's server */}
         {!IS_DESKTOP && <>
           <NavItem href="/?tab=discover"  active={tab === 'discover'} icon={<Compass size={18} />}>Discover</NavItem>

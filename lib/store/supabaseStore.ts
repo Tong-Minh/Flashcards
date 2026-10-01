@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase/client'
 import { fetchAllRows, MAX_CARDS_PER_SET } from '@/lib/fetchAll'
-import type { Collection, Flashcard, FlashcardSet, FlashcardWithProgress, ReviewLog, SetStudyStats } from '@/lib/types'
+import type { Collection, Flashcard, FlashcardSet, FlashcardWithProgress, ReviewLog, SetStudyStats, StudySettings } from '@/lib/types'
 import { PartialInsertError, type SetWithStats, type Store } from './types'
 
 // Id lists go in the query string, so bulk edits are chunked to stay well under URL length limits
@@ -231,6 +231,16 @@ export const supabaseStore: Store = {
       return q.order('reviewed_at').order('id')
     })
     return rows.map(({ flashcards, ...r }) => ({ ...r, set_id: (Array.isArray(flashcards) ? flashcards[0] : flashcards)?.set_id ?? null }))
+  },
+
+  async getSettings() {
+    const { data } = await check(supabase.from('user_settings').select('settings').maybeSingle())
+    return (data?.settings as Partial<StudySettings> | undefined) ?? null
+  },
+
+  async saveSettings(settings) {
+    // user_id defaults to the signed-in user, so the upsert targets their row
+    await check(supabase.from('user_settings').upsert({ settings, updated_at: new Date().toISOString() }, { onConflict: 'user_id' }))
   },
 
   async getStudyHistory(setIds) {

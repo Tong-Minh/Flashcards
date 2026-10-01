@@ -13,6 +13,9 @@ import {
 import { BarChart, Heatmap, Legend, Segmented, StackedBar, StatsSection } from '@/components/stats/Charts'
 import type { Collection, FlashcardWithProgress, ReviewLog, StudyHistoryEntry } from '@/lib/types'
 import type { SetWithStats } from '@/lib/store/types'
+import { SlidersHorizontal } from 'lucide-react'
+import { cachedSettings } from '@/lib/studySettings'
+import { MIN_REVIEWS } from '@/lib/optimizer'
 
 // Colors for card kinds, shared by the charts and their legends
 const C = {
@@ -108,6 +111,14 @@ function Stats() {
         <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 flex-1 min-w-0 truncate">
           Stats{scopeName ? <span className="text-gray-400 dark:text-gray-500 font-semibold"> · {scopeName}</span> : null}
         </h1>
+        <Link
+          href="/settings"
+          className="lg:hidden p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+          aria-label="Study settings"
+          title="Study settings"
+        >
+          <SlidersHorizontal size={19} />
+        </Link>
         <select
           value={scopeValue}
           onChange={e => changeScope(e.target.value)}
@@ -127,6 +138,20 @@ function Stats() {
           )}
         </select>
       </div>
+
+      {/* Optimizing is worthwhile once enough new reviews have piled up (only knowable with every review loaded) */}
+      {data && !setScope && !collectionScope && data.reviews.length - cachedSettings().reviewsAtOptimize >= MIN_REVIEWS && (
+        <div className="flex flex-wrap items-center gap-3 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-100 dark:border-indigo-800 rounded-2xl px-4 py-3 mb-4">
+          <p className="flex-1 min-w-0 text-sm text-indigo-800 dark:text-indigo-200 text-pretty">
+            {cachedSettings().fsrsParams
+              ? `${(data.reviews.length - cachedSettings().reviewsAtOptimize).toLocaleString()} reviews since FSRS was last optimized. Optimizing again keeps your schedule accurate.`
+              : `You have ${data.reviews.length.toLocaleString()} reviews: enough to fit FSRS to how you remember.`}
+          </p>
+          <a href={paths.optimize} className="flex-shrink-0 bg-indigo-600 text-white px-3.5 py-1.5 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors">
+            Optimize
+          </a>
+        </div>
+      )}
 
       {error ? (
         <p className="text-center text-sm text-red-600 dark:text-red-400 py-16">{error}</p>

@@ -35,6 +35,7 @@ import type { CardProgress, CardStatus, Collection, FlashcardSet, FlashcardWithP
 import { paths } from '@/lib/paths'
 import { IS_DESKTOP } from '@/lib/platform'
 import { confirmAction, notify } from '@/lib/dialogs'
+import { cachedSettings, RETENTION_CHOICES } from '@/lib/studySettings'
 
 const PAGE_SIZE = 50
 
@@ -316,6 +317,17 @@ export default function SetDetail() {
     const clamped = Math.max(1, Math.min(999, val || 1))
     setDailyLimitInput(clamped)
     saveSetSettings(id, { ...getSetSettings(id), dailyNewLimit: clamped })
+  }
+
+  async function saveRetention(value: number | null) {
+    const previous = set?.desired_retention ?? null
+    setSet(s => s ? { ...s, desired_retention: value } : s)
+    try {
+      await store.updateSet(id, { desired_retention: value })
+    } catch {
+      setSet(s => s ? { ...s, desired_retention: previous } : s)
+      notify('Could not save the target retention. Please try again.')
+    }
   }
 
   async function resetProgress() {
@@ -1031,6 +1043,24 @@ export default function SetDetail() {
                   onBlur={e => saveDailyLimit(Number(e.target.value))}
                   className="w-24 border border-gray-300 dark:border-gray-600 rounded-xl px-3 py-2 text-sm text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-700 outline-none focus:border-indigo-500"
                 />
+              </div>
+
+              {/* FSRS — this set's target retention */}
+              <div className="mb-5">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-0.5">
+                  Target retention
+                </label>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mb-1.5 text-pretty">
+                  How likely you should be to remember a card when it comes back. Higher means more reviews, e.g. 95% before an exam.
+                </p>
+                <select
+                  value={set?.desired_retention ?? ''}
+                  onChange={e => saveRetention(e.target.value ? Number(e.target.value) : null)}
+                  className="border border-gray-300 dark:border-gray-600 rounded-xl px-3 py-2 text-sm text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-700 outline-none focus:border-indigo-500"
+                >
+                  <option value="">Default ({Math.round(cachedSettings().desiredRetention * 100)}%)</option>
+                  {RETENTION_CHOICES.map(r => <option key={r} value={r}>{Math.round(r * 100)}%</option>)}
+                </select>
               </div>
 
               <button

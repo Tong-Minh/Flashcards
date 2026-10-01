@@ -10,13 +10,27 @@ const desktop = process.env.NEXT_PUBLIC_TARGET === 'desktop'
 // The app's version (package.json, which `npm version` bumps), shown with the version history
 const version = (JSON.parse(readFileSync('./package.json', 'utf8')) as { version: string }).version
 
+// The FSRS optimizer (lib/optimizer.ts) trains on several threads, which needs a cross-origin
+// isolated page. Only /optimize gets these headers: they block cross-origin images (like Google
+// profile pictures) elsewhere. The desktop app sets them for every page in tauri.conf.json.
+const ISOLATED = [
+  { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
+  { key: 'Cross-Origin-Embedder-Policy', value: 'require-corp' },
+]
+
 const nextConfig: NextConfig = {
   env: { NEXT_PUBLIC_APP_VERSION: version },
-  ...(desktop && {
-    output: 'export',
-    trailingSlash: true,
-    images: { unoptimized: true },
-  }),
+  ...(desktop
+    ? {
+        output: 'export',
+        trailingSlash: true,
+        images: { unoptimized: true },
+      }
+    : {
+        async headers() {
+          return [{ source: '/optimize', headers: ISOLATED }]
+        },
+      }),
 }
 
 export default nextConfig

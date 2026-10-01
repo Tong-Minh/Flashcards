@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useRouteIds } from '@/lib/useRouteIds'
 import Link from 'next/link'
-import { fsrs, createEmptyCard, Rating, State, type Card as FSRSCard, type RecordLog } from 'ts-fsrs'
+import { createEmptyCard, Rating, State, type Card as FSRSCard, type FSRS, type RecordLog } from 'ts-fsrs'
 import { haptic, hasTextSelection } from '@/lib/haptic'
 import { store } from '@/lib/store'
 import { ContentRenderer, previewText } from '@/components/ContentRenderer'
@@ -23,9 +23,9 @@ import type { FlashcardWithProgress, CardStatus, CardProgress, FSRSState, Review
 import { paths } from '@/lib/paths'
 import { nextStudyDay } from '@/lib/day'
 import { progressToFSRS } from '@/lib/srs'
+import { cachedSettings, loadSettings, retentionFor, scheduler } from '@/lib/studySettings'
 import { UndoToast, type Toast } from '@/components/UndoToast'
 import { Ban, EyeOff, Undo2, type LucideIcon } from 'lucide-react'
-const f = fsrs()
 
 type SRSRating  = 1 | 2 | 3 | 4
 type Phase      = 'loading' | 'pre-session' | 'session' | 'view' | 'done'
@@ -148,6 +148,9 @@ export default function Study() {
   const undoStack   = useRef<UndoEntry[]>([])
   const [undoCount,      setUndoCount]      = useState(0)
   const busy        = useRef(false)
+  // Replaced once the set and settings load; until then (and offline) the cached settings
+  const fsrsRef     = useRef<FSRS>(null!)
+  fsrsRef.current ??= scheduler(cachedSettings().desiredRetention)
   // When the current card appeared, for the review's duration
   const shownAt     = useRef(Date.now())
   useEffect(() => { shownAt.current = Date.now() }, [cardKey, phase])
@@ -234,6 +237,9 @@ export default function Study() {
 
     if (!store.remote || navigator.onLine) {
       try {
+        // The set's target retention, or the user's default, with their FSRS parameters
+        const [settings, set] = await Promise.all([loadSettings(), store.getSet(setId).catch(() => null)])
+        fsrsRef.current = scheduler(retentionFor(set, settings), settings)
         cards = await store.getCards(setId)
         cacheCards(setId, cards)
       } catch { setIsOffline(true) }
@@ -421,7 +427,7 @@ export default function Study() {
       const card = queue[0]
       if (toBack && !revealed && card) {
         const current = progressMap.current.get(card.id) ?? card.progress
-        setScheduling(f.repeat(progressToFSRS(current), new Date()))
+        setScheduling(fsrsRef.current.repeat(progressToFSRS(current), new Date()))
         setRevealed(true)
       }
     }, 150)
@@ -510,7 +516,7 @@ export default function Study() {
       setTodayNewCount(c => c + 1)
     }
 
-    const result  = f.repeat(progressToFSRS(current), now)
+    const result  = fsrsRef.current.repeat(progressToFSRS(current), now)
     const next    = result[rating].card
     const newStatus = deriveStatus(next)
     const becameMastered = newStatus === 'mastered' && (current?.status !== 'mastered')

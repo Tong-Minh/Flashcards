@@ -1,6 +1,7 @@
 import { sortSets } from './sort'
 import type {
   CardProgress, Collection, Flashcard, FlashcardSet, FlashcardWithProgress, ReviewLog, SetStudyStats, StudyHistoryEntry,
+  StudySettings,
 } from '@/lib/types'
 import type { Files } from './files'
 import type { SetWithStats, Store } from './types'
@@ -21,6 +22,8 @@ export const LOCAL_USER_ID   = 'local'
 export interface LibraryFile {
   version: number
   collections: Collection[]
+  // Study settings (target retention, new-day hour, FSRS parameters)
+  settings?: StudySettings
 }
 
 export type SetFile = FlashcardSet & {
@@ -442,6 +445,17 @@ export function createLocalStore(files: Files): LocalStore {
         .map(r => ({ ...r, set_id: cardSet.get(r.card_id) ?? r.set_id }))
         .filter(r => !wanted || (r.set_id !== null && wanted.has(r.set_id)))
         .sort((a, b) => a.reviewed_at.localeCompare(b.reviewed_at))
+    },
+
+    async getSettings() {
+      await ensure()
+      return library.settings ?? null
+    },
+
+    async saveSettings(settings) {
+      await ensure()
+      library.settings = settings
+      await writeLibrary()
     },
 
     async getStudyHistory(setIds) {

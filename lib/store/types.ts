@@ -1,6 +1,6 @@
 import type {
   CardDraft, CardProgress, Collection, Flashcard, FlashcardSet, FlashcardWithProgress, ReviewLog, SetStudyStats,
-  StudyHistoryEntry,
+  StudyHistoryEntry, StudySettings,
 } from '@/lib/types'
 
 // A set with the stats shown on the home screen
@@ -12,7 +12,7 @@ export interface SetWithStats extends FlashcardSet {
 }
 
 export type SetInput = Pick<FlashcardSet, 'name' | 'description' | 'is_public' | 'tags' | 'collection_id' | 'icon' | 'color'>
-export type SetPatch = Partial<SetInput>
+export type SetPatch = Partial<SetInput> & Pick<FlashcardSet, 'desired_retention'>
 export type CollectionInput = Pick<Collection, 'name'> & Partial<Pick<Collection, 'description' | 'tags' | 'icon' | 'color'>>
 export type CollectionPatch = Partial<Pick<Collection, 'name' | 'description' | 'tags' | 'icon' | 'color' | 'is_public'>>
 // FSRS fields saved after a review (the row's id and card are implied)
@@ -83,6 +83,10 @@ export interface Store {
   getReviews(setIds?: string[]): Promise<ReviewLog[]>
   // Session totals (and rolled-up days), for history before the review log
   getStudyHistory(setIds?: string[]): Promise<StudyHistoryEntry[]>
+
+  // Study settings (target retention, new-day hour, FSRS parameters); null if never saved
+  getSettings(): Promise<Partial<StudySettings> | null>
+  saveSettings(settings: StudySettings): Promise<void>
 
   // Card images (desktop app only). saveImage stores the bytes and returns the path cards use
   // ("images/<hash>.<ext>"); imageUrl gives a URL to display one, or null if it's missing.
