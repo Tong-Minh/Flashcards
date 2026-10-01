@@ -99,6 +99,7 @@ function WebAuthGuard({ children }: { children: React.ReactNode }) {
 
         if (event === 'SIGNED_OUT') {
           claimed.current = false
+          try { sessionStorage.removeItem(INVITE_KEY) } catch {}
           router.replace('/login')
         }
 
@@ -138,6 +139,17 @@ function WebAuthGuard({ children }: { children: React.ReactNode }) {
 export const INVITE_KEY = 'fc_invite'
 const memberKey = (id: string) => `fc_member_${id}`
 
+// Removes the pending invite password from the tab and hands it to this user only (kept per user
+// so a re-run effect still sees it)
+let taken: { userId: string; password: string | null } | null = null
+function takeInvite(userId: string): string | null {
+  if (taken?.userId === userId) return taken.password
+  let password: string | null = null
+  try { password = sessionStorage.getItem(INVITE_KEY); sessionStorage.removeItem(INVITE_KEY) } catch {}
+  taken = { userId, password }
+  return password
+}
+
 // The cloud version is invite-only: an account has to join with the invite password once (checked by
 // the database's join_with_invite, which also enforces it: only members can create sets). Members are
 // remembered on the device so the app opens instantly and offline.
@@ -163,6 +175,9 @@ function MembershipGate({ user, children }: { user: User; children: React.ReactN
   }
 
   useEffect(() => {
+    // Typed on the front page before signing in with Google. Taken (and removed) whoever signed in,
+    // so a password left over from one account's sign-in can't let a later account in.
+    const pending = takeInvite(user.id)
     if (state === 'member') return
     let alive = true
     ;(async () => {
@@ -172,9 +187,6 @@ function MembershipGate({ user, children }: { user: User; children: React.ReactN
       // still refuses non-members
       if (error) { setState('member'); return }
       if (data?.member) { welcome(); return }
-      // Typed on the front page before signing in with Google
-      let pending: string | null = null
-      try { pending = sessionStorage.getItem(INVITE_KEY); sessionStorage.removeItem(INVITE_KEY) } catch {}
       if (pending && await join(pending)) return
       if (alive) setState('join')
     })()
