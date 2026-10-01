@@ -71,15 +71,15 @@ export function FlipCard({ card, onSwipeAway, className = '' }: FlipCardProps) {
   const moved   = useRef(false)
   const timers  = useRef<ReturnType<typeof setTimeout>[]>([])
   const cardRef = useRef<HTMLDivElement>(null)
-  // Tallest the card has been: a flip can grow the card but never shrinks it
+  // While the back shows, the front's height: a shorter back doesn't shrink the card, a longer one
+  // grows it, and flipping back to the front returns the card to the front's own size
   const [minHeight, setMinHeight] = useState<number>()
 
   useEffect(() => () => timers.current.forEach(clearTimeout), [])
 
   function flip() {
     if (flipping) return
-    const h = cardRef.current?.offsetHeight
-    if (h) setMinHeight(m => Math.max(m ?? 0, h))
+    setMinHeight(showBack ? undefined : cardRef.current?.offsetHeight)
     haptic(20)
     setEntered(true)
     setFlipping(true)

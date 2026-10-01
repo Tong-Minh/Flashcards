@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import type { ReactNode } from 'react'
 import { tokenizeInline, tokensToPlainText, isMathBlockLine, matchImageLine, matchListLine, type InlineToken } from '@/lib/markup'
 import { CardImage } from '@/components/CardImage'
+import { normalizeLatex } from '@/lib/latex'
 import Prism from 'prismjs'
 import katex from 'katex'
 import 'katex/dist/katex.min.css'
@@ -148,7 +149,7 @@ function CopyCodeButton({ code }: { code: string }) {
 
 export function renderMath(expr: string, display: boolean): string {
   try {
-    return katex.renderToString(expr.trim(), { throwOnError: false, displayMode: display, output: 'html' })
+    return katex.renderToString(normalizeLatex(expr.trim(), display), { throwOnError: false, displayMode: display, output: 'html' })
   } catch {
     return `<span class="font-mono text-sm">${escapeHtml(expr)}</span>`
   }

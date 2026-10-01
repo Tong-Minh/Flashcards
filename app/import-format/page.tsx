@@ -159,7 +159,7 @@ def hello():
 \`\`\``}</pre>
             </div>
 
-            <p className="text-gray-400 pt-1">In the tab format, use <span className="font-mono">\\n</span> for any line break (code blocks, lists, math blocks), since each card must be one line.</p>
+            <p className="text-gray-400 pt-1">In the tab format, use <span className="font-mono">\\n</span> for any line break (code blocks, lists, math blocks), since each card must be one line. Code that goes with a question stays in the question column: the question, <span className="font-mono">\\n</span>, then the code block.</p>
           </div>
         </section>
 

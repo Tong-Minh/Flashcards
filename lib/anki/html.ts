@@ -97,17 +97,21 @@ export function htmlToMarkup(html: string, report: ConvertReport = emptyReport()
   let blocks: JSONContent[] = []
   let para: JSONContent[] = []
 
-  const flushPara = () => {
-    para = tidyRuns(para)
-    // Trim the paragraph's outer whitespace
-    while (para.length && para[0].type === 'text' && !para[0].text!.trim()) para.shift()
-    while (para.length && para[para.length - 1].type === 'text' && !para[para.length - 1].text!.trim()) para.pop()
-    if (para.length) {
-      if (para[0].type === 'text') para[0] = { ...para[0], text: para[0].text!.replace(/^\s+/, '') }
-      const last = para[para.length - 1]
-      if (last.type === 'text') para[para.length - 1] = { ...last, text: last.text!.replace(/\s+$/, '') }
-      blocks.push({ type: 'paragraph', content: para })
+  // Tidied runs without the outer whitespace (for a paragraph or heading)
+  const trimRuns = (runs: JSONContent[]): JSONContent[] => {
+    runs = tidyRuns(runs)
+    while (runs.length && runs[0].type === 'text' && !runs[0].text!.trim()) runs.shift()
+    while (runs.length && runs[runs.length - 1].type === 'text' && !runs[runs.length - 1].text!.trim()) runs.pop()
+    if (runs.length) {
+      if (runs[0].type === 'text') runs[0] = { ...runs[0], text: runs[0].text!.replace(/^\s+/, '') }
+      const last = runs[runs.length - 1]
+      if (last.type === 'text') runs[runs.length - 1] = { ...last, text: last.text!.replace(/\s+$/, '') }
     }
+    return runs
+  }
+  const flushPara = () => {
+    para = trimRuns(para)
+    if (para.length) blocks.push({ type: 'paragraph', content: para })
     para = []
   }
   const pushBlock = (node: JSONContent) => { flushPara(); blocks.push(node) }
@@ -158,6 +162,10 @@ export function htmlToMarkup(html: string, report: ConvertReport = emptyReport()
     const el = node as Element
     const tag = el.tagName.toLowerCase()
     if (SKIP.has(tag) || hidden(el)) return
+    // Instructions for using Anki itself ("In order to suspend this card: … AnkiDroid: …"). Only the
+    // innermost box holding them, so a wrapper around the whole card is never dropped.
+    if (/^(div|p|ul|ol|section|aside)$/.test(tag) && /\bAnki(Droid|Mobile)\b/.test(el.textContent ?? '') &&
+        !el.querySelector('div, section, table, h1, h2, h3, h4, h5, h6, img, anki-math')) return
 
     if (tag === 'br') { blankLine(); return }
     if (tag === 'anki-math') {
@@ -189,7 +197,7 @@ export function htmlToMarkup(html: string, report: ConvertReport = emptyReport()
     if (/^h[1-6]$/.test(tag)) {
       flushPara()
       el.childNodes.forEach(c => walk(c, marks))
-      const content = para
+      const content = trimRuns(para)
       para = []
       if (content.length) blocks.push({ type: 'heading', attrs: { level: Math.min(3, Number(tag[1])) }, content })
       return

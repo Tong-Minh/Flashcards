@@ -24,6 +24,29 @@ export const MEDIA_PREFIX = 'anki-media/'
 
 const naturalCompare = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })
 
+// Field names a template uses, in order ({{Field}}, {{#Field}}, {{text:Field}}…)
+function templateFields(fmt: string): Set<string> {
+  const names = new Set<string>()
+  for (const m of fmt.matchAll(/\{\{\s*[#^/]?\s*(?:[^{}:]+:)*([^{}]+?)\s*\}\}/g)) names.add(m[1])
+  return names
+}
+
+// Bookkeeping fields that aren't card content: "ID", "Source", or values like "LoF-ES-EN-0001"
+const isIdField = (name: string, value: string) =>
+  /^(id|guid|note ?id|sort ?field|source|url|link|tags?)$/i.test(name.trim()) || /^[\w-]+-\d+$/.test(htmlToText(value))
+
+// A note with only a front, split into question and answer: leading heading lines vs the rest, or
+// else the first of its fields vs the others. Null if it can't be split.
+function splitInfoNote(front: string, fieldTexts: string[]): [string, string] | null {
+  const lines = front.split('\n')
+  let i = 0
+  while (i < lines.length && (/^#{1,3} /.test(lines[i]) || (!lines[i].trim() && i > 0 && /^#{1,3} /.test(lines[i - 1])))) i++
+  const head = lines.slice(0, i).join('\n').trim(), rest = lines.slice(i).join('\n').trim()
+  if (head && rest) return [head, rest]
+  if (fieldTexts.length >= 2) return [fieldTexts[0], fieldTexts.slice(1).join('\n\n')]
+  return null
+}
+
 export function planImport(col: AnkiCollection, { images }: { images: boolean }): ImportPlan {
   const report = { ...emptyReport(), cards: 0, skippedEmpty: 0, unsupported: {} as Record<string, number> }
   const mediaNames: string[] = []
@@ -108,7 +131,7 @@ export function planImport(col: AnkiCollection, { images }: { images: boolean })
       // The back usually repeats the front above <hr id=answer>; keep what's below it
       const hr = aHtml.match(/<hr[^>]*id\s*=\s*["']?answer["']?[^>]*>/i)
       const backHtml = hr ? aHtml.slice(hr.index! + hr[0].length) : aHtml.includes(qHtml) && qHtml.trim() ? aHtml.replace(qHtml, '') : aHtml
-      const question = md(qHtml)
+      let question = md(qHtml)
       if (!question) { report.skippedEmpty++; continue }
       const typed = typedField(tmpl.qfmt)
       const backText = htmlToText(backHtml)
@@ -117,7 +140,22 @@ export function planImport(col: AnkiCollection, { images }: { images: boolean })
       } else if (/^(true|false)$/i.test(backText)) {
         draft = { type: 'true_false', question, answer: backText.toLowerCase() === 'true' ? 'True' : 'False', options: null, pairs: null }
       } else {
-        const answer = md(backHtml)
+        let answer = md(backHtml)
+        if (!answer && /<script/i.test(tmpl.afmt)) {
+          // The back is filled in by a script ({{FrontSide}} plus JavaScript), which we don't run:
+          // show the note's fields the front doesn't use instead (translation, notes…)
+          const onFront = templateFields(tmpl.qfmt)
+          answer = model.fields
+            .filter(name => !onFront.has(name) && !isIdField(name, fields[name] ?? ''))
+            .map(name => md(fields[name] ?? ''))
+            .filter(Boolean)
+            .join('\n\n')
+        } else if (!answer) {
+          // A front-only "info" note (you read it, then press Good): its heading becomes the
+          // question and the rest the answer, or else its first field and the rest
+          const split = splitInfoNote(question, [...templateFields(tmpl.qfmt)].filter(n => n in fields).map(n => md(fields[n])).filter(Boolean))
+          if (split) [question, answer] = split
+        }
         if (!answer) { report.skippedEmpty++; continue }
         draft = { type: 'open_ended', question, answer, options: null, pairs: null }
       }

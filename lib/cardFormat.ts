@@ -33,7 +33,16 @@ function trueFalse(answer: string): 'True' | 'False' | null {
   return a === 'true' ? 'True' : a === 'false' ? 'False' : null
 }
 
-function parseLine(parts: string[]): ParsedCard | null {
+// A field that is nothing but one fenced code block
+const isCodeOnly = (s: string | undefined) => !!s && /^```[\s\S]*```$/.test(s.trim()) && s.split('```').length === 3
+
+function parseLine(fields: string[]): ParsedCard | null {
+  // AIs (and an old version of our own prompt) sometimes give a question's code its own column:
+  // question ⇥ code ⇥ answer. The code belongs to the question. Cards whose options or answer are
+  // code blocks aren't affected: the column after the code would be code too, or missing.
+  const parts = fields.length >= 3 && !MATCH_PREFIX.test(fields[0]) && isCodeOnly(fields[1]) && fields[2] && !isCodeOnly(fields[2])
+    ? [`${fields[0]}\n${fields[1]}`, ...fields.slice(2)]
+    : fields
   const [first, ...rest] = parts
   if (!first) return null
 

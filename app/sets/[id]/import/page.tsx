@@ -31,8 +31,9 @@ Formats (use a real tab character between each column):
 Use type-the-answer only for short answers (a word, name, number, or term) that someone could type exactly; the check ignores capitalization, accents, and small typos. Use matching for sets of 3–6 related term/definition pairs.
 
 Code blocks: since each card must be one line, use \\n for line breaks inside code fields.
+Code that goes with a question belongs in the question column, after the question text and a \\n. Never give code its own column: the column after the question is always the answer.
 Always specify a language name after the opening backticks — it enables syntax highlighting. Supported names: python, javascript, typescript, jsx, tsx, java, c, cpp, csharp, go, rust, kotlin, swift, ruby, php, bash, sql, json, yaml, html. Example:
-What does this function return?[TAB]\`\`\`python\\ndef double(x):\\n    return x * 2\\n\`\`\`[TAB]The number multiplied by 2
+What does this function return?\\n\`\`\`python\\ndef double(x):\\n    return x * 2\\n\`\`\`[TAB]The number multiplied by 2
 
 For short inline code, use single backticks: What does \`n & (n-1)\` do?[TAB]Clears the lowest set bit of n
 
@@ -51,7 +52,7 @@ What is the powerhouse of the cell?	**Mitochondria** — produces ATP via cellul
 The ___ is the basic unit of heredity.	gene
 What type of bond holds the two DNA strands together?	Hydrogen bonds	Covalent bonds	Ionic bonds	Peptide bonds
 What does \`arr.sort()\` return in Python?	[red]None[/red] — it sorts *in-place* and returns nothing
-What does this function do?	\`\`\`python\\ndef fib(n):\\n    if n <= 1: return n\\n    return fib(n-1) + fib(n-2)\\n\`\`\`	Computes the nth Fibonacci number recursively
+What does this function do?\\n\`\`\`python\\ndef fib(n):\\n    if n <= 1: return n\\n    return fib(n-1) + fib(n-2)\\n\`\`\`	Computes the nth Fibonacci number recursively
 What is the quadratic formula?	$$x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$$
 What is Newton's second law?	$F = ma$ — [blue]force[/blue] equals **mass** times **acceleration**
 What is the time complexity of binary search?	$O(\\log n)$ — the search space **halves** each step
