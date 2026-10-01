@@ -1,5 +1,7 @@
 # Test build of the desktop app (no release): runs when desktop code changes on a branch, and
-# attaches the Windows installer and the Mac .dmg to the run under "Artifacts".
+# attaches the Windows installer and the Mac .dmg to the run under "Artifacts". A new branch
+# pushed with nothing changed from main doesn't count as changing those paths, so either commit
+# to it or start the build by hand (Actions → Desktop build → Run workflow).
 name: Desktop build
 
 on:
