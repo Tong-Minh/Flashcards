@@ -127,12 +127,24 @@ function WebAuthGuard({ children }: { children: React.ReactNode }) {
 
   if (!user && pathname !== '/login') {
     try { if (pathname !== '/') sessionStorage.setItem(RETURN_KEY, pathname) } catch {}
-    router.replace('/login')
+    router.replace(signInError() ? `/login?error=${encodeURIComponent(signInError()!)}` : '/login')
     return null
   }
 
   if (user && pathname !== '/login') return <MembershipGate user={user}>{children}</MembershipGate>
   return <UserContext.Provider value={user}>{children}</UserContext.Provider>
+}
+
+// Why a Google sign-in was refused, from the URL it came back to (query or hash), e.g. a new account
+// turned away by the database's invite check
+function signInError(): string | null {
+  if (typeof window === 'undefined') return null
+  for (const raw of [window.location.search, window.location.hash.replace(/^#/, '?')]) {
+    const params = new URLSearchParams(raw)
+    const message = params.get('error_description') ?? params.get('error')
+    if (message) return message.replace(/\+/g, ' ')
+  }
+  return null
 }
 
 // The invite password typed on the front page, used once the Google sign-in comes back

@@ -13,7 +13,15 @@ const LATEST_RELEASE = 'https://api.github.com/repos/Tong-Minh/Flashcards/releas
 export default function Login() {
   const [loading,   setLoading]   = useState(false)
   const [invite,    setInvite]    = useState('')
+  const [error,     setError]     = useState('')
   const [downloads, setDownloads] = useState({ windows: RELEASES_PAGE, mac: RELEASES_PAGE })
+
+  // A refused sign-in comes back with ?error= (AuthGuard passes it along): a new Google account
+  // without the invite password, which the database's sign-up hook turned away
+  useEffect(() => {
+    const message = new URLSearchParams(window.location.search).get('error')
+    if (message) setError(message)
+  }, [])
 
   useEffect(() => {
     fetch(LATEST_RELEASE)
@@ -27,8 +35,20 @@ export default function Login() {
 
   async function signInWithGoogle() {
     setLoading(true)
-    // Checked after Google brings you back (AuthGuard's MembershipGate)
-    try { if (invite.trim()) sessionStorage.setItem(INVITE_KEY, invite.trim()) } catch {}
+    setError('')
+    const password = invite.trim()
+    if (password) {
+      // Checked before Google: a right password lets this device create an account for the next
+      // 15 minutes (start_invite plus the database's sign-up hook). New accounts can't be made without it.
+      const { data, error } = await supabase.rpc('start_invite', { invite_password: password })
+      if (error || data !== true) {
+        setError(error ? (error.message.includes('Too many') ? error.message : 'Could not check the password. Try again.') : 'That’s not the invite password.')
+        setLoading(false)
+        return
+      }
+    }
+    // Also used after Google brings you back, to make the new account a member (MembershipGate)
+    try { if (password) sessionStorage.setItem(INVITE_KEY, password) } catch {}
     await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin } })
   }
 
@@ -79,6 +99,7 @@ export default function Login() {
               value={invite}
               onChange={e => setInvite(e.target.value)}
               placeholder="Invite password (first time only)"
+              onKeyDown={e => { if (e.key === 'Enter' && !loading) signInWithGoogle() }}
               className="w-full mb-2 border border-gray-300 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-700 outline-none focus:border-indigo-500"
             />
             <button
@@ -94,6 +115,10 @@ export default function Login() {
               </svg>
               {loading ? 'Redirecting…' : 'Sign in with Google'}
             </button>
+            {error && <p className="text-sm text-red-600 dark:text-red-400 mt-2 text-pretty">{error}</p>}
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-2 text-pretty">
+              Already joined? Leave the password empty. New accounts need it.
+            </p>
           </section>
         </div>
 
