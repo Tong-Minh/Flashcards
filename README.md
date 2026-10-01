@@ -17,13 +17,36 @@ the `.apkg`.
 ### Studies like Anki
 
 FSRS spaced repetition decides what comes up and when. Rate each card Again, Hard, Good or Easy and see
-when it will come back. Undo, bury and suspend are one key away (Z, -, @), and Space flips the card.
-Study settings let you set your target retention and fit the scheduler to your own history with
-Anki's optimizer. A Stats page shows a forecast, a study calendar, true retention and more.
+when it will come back. Study settings let you set your target retention (per set too, say 95% before an
+exam) and fit the scheduler to your own history with Anki's optimizer. A Stats page shows a forecast, a
+study calendar, true retention, answer buttons, and interval, stability and difficulty charts.
+**View** mode flips through a whole set without affecting your schedule.
 
 | Question | Answer |
 |---|---|
 | ![A fill-in-the-blank card](public/screenshots/study-question.webp) | ![The answer with rating buttons](public/screenshots/study-answer.webp) |
+
+### Never touch the mouse
+
+Everything works from the keyboard, so studying is just your hands on the keys:
+
+| Key | While studying |
+|---|---|
+| Space / Enter | Show the answer, then flip between the sides |
+| 1 2 3 4 | Again, Hard, Good, Easy |
+| A–D (or 1–n) | Pick a multiple-choice option |
+| T / F | Answer true or false |
+| Z (or Ctrl/⌘+Z) | Undo the last rating |
+| - / @ | Bury the card until tomorrow / suspend it |
+| R | Replay the card's audio |
+| ← → | Previous / next card in View mode |
+
+Everywhere else, press **`** (the key above Tab) to open a numbered menu of what you can do on that page,
+then a number to do it. On a set that's add a card, import, study, view, export, select, settings, stats
+and search; the home page and collections have their own. The numbers never change, so ` 3 starts
+studying a set and ` 1 adds a card, without looking.
+
+![The ` quick actions menu](public/screenshots/quick-actions.webp)
 
 ### Looks like Quizlet
 
@@ -36,13 +59,34 @@ progress, and a Study button with what's due. Collections group sets, and tags a
 
 ### Edits like Notion
 
-Cards are written in a rich editor. Type `/` to add a code block (with syntax highlighting), inline or
-block math (LaTeX), an image, or audio. You never see raw markup.
+Cards are written in a rich editor, and you never see raw markup. Type `/` anywhere for the menu:
+
+- **Code blocks** with syntax highlighting for about 20 languages (Python, JavaScript/TypeScript, Java, C/C++,
+  C#, Go, Rust, SQL, HTML…), and `inline code` within a sentence
+- **Math** in LaTeX, rendered with KaTeX: inline in a sentence, or a centered block on its own line
+- **Images** and **audio clips** (desktop app): pick a file, paste, or drag one in
+- **Headings** (three sizes), **bulleted** and **numbered lists**
+- **Bold**, *italic*, and **colored text** (red, green, blue, yellow, orange, purple), plus Clear formatting
+
+Markdown-style shortcuts work as you type, too: `**bold**`, `*italic*`, `` `code` ``, `# ` for a
+heading, `- ` or `1. ` for a list, and `$x^2$` for math. Ctrl/⌘+B and Ctrl/⌘+I also work, and Tab moves
+to the next field.
 
 ![The / menu](public/screenshots/slash-menu.webp)
 
-Seven kinds of card: open-ended, type the answer, multiple choice, true/false, fill in the blank,
-matching, and image occlusion (drag boxes over a picture's labels). Cards can also be studied both ways.
+### Seven kinds of card
+
+| Type | How you answer |
+|---|---|
+| **Open-ended** | Think of the answer, flip, and rate yourself. Can also be studied back to front. |
+| **Type the answer** | Type it and get checked. Case, accents, extra spaces, a leading "the/a", and small typos are forgiven; numbers must match exactly. You can list extra accepted answers. |
+| **Multiple choice** | Pick from the options (A–D on the keyboard). |
+| **True / false** | T or F. |
+| **Fill in the blank** | The answer is hidden in the sentence and revealed in place. |
+| **Matching** | Pair up terms and definitions on a board. |
+| **Image occlusion** (desktop app) | Drag boxes over a picture's labels and number them; each number becomes its own card. Hide all boxes and guess one, or hide just one. |
+
+The auto-checks are only hints: what goes into your schedule is always the rating you choose.
 
 ![Editing a card](public/screenshots/edit-card.webp)
 
