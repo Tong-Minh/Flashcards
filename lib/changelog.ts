@@ -22,6 +22,8 @@ export const CHANGELOG: Release[] = [
       'Optimize FSRS: fit the scheduler to your own review history with Anki’s optimizer, running on your device. You see how well the current and new parameters predict your past reviews before choosing.',
       'Stats suggests optimizing once you have enough new reviews.',
       'Choose when a new study day starts (4 AM by default).',
+      'Mac: keyboard shortcuts keep working while you study (before, they stopped after one key until you clicked back in).',
+      'Answers are no longer shown all in bold, so bold text in them stands out again.',
     ],
   },
   {

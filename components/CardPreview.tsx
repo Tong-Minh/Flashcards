@@ -210,7 +210,7 @@ export function FlipCard({ card, onSwipeAway, className = '' }: FlipCardProps) {
           <MatchingPairsList pairs={card.pairs ?? []} />
         ) : (
           <div className="flex flex-col flex-1">
-            <ContentRenderer text={card.answer} className="text-xl font-semibold text-gray-900 dark:text-gray-100 leading-relaxed" readOnly />
+            <ContentRenderer text={card.answer} className="text-xl font-medium text-gray-900 dark:text-gray-100 leading-relaxed" readOnly />
             {card.type === 'typed' && card.options && card.options.length > 0 && (
               <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">Also accepted: {card.options.join(', ')}</p>
             )}

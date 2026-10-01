@@ -1,20 +1,82 @@
-// FSRS parameter optimization from the review log, with fsrs-rs (Anki's optimizer) compiled to
-// WebAssembly (fsrs-browser). It trains on several threads, which browsers only allow on a
-// cross-origin isolated page: /optimize is served with COOP/COEP headers (next.config.ts on the
-// web, tauri.conf.json in the desktop app). Check `canOptimize()` first.
+// FSRS parameter optimization from the review log, with fsrs-rs (Anki's optimizer). Two ways to run
+// the same optimizer on the same input:
+// - Desktop app: natively, through the `optimize_fsrs` Tauri command (src-tauri/src/lib.rs).
+// - Web (and the desktop app if that fails): fsrs-rs compiled to WebAssembly (fsrs-browser). It
+//   trains on several threads, which browsers only allow on a cross-origin isolated page: /optimize
+//   is served with COOP/COEP headers (next.config.ts; tauri.conf.json for the desktop app). The
+//   Mac app's WebKit window doesn't honor them, which is why the native path exists.
 import { createEmptyCard, fsrs, generatorParameters, State, type Card, type Grade } from 'ts-fsrs'
-import { newDayHour, studyDayKey } from '@/lib/day'
+import { studyDayKey } from '@/lib/day'
+import { inTauri } from '@/lib/platform'
 import type { ReviewLog } from '@/lib/types'
 
-export const canOptimize = () => typeof window !== 'undefined' && window.crossOriginIsolated === true
+const isolated = () => typeof window !== 'undefined' && window.crossOriginIsolated === true
+
+export const canOptimize = () => inTauri() || isolated()
 
 // Below this many reviews the result is mostly noise (Anki suggests optimizing after ~400)
 export const MIN_REVIEWS = 400
 
+// ── Review log → training items (Anki's conversion, from fsrs-rs's convertor) ─────────────────
+
+// The training set as flat arrays: each item is a card's history up to one review (its rating and
+// the days since the review before), `lengths` long, with the card it came from
+export interface TrainingItems {
+  ratings: number[]
+  deltas: number[]
+  lengths: number[]
+  cardIds: number[]
+}
+
+const dayNumber = (at: string) => {
+  const [y, m, d] = studyDayKey(at).split('-').map(Number)
+  return Date.UTC(y, m - 1, d) / 86_400_000
+}
+
+export function trainingItems(reviews: ReviewLog[]): TrainingItems {
+  const byCard = new Map<string, ReviewLog[]>()
+  for (const r of reviews) {
+    const list = byCard.get(r.card_id)
+    if (list) list.push(r)
+    else byCard.set(r.card_id, [r])
+  }
+  const items: { at: string; card: number; reviews: { rating: number; delta: number }[] }[] = []
+  let cardNo = 0
+  for (const list of byCard.values()) {
+    cardNo++
+    list.sort((a, b) => a.reviewed_at.localeCompare(b.reviewed_at))
+    // Keep the history from the start of its last run of learning reviews (a card reset to new
+    // starts over); a history that doesn't start with learning can't be used
+    const learning = (r: ReviewLog) => r.state === State.New || r.state === State.Learning
+    let start = 0
+    for (let i = list.length - 1; i >= 0; i--) {
+      if (learning(list[i])) start = i
+      else if (start !== 0) break
+    }
+    if (!learning(list[start])) continue
+    const kept = list.slice(start)
+    const reviewsWithDelta = kept.map((r, i) => ({ rating: r.rating, delta: i === 0 ? 0 : Math.max(0, dayNumber(r.reviewed_at) - dayNumber(kept[i - 1].reviewed_at)) }))
+    // One item per review a day or more after the one before, holding everything up to it
+    for (let i = 1; i < kept.length; i++) {
+      if (reviewsWithDelta[i].delta > 0) items.push({ at: kept[i].reviewed_at, card: cardNo, reviews: reviewsWithDelta.slice(0, i + 1) })
+    }
+  }
+  items.sort((a, b) => a.at.localeCompare(b.at))
+  const out: TrainingItems = { ratings: [], deltas: [], lengths: [], cardIds: [] }
+  for (const item of items) {
+    for (const r of item.reviews) { out.ratings.push(r.rating); out.deltas.push(r.delta) }
+    out.lengths.push(item.reviews.length)
+    out.cardIds.push(item.card)
+  }
+  return out
+}
+
+// ── Running the optimizer ────────────────────────────────────────────────────
+
 type FsrsModule = typeof import('fsrs-browser')
 let loading: Promise<FsrsModule> | null = null
 
-function load(): Promise<FsrsModule> {
+function loadWasm(): Promise<FsrsModule> {
   loading ??= (async () => {
     const mod = await import('fsrs-browser')
     await mod.default()
@@ -24,48 +86,42 @@ function load(): Promise<FsrsModule> {
   return loading
 }
 
-export async function defaultParameters(): Promise<number[]> {
-  const mod = await load()
-  return Array.from(mod.DEFAULT_PARAMETERS())
-}
-
-// Anki's revlog columns: card id, rating, review time (ms, unique per card), and kind (0 learning,
-// 1 review, 2 relearning), in card then time order
-function revlogColumns(reviews: ReviewLog[]) {
-  const sorted = [...reviews].sort((a, b) => a.card_id.localeCompare(b.card_id) || a.reviewed_at.localeCompare(b.reviewed_at))
-  const cardIndex = new Map<string, number>()
-  const cids = new BigInt64Array(sorted.length)
-  const ids = new BigInt64Array(sorted.length)
-  const eases = new Uint8Array(sorted.length)
-  const types = new Uint8Array(sorted.length)
-  let lastCard = '', lastTime = 0
-  sorted.forEach((r, i) => {
-    if (!cardIndex.has(r.card_id)) cardIndex.set(r.card_id, cardIndex.size + 1)
-    let t = new Date(r.reviewed_at).getTime()
-    if (r.card_id === lastCard && t <= lastTime) t = lastTime + 1
-    lastCard = r.card_id
-    lastTime = t
-    cids[i] = BigInt(cardIndex.get(r.card_id)!)
-    ids[i] = BigInt(t)
-    eases[i] = r.rating
-    types[i] = r.state === State.Review ? 1 : r.state === State.Relearning ? 2 : 0
-  })
-  return { cids, ids, eases, types, cards: cardIndex.size }
-}
-
-export async function computeParameters(reviews: ReviewLog[]): Promise<number[]> {
-  const mod = await load()
-  const { cids, ids, eases, types } = revlogColumns(reviews)
-  // The user's offset from UTC, minus when their day starts (both in minutes)
-  const minuteOffset = -new Date().getTimezoneOffset() - newDayHour() * 60
+async function computeWithWasm(items: TrainingItems): Promise<number[]> {
+  const mod = await loadWasm()
   const fsrs = new mod.Fsrs()
   try {
-    const params = fsrs.computeParametersAnki(minuteOffset, cids, eases, ids, types, undefined, true)
-    return Array.from(params, n => Math.round(n * 10_000) / 10_000)
+    return Array.from(fsrs.computeParameters(
+      new Uint32Array(items.ratings), new Uint32Array(items.deltas), new Uint32Array(items.lengths),
+      undefined, true, BigInt64Array.from(items.cardIds, BigInt),
+    ))
   } finally {
     fsrs.free()
   }
 }
+
+async function computeNatively(items: TrainingItems): Promise<number[]> {
+  const { invoke } = await import('@tauri-apps/api/core')
+  return invoke<number[]>('optimize_fsrs', { ...items })
+}
+
+export async function computeParameters(reviews: ReviewLog[]): Promise<number[]> {
+  const items = trainingItems(reviews)
+  if (items.lengths.length === 0) throw new Error('None of your cards have been reviewed on two different days yet.')
+  let params: number[]
+  if (inTauri()) {
+    try {
+      params = await computeNatively(items)
+    } catch (err) {
+      if (!isolated()) throw err
+      params = await computeWithWasm(items)
+    }
+  } else {
+    params = await computeWithWasm(items)
+  }
+  return params.map(n => Math.round(n * 10_000) / 10_000)
+}
+
+// ── Scoring parameters on the user's history ─────────────────────────────────
 
 export interface Evaluation {
   // Lower is better for both

@@ -10,9 +10,16 @@ export function haptic(ms = 20) {
     try { navigator.vibrate(ms) } catch {}
     return
   }
-  // iOS 18+ fallback: label.click() toggles the hidden switch input, firing a light haptic
-  if (_label) {
+  // iOS 18+ fallback: label.click() toggles the hidden switch input, firing a light haptic. Only on
+  // touch screens: on a Mac (Safari, the desktop app) it does nothing but move keyboard focus into
+  // that input, where study shortcuts are ignored. Focus is put back either way.
+  if (_label && navigator.maxTouchPoints > 0) {
+    const focused = document.activeElement as HTMLElement | null
     try { _label.click() } catch {}
+    if (document.activeElement !== focused) {
+      (document.activeElement as HTMLElement | null)?.blur()
+      focused?.focus?.({ preventScroll: true })
+    }
   }
 }
 
