@@ -184,8 +184,8 @@ function renderTokens(tokens: InlineToken[], onMathClick?: MathClickHandler): Re
             // widening the page on narrow screens
             // select-all + data-latex: highlighting takes the whole equation and copies its LaTeX (see CopyAsSource)
             const cls = tok.display
-              ? 'block overflow-x-auto py-1 text-center select-all'
-              : 'inline-block max-w-full overflow-x-auto overflow-y-hidden align-middle select-all'
+              ? 'math-scroll block overflow-x-auto py-1 text-center select-all'
+              : 'math-scroll inline-block max-w-full overflow-x-auto overflow-y-hidden align-middle select-all'
             return (
               <span key={i}
                 data-latex={tok.s}
@@ -243,7 +243,7 @@ function renderLine(line: string, j: number, onMathClick?: MathClickHandler): Re
       <div key={j}
         data-latex={expr}
         data-display=""
-        className={`overflow-x-auto py-2 flex justify-center select-all${onMathClick ? ' cursor-pointer hover:opacity-70 transition-opacity' : ''}`}
+        className={`math-scroll overflow-x-auto py-2 flex justify-center select-all${onMathClick ? ' cursor-pointer hover:opacity-70 transition-opacity' : ''}`}
         onClick={onMathClick ? (e) => { e.stopPropagation(); onMathClick(expr, true, e.currentTarget.getBoundingClientRect()) } : undefined}
         dangerouslySetInnerHTML={{ __html: renderMath(expr, true) }}
       />

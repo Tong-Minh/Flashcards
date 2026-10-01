@@ -1206,7 +1206,7 @@ export default function Study() {
                       {isCorrectSelection ? '✓ Correct!' : `✗ Incorrect — you picked: ${previewText(selectedOption)}`}
                     </div>
                   )}
-                  <ContentRenderer text={face.answer} className="text-xl lg:text-2xl font-medium text-gray-900 dark:text-gray-100 leading-relaxed flex-1" readOnly />
+                  <ContentRenderer text={face.answer} className="text-xl lg:text-2xl text-gray-900 dark:text-gray-100 leading-relaxed flex-1" readOnly />
                   {card.type === 'typed' && face.options && face.options.length > 0 && (
                     <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">Also accepted: {face.options.join(', ')}</p>
                   )}

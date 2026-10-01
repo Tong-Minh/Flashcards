@@ -13,6 +13,16 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.1.8',
+    date: '2026-10-01',
+    title: 'Cleaner equations and answers',
+    changes: [
+      'Equations no longer show scrollbars. One too wide for the screen still scrolls with a swipe or trackpad.',
+      'The answer side of a card is no longer shown all in bold while studying or viewing, so bold text in it stands out.',
+      'Cloud version: an invite password typed on the front page only counts for the next sign-in.',
+    ],
+  },
+  {
     version: '0.1.7',
     date: '2026-10-01',
     title: 'Tidier menus, source links, storage',

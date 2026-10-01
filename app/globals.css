@@ -78,6 +78,12 @@ pre[class*="language-"], code[class*="language-"] {
 .token.bold { font-weight: bold; }
 .token.italic { font-style: italic; }
 
+/* Equations scroll sideways when too wide for the screen, but without a visible scrollbar: KaTeX
+   glyphs (∯, big integrals) overhang their box by a few pixels, which otherwise shows a scrollbar
+   on equations that fit. Swipe or trackpad still scrolls the ones that don't. */
+.math-scroll { scrollbar-width: none; }
+.math-scroll::-webkit-scrollbar { display: none; }
+
 /* View mode scrubber: a progress bar you can drag to jump to a card. --fill is set inline. */
 .scrubber {
   -webkit-appearance: none;
