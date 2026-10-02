@@ -43,8 +43,8 @@ Everything works from the keyboard, so studying is just your hands on the keys:
 
 Everywhere else, press **`** (the key above Tab) to open a numbered menu of what you can do on that page,
 then a number to do it. On a set that's add a card, import, study, view, export, select, settings, stats
-and search; the home page and collections have their own. The numbers never change, so ` 3 starts
-studying a set and ` 1 adds a card, without looking.
+and search; the home page and collections have their own. The numbers never change, so 3 starts
+studying a set and 1 adds a card, without looking.
 
 ![The ` quick actions menu](public/screenshots/quick-actions.webp)
 
